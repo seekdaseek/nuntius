@@ -37,4 +37,5 @@ Read from `server/.env` (gitignored — never commit it; create it by hand, it h
 
 ## Open items
 
-- `ochinimus.app/.well-known/assetlinks.json` must carry the release keystore fingerprint before wallets will trust the MWA app identity `https://ochinimus.app` (Digital Asset Links check).
+- **`https://ochinimus.app/favicon.ico` must be hosted.** The app identity sets `icon: 'favicon.ico'` (relative to `uri`). Verified on device 2026-09-09: Seed Vault Wallet accepts the relative path and authorizes, but the file currently 404s so the wallet shows a **"?" placeholder** instead of an icon. A `data:` URI is **not** an alternative — Seed Vault rejects it outright with `-32602 "When specified, identity.icon must be a relative URI"` (the Kotlin client is stricter than the MWA spec). Hosting the favicon is therefore the only route to a real icon; not required for authorization to succeed.
+- **`https://ochinimus.app/.well-known/assetlinks.json` (404s today)** must carry the release keystore fingerprint before wallets will trust the MWA app identity `https://ochinimus.app` via the Digital Asset Links check. The fingerprint does not exist yet (no release keystore).
