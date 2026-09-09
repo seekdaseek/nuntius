@@ -4,7 +4,7 @@
  * getTokenAccountsByOwnerV2, then confirm a candidate mint carries the SGT
  * mint authority, metadata pointer and group membership.
  *
- * https://docs.solanamobile.com/marketing/engaging-seeker-users
+ * https://docs.solanamobile.com/solana-mobile-stack/seeker-genesis-token
  */
 
 const TOKEN_2022_PROGRAM = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'
@@ -40,26 +40,46 @@ function extensionState(info: unknown, name: string): unknown {
   return get(match, 'state')
 }
 
-function isSgtMint(account: unknown): boolean {
-  const parsed = get(account, 'data', 'parsed')
-  if (get(parsed, 'type') !== 'mint') return false
-  const info = get(parsed, 'info')
-  if (get(info, 'mintAuthority') !== SGT_MINT_AUTHORITY) return false
-
-  const metadata = extensionState(info, 'metadataPointer')
-  if (get(metadata, 'authority') !== SGT_MINT_AUTHORITY) return false
-  if (get(metadata, 'metadataAddress') !== SGT_METADATA_ADDRESS) return false
-
-  const member = extensionState(info, 'tokenGroupMember')
-  if (get(member, 'group') !== SGT_GROUP_ADDRESS) return false
-
-  return true
+export interface SgtClassification {
+  isMint: boolean
+  mintAuthorityOk: boolean
+  metadataPointerOk: boolean
+  groupMemberOk: boolean
 }
 
-/** Returns the SGT mint address the wallet holds, or null. Throws on RPC failure — fail closed, never fail open. */
-export async function checkWalletForSgt(rpcUrl: string, owner: string): Promise<string | null> {
-  const candidateMints: string[] = []
+/** Per-check breakdown for one jsonParsed mint account, so a miss is diagnosable check by check. */
+export function classifySgtMint(account: unknown): SgtClassification {
+  const parsed = get(account, 'data', 'parsed')
+  const info = get(parsed, 'info')
+  const metadata = extensionState(info, 'metadataPointer')
+  const member = extensionState(info, 'tokenGroupMember')
+  return {
+    isMint: get(parsed, 'type') === 'mint',
+    mintAuthorityOk: get(info, 'mintAuthority') === SGT_MINT_AUTHORITY,
+    metadataPointerOk:
+      get(metadata, 'authority') === SGT_MINT_AUTHORITY && get(metadata, 'metadataAddress') === SGT_METADATA_ADDRESS,
+    groupMemberOk: get(member, 'group') === SGT_GROUP_ADDRESS,
+  }
+}
+
+export function isSgtMint(account: unknown): boolean {
+  const c = classifySgtMint(account)
+  return c.isMint && c.mintAuthorityOk && c.metadataPointerOk && c.groupMemberOk
+}
+
+export interface Token2022Account {
+  mint: string
+  amount: string
+}
+
+/** All of the owner's Token-2022 accounts, paged on paginationKey until absent. */
+export async function fetchToken2022Accounts(
+  rpcUrl: string,
+  owner: string,
+): Promise<{ accounts: Token2022Account[]; pages: number }> {
+  const accounts: Token2022Account[] = []
   let paginationKey: string | null = null
+  let pages = 0
 
   do {
     const result = await rpc(rpcUrl, 'getTokenAccountsByOwnerV2', [
@@ -67,28 +87,45 @@ export async function checkWalletForSgt(rpcUrl: string, owner: string): Promise<
       { programId: TOKEN_2022_PROGRAM },
       { encoding: 'jsonParsed', limit: 1000, ...(paginationKey ? { paginationKey } : {}) },
     ])
-    const accounts = get(result, 'value', 'accounts')
-    for (const entry of Array.isArray(accounts) ? accounts : []) {
+    pages++
+    const entries = get(result, 'value', 'accounts')
+    for (const entry of Array.isArray(entries) ? entries : []) {
       const info = get(entry, 'account', 'data', 'parsed', 'info')
       const mint = get(info, 'mint')
-      // Transferring an SGT out leaves the old token account open with a balance of 0 — skip those.
-      if (typeof mint === 'string' && get(info, 'tokenAmount', 'amount') !== '0') {
-        candidateMints.push(mint)
+      const amount = get(info, 'tokenAmount', 'amount')
+      if (typeof mint === 'string') {
+        accounts.push({ mint, amount: typeof amount === 'string' ? amount : '0' })
       }
     }
     const nextKey = get(result, 'paginationKey')
     paginationKey = typeof nextKey === 'string' ? nextKey : null
   } while (paginationKey)
 
-  for (let i = 0; i < candidateMints.length; i += 100) {
-    const batch = candidateMints.slice(i, i + 100)
+  return { accounts, pages }
+}
+
+/** jsonParsed account infos for the given mints, batched 100 per getMultipleAccounts call. */
+export async function fetchMintAccounts(rpcUrl: string, mints: string[]): Promise<unknown[]> {
+  const results: unknown[] = []
+  for (let i = 0; i < mints.length; i += 100) {
+    const batch = mints.slice(i, i + 100)
     const result = await rpc(rpcUrl, 'getMultipleAccounts', [batch, { encoding: 'jsonParsed' }])
     const accounts = get(result, 'value')
-    if (!Array.isArray(accounts)) continue
-    for (let j = 0; j < accounts.length; j++) {
-      if (isSgtMint(accounts[j])) return batch[j] ?? null
-    }
+    results.push(...(Array.isArray(accounts) ? accounts : batch.map(() => null)))
   }
+  return results
+}
 
+/** Returns the SGT mint address the wallet holds, or null. Throws on RPC failure — fail closed, never fail open. */
+export async function checkWalletForSgt(rpcUrl: string, owner: string): Promise<string | null> {
+  const { accounts } = await fetchToken2022Accounts(rpcUrl, owner)
+
+  // Transferring an SGT out leaves the old token account open with a balance of 0 — skip those.
+  const candidateMints = accounts.filter((a) => a.amount !== '0').map((a) => a.mint)
+
+  const mintAccounts = await fetchMintAccounts(rpcUrl, candidateMints)
+  for (let i = 0; i < mintAccounts.length; i++) {
+    if (isSgtMint(mintAccounts[i])) return candidateMints[i] ?? null
+  }
   return null
 }

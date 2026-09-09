@@ -33,6 +33,8 @@ Read from `server/.env` (gitignored — never commit it; create it by hand, it h
 
 `node dist/selftest.js sign payload.json [--domain evil.example]` acts as a stand-in wallet: ephemeral ed25519 key, same SIWS message format, prints the `/api/siws-verify` body for curl. See repo history for the proof transcript.
 
+`node --env-file-if-exists=.env dist/sgt-check.js <wallet>` runs the same SGT check the endpoint uses and prints the evidence: every Token-2022 account with its balance, the per-check classification of each candidate mint (mint authority, metadata pointer, group member), and the raw `jsonParsed` shape of any near-miss — so "no SGT held" and "parser failed to classify" are distinguishable. Never prints the RPC URL.
+
 ## Open items
 
 - `ochinimus.app/.well-known/assetlinks.json` must carry the release keystore fingerprint before wallets will trust the MWA app identity `https://ochinimus.app` (Digital Asset Links check).
