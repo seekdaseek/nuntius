@@ -48,3 +48,4 @@ android/
 .env
 .env.*
 google-services.json
+server/nuntius.db*

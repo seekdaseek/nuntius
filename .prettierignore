@@ -9,3 +9,5 @@ pnpm-lock.yaml
 .agents
 agent
 pnpm-workspace.yaml
+server/dist
+server/node_modules
