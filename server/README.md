@@ -28,6 +28,15 @@ Read from `server/.env` (gitignored — never commit it; create it by hand, it h
 - `GET /api/siws-payload` — issues a SIWS payload with a single-use nonce (crypto-random, 5-minute expiry). The payload is stored server-side keyed by nonce; verification only ever reads that stored copy.
 - `POST /api/siws-verify` — body `{ nonce, signInResult }` where `signInResult` is the MWA `sign_in_result` (base64 `address`, `signed_message`, `signature`). Checks, failing closed and in order: (1) nonce issued-unexpired-unused, consumed atomically; (2) signature via `verifySignIn` from `@solana/wallet-standard-util`, with the message's address line bound to the verifying key; (3) domain binding against `NUNTIUS_DOMAIN`. Returns `{ address, session }`.
 - `POST /api/verify-seeker` — body `{ session }`. Address comes from the verified session, never from the client. Queries Helius `getTokenAccountsByOwnerV2` (Token-2022) and verifies a candidate mint's authority, metadata pointer and group membership per the documented SGT check. Returns `{ sgtMint }` or `{ sgtMint: null }`. **An SGT moves between a user's own Seed Vault accounts when the primary account changes (mint address constant), so uniqueness is keyed on the mint address, never the wallet** — claiming a mint releases it from every other session, so one physical Seeker counts once whichever account holds it.
+- `POST /api/rpc` — allowlisted mainnet JSON-RPC proxy so the Helius key never enters the app bundle. Forwards only `getBalance`/`getVersion`/`getGenesisHash`/`getLatestBlockhash`; batches and any other method are rejected 400.
+- `POST /api/push/register` — body `{ session, token, platform }`. Session-gated: the token binds to the session's own wallet address and SGT mint, never a client-supplied address. Unique on token (re-registering updates in place). An open endpoint here would let anyone attach a token to any wallet.
+- `POST /api/push/test` — body `{ session }`. Sends a test push to **only the caller's own** registered tokens; cannot address anyone else's device. `503` if FCM is not configured, `404` if the caller has no registered token. Returns FCM's per-token response.
+
+### Push message shape — device-verified 2026-09-09
+
+FCM v1 messages are sent as **`notification` + `data`**, not data-only, and routed to the `alerts` channel via `android.notification.channel_id`. A **data-only** message never reaches a killed app without a background task (`expo-task-manager`, out of scope for this step): FCM returns 200 but nothing displays. Since waking a killed phone is the product's whole point, the `notification` block lets the Android FCM SDK draw the tray notification itself in the backgrounded and killed cases, with no app code running; `data.url` still rides along for tap-through. Confirmed on the Seeker in all three states (foreground, backgrounded, `am kill`-ed).
+
+Note for step 5/6: presenting a **pure data-only** payload (e.g. a silent background evaluation that decides locally whether to alert) will require `expo-task-manager` + a background handler. Not built here.
 
 ## Testing without a device
 
