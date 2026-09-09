@@ -37,9 +37,9 @@ Use the `-kit` wrapper. The docs call it "the preferred wrapper for new apps tha
 ```ts
 const signInResult = await transact(async (wallet: KitMobileWallet) => {
   const authorizationResult = await wallet.authorize({
-    chain: "solana:mainnet",
+    chain: 'solana:mainnet',
     identity: APP_IDENTITY,
-    sign_in_payload: { /* the full payload from GET /api/siws-payload */ },
+    sign_in_payload: {/* the full payload from GET /api/siws-payload */},
   })
   return authorizationResult.sign_in_result
 })

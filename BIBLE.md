@@ -24,12 +24,12 @@ Working one-liner, keep sharpening it:
 
 ## 2. The two clocks
 
-| | Clock In (Solana Mobile x RadiantsDAO) | Crypto World's Fair (Colosseum) |
-|---|---|---|
-| Window | Sep 8 to **Oct 9 2026, 09:59 EEST** | Sep 14 to Oct 12 2026 |
-| Prize | $135,000 USDC. 1st $30,000 + Seeker, 2nd $25,000, 3rd $20,000, 4th $15,000, 5th $10,000, 6th-10th $5,000, plus **$10,000 SKR bonus** | Solana track $100,000 across top 10, general pool top 21 across chains |
-| Entry | Registered solo, `ochinimus` | Registered |
-| Results | Nov 10 or 11 (their two pages disagree) | TBA |
+|         | Clock In (Solana Mobile x RadiantsDAO)                                                                                               | Crypto World's Fair (Colosseum)                                        |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| Window  | Sep 8 to **Oct 9 2026, 09:59 EEST**                                                                                                  | Sep 14 to Oct 12 2026                                                  |
+| Prize   | $135,000 USDC. 1st $30,000 + Seeker, 2nd $25,000, 3rd $20,000, 4th $15,000, 5th $10,000, 6th-10th $5,000, plus **$10,000 SKR bonus** | Solana track $100,000 across top 10, general pool top 21 across chains |
+| Entry   | Registered solo, `ochinimus`                                                                                                         | Registered                                                             |
+| Results | Nov 10 or 11 (their two pages disagree)                                                                                              | TBA                                                                    |
 
 Dual entry is explicitly permitted by Clock In's own FAQ. One build, two submissions.
 
@@ -54,9 +54,9 @@ It is a startup competition, not an engineering one.
 
 **How this design resolves the conflict between them**
 
-- Push *is* the stickiness mechanism, which is Clock In criterion 1
-- The measurement *is* the insight and the moat, which is Colosseum insight + founder fit
-- The subscription *is* the viability answer
+- Push _is_ the stickiness mechanism, which is Clock In criterion 1
+- The measurement _is_ the insight and the moat, which is Colosseum insight + founder fit
+- The subscription _is_ the viability answer
 
 **Judges:** Toly, Mert (Helius CEO), Chase (Solana Foundation), Akshay and Beeman (Solana Mobile), Voynich and a2nkf/Ilias (both security researchers, Ethelsec).
 
@@ -66,13 +66,13 @@ It is a startup competition, not an engineering one.
 
 Colosseum Frontier product directory, filtered live. One field, 2,857 submissions.
 
-| Category | Submissions | Winners + HMs | Rate |
-|---|---|---|---|
-| Data & Analytics | 61 | 2 | **3.3%** |
-| Consumer Apps | 438 | 8 | 1.8% |
-| Security Tools | 80 | 1 | 1.25% |
-| AI Platforms / Agents | 493 | 4 | 0.8% |
-| Wallet Infrastructure | 48 | 0 | 0% |
+| Category              | Submissions | Winners + HMs | Rate     |
+| --------------------- | ----------- | ------------- | -------- |
+| Data & Analytics      | 61          | 2             | **3.3%** |
+| Consumer Apps         | 438         | 8             | 1.8%     |
+| Security Tools        | 80          | 1             | 1.25%    |
+| AI Platforms / Agents | 493         | 4             | 0.8%     |
+| Wallet Infrastructure | 48          | 0             | 0%       |
 
 The two Data & Analytics winners: **Flovia** (analytics for machine-paid APIs) and **YieldCompass** (realized APY + per-protocol risk scoring).
 
