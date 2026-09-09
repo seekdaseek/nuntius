@@ -25,19 +25,37 @@ export class FcmSender {
   }
 
   /**
-   * Sends a data-only message so the app controls presentation via its
-   * notification handler, and the same payload can drive background handling
-   * later. expo-notifications reads title/message/channelId for display and
-   * parses `body` (a JSON string) into the notification's data.
+   * Sends a notification + data message routed to a specific Android channel.
+   *
+   * Device-verified 2026-09-09: a DATA-ONLY message never reaches a killed app
+   * without a background task (expo-task-manager), which is out of scope here —
+   * FCM accepts it (200) but nothing is displayed. Since waking a killed phone
+   * is the whole point of this product, the message carries a `notification`
+   * block so the Android FCM SDK draws the tray notification itself in the
+   * backgrounded and killed cases, with no app code running. `data` still rides
+   * along for tap-through (`data.url`), and `android.notification.channel_id`
+   * pins it to the HIGH-importance `alerts` channel so it wakes the device.
    */
-  async send(token: string, data: Record<string, string>): Promise<{ ok: boolean; status: number; body: string }> {
+  async send(
+    token: string,
+    notification: { title: string; body: string },
+    channelId: string,
+    data: Record<string, string>,
+  ): Promise<{ ok: boolean; status: number; body: string }> {
     const { token: bearer } = await this.jwt.getAccessToken()
     if (!bearer) throw new Error('could not obtain FCM access token')
 
     const response = await fetch(this.endpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${bearer}` },
-      body: JSON.stringify({ message: { token, data } }),
+      body: JSON.stringify({
+        message: {
+          token,
+          notification,
+          data,
+          android: { priority: 'HIGH', notification: { channel_id: channelId } },
+        },
+      }),
     })
     const body = await response.text()
     return { ok: response.ok, status: response.status, body }

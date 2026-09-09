@@ -138,12 +138,12 @@ export function createApp(config: Config, store: Store, fcm: FcmSender | null): 
     const sentAt = new Date().toISOString()
     Promise.all(
       tokens.map(async (token) => {
-        const result = await fcm.send(token, {
-          channelId: 'alerts',
-          title: 'nuntius test',
-          message: 'Push pipeline is live on this Seeker.',
-          body: JSON.stringify({ url: `/alert?source=push-test&at=${encodeURIComponent(sentAt)}` }),
-        })
+        const result = await fcm.send(
+          token,
+          { title: 'nuntius test', body: 'Push pipeline is live on this Seeker.' },
+          'alerts',
+          { url: `/alert?source=push-test&at=${encodeURIComponent(sentAt)}`, channelId: 'alerts' },
+        )
         return { token: `${token.slice(0, 12)}…`, status: result.status, response: result.body }
       }),
     )
