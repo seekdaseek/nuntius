@@ -39,7 +39,10 @@ export async function getSiwsPayload(): Promise<SiwsPayload> {
   return payload
 }
 
-export function postSiwsVerify(nonce: string, signInResult: WireSignInResult): Promise<{ address: string; session: string }> {
+export function postSiwsVerify(
+  nonce: string,
+  signInResult: WireSignInResult,
+): Promise<{ address: string; session: string }> {
   return post('/api/siws-verify', { nonce, signInResult })
 }
 
