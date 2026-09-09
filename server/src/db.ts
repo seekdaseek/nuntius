@@ -19,6 +19,15 @@ export function openDb(file: string): Database.Database {
       created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_sessions_sgt_mint ON sessions (sgt_mint);
+    CREATE TABLE IF NOT EXISTS push_tokens (
+      token TEXT PRIMARY KEY,
+      address TEXT NOT NULL,
+      sgt_mint TEXT,
+      platform TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_push_tokens_address ON push_tokens (address);
   `)
   return db
 }
@@ -31,6 +40,8 @@ export class Store {
   private readonly selectSession
   private readonly releaseSgtMint
   private readonly setSgtMint
+  private readonly upsertPushTokenStmt
+  private readonly selectPushTokens
 
   constructor(private readonly db: Database.Database) {
     this.insertNonce = db.prepare(
@@ -45,9 +56,16 @@ export class Store {
     this.insertSession = db.prepare(
       'INSERT INTO sessions (token, address, created_at) VALUES (@token, @address, @createdAt)',
     )
-    this.selectSession = db.prepare('SELECT address FROM sessions WHERE token = @token')
+    this.selectSession = db.prepare('SELECT address, sgt_mint FROM sessions WHERE token = @token')
     this.releaseSgtMint = db.prepare('UPDATE sessions SET sgt_mint = NULL WHERE sgt_mint = @mint AND token != @token')
     this.setSgtMint = db.prepare('UPDATE sessions SET sgt_mint = @mint WHERE token = @token')
+    // Re-registering an existing token updates in place — unique on token, never duplicated.
+    this.upsertPushTokenStmt = db.prepare(`
+      INSERT INTO push_tokens (token, address, sgt_mint, platform, created_at, updated_at)
+      VALUES (@token, @address, @sgtMint, @platform, @now, @now)
+      ON CONFLICT (token) DO UPDATE SET address = @address, sgt_mint = @sgtMint, platform = @platform, updated_at = @now
+    `)
+    this.selectPushTokens = db.prepare('SELECT token FROM push_tokens WHERE address = @address')
   }
 
   issueNonce(payload: SiwsPayload): void {
@@ -71,9 +89,18 @@ export class Store {
     this.insertSession.run({ token, address, createdAt: nowMs })
   }
 
-  getSessionAddress(token: string): string | null {
-    const row = this.selectSession.get({ token }) as { address: string } | undefined
-    return row ? row.address : null
+  getSession(token: string): { address: string; sgtMint: string | null } | null {
+    const row = this.selectSession.get({ token }) as { address: string; sgt_mint: string | null } | undefined
+    return row ? { address: row.address, sgtMint: row.sgt_mint } : null
+  }
+
+  upsertPushToken(token: string, address: string, sgtMint: string | null, platform: string, nowMs: number): void {
+    this.upsertPushTokenStmt.run({ token, address, sgtMint, platform, now: nowMs })
+  }
+
+  getPushTokens(address: string): string[] {
+    const rows = this.selectPushTokens.all({ address }) as { token: string }[]
+    return rows.map((r) => r.token)
   }
 
   /**

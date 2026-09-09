@@ -2,6 +2,8 @@ export interface Config {
   port: number
   domain: string
   heliusRpc: string | null
+  fcmServiceAccount: string | null
+  fcmProjectId: string | null
 }
 
 // Bare host, optionally with a port. This is the SIWS binding domain, not a URL.
@@ -23,5 +25,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error('HELIUS_RPC must be an https URL')
   }
 
-  return { port, domain, heliusRpc }
+  // Both must be present for push; either alone is a config mistake worth failing on.
+  const fcmServiceAccount =
+    env.FCM_SERVICE_ACCOUNT === undefined || env.FCM_SERVICE_ACCOUNT === '' ? null : env.FCM_SERVICE_ACCOUNT
+  const fcmProjectId = env.FCM_PROJECT_ID === undefined || env.FCM_PROJECT_ID === '' ? null : env.FCM_PROJECT_ID
+  if ((fcmServiceAccount === null) !== (fcmProjectId === null)) {
+    throw new Error('FCM_SERVICE_ACCOUNT and FCM_PROJECT_ID must be set together')
+  }
+
+  return { port, domain, heliusRpc, fcmServiceAccount, fcmProjectId }
 }

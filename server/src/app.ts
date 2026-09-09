@@ -5,10 +5,13 @@ import type { Store } from './db'
 import { buildPayload, NONCE_RE, parseSignInResult, verifySiws } from './siws'
 import { checkWalletForSgt } from './seeker'
 import { forwardRpc, parseRpcRequest } from './rpc-proxy'
+import type { FcmSender } from './fcm'
 
 const SESSION_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/
+// FCM registration tokens: instance id, a colon, then a URL-safe blob.
+const PUSH_TOKEN_RE = /^[A-Za-z0-9_:.-]{20,4096}$/
 
-export function createApp(config: Config, store: Store): express.Express {
+export function createApp(config: Config, store: Store, fcm: FcmSender | null): express.Express {
   const app = express()
   app.disable('x-powered-by')
   app.use(express.json({ limit: '8kb' }))
@@ -60,8 +63,8 @@ export function createApp(config: Config, store: Store): express.Express {
     }
 
     // The wallet address comes from the verified session, never from the request body.
-    const address = store.getSessionAddress(session)
-    if (!address) {
+    const auth = store.getSession(session)
+    if (!auth) {
       res.status(401).json({ ok: false, error: 'session_invalid' })
       return
     }
@@ -71,7 +74,7 @@ export function createApp(config: Config, store: Store): express.Express {
       return
     }
 
-    checkWalletForSgt(config.heliusRpc, address)
+    checkWalletForSgt(config.heliusRpc, auth.address)
       .then((sgtMint) => {
         if (sgtMint) store.claimSgtMint(session, sgtMint)
         res.json({ ok: true, sgtMint })
@@ -80,6 +83,72 @@ export function createApp(config: Config, store: Store): express.Express {
         // Fail closed and say nothing about the RPC target.
         res.status(502).json({ ok: false, error: 'rpc_error' })
       })
+  })
+
+  app.post('/api/push/register', (req, res) => {
+    const body: unknown = req.body
+    const v = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {}
+    const session = typeof v.session === 'string' && SESSION_TOKEN_RE.test(v.session) ? v.session : null
+    const token = typeof v.token === 'string' && PUSH_TOKEN_RE.test(v.token) ? v.token : null
+    const platform = v.platform === 'android' || v.platform === 'ios' ? v.platform : null
+    if (!session || !token || !platform) {
+      res.status(400).json({ ok: false, error: 'bad_request' })
+      return
+    }
+
+    // Session-gated: an open registration endpoint would let anyone attach a
+    // token to any wallet. The token binds to the session's own identity only.
+    const auth = store.getSession(session)
+    if (!auth) {
+      res.status(401).json({ ok: false, error: 'session_invalid' })
+      return
+    }
+
+    store.upsertPushToken(token, auth.address, auth.sgtMint, platform, Date.now())
+    res.json({ ok: true })
+  })
+
+  app.post('/api/push/test', (req, res) => {
+    const body: unknown = req.body
+    const v = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {}
+    const session = typeof v.session === 'string' && SESSION_TOKEN_RE.test(v.session) ? v.session : null
+    if (!session) {
+      res.status(400).json({ ok: false, error: 'bad_request' })
+      return
+    }
+
+    const auth = store.getSession(session)
+    if (!auth) {
+      res.status(401).json({ ok: false, error: 'session_invalid' })
+      return
+    }
+
+    if (!fcm) {
+      res.status(503).json({ ok: false, error: 'not_configured' })
+      return
+    }
+
+    // Only the caller's own tokens — this endpoint cannot address anyone else's device.
+    const tokens = store.getPushTokens(auth.address)
+    if (tokens.length === 0) {
+      res.status(404).json({ ok: false, error: 'no_push_tokens' })
+      return
+    }
+
+    const sentAt = new Date().toISOString()
+    Promise.all(
+      tokens.map(async (token) => {
+        const result = await fcm.send(token, {
+          channelId: 'alerts',
+          title: 'nuntius test',
+          message: 'Push pipeline is live on this Seeker.',
+          body: JSON.stringify({ url: `/alert?source=push-test&at=${encodeURIComponent(sentAt)}` }),
+        })
+        return { token: `${token.slice(0, 12)}…`, status: result.status, response: result.body }
+      }),
+    )
+      .then((results) => res.json({ ok: true, results }))
+      .catch(() => res.status(502).json({ ok: false, error: 'fcm_error' }))
   })
 
   app.post('/api/rpc', (req, res) => {
