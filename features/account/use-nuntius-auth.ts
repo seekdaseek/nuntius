@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getBase64Encoder } from '@solana/kit'
-import { useMobileWallet } from '@wallet-ui/react-native-kit'
+import { transact, useMobileWallet } from '@wallet-ui/react-native-kit'
 import { getSiwsPayload, postSiwsVerify, postVerifySeeker } from '@/features/account/nuntius-api'
 
 /** Backend-verified identity: SIWS session plus the Seeker gate result. */
@@ -23,7 +23,7 @@ export function useNuntiusAuth() {
 }
 
 export function useSignInMutation() {
-  const { signIn } = useMobileWallet()
+  const { chain, identity } = useMobileWallet()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -31,31 +31,33 @@ export function useSignInMutation() {
       // 1. Backend issues the payload — single-use nonce, issuedAt, expirationTime.
       const payload = await getSiwsPayload()
 
-      // 2. Sign the payload untouched. No address: the wallet picks the account in
-      // the same prompt, and connecting first is not required.
-      const output = await signIn(payload)
+      // 2. Authorize FRESH inside a new transact session, never passing a stored
+      // auth_token. The kit's own signIn() reauthorizes with a cached token and
+      // never clears it when the wallet cancels or tears down the session, so one
+      // dismissed sheet — or a rotated token after a restart — bricks every later
+      // sign-in until the app data is cleared. A token-free authorize always opens
+      // the wallet cleanly and issues a fresh token. (Project MWA rule: authorize
+      // fresh in every transact session; never reuse a stored auth_token.)
+      const result = await transact(async (wallet) => wallet.authorize({ chain, identity, sign_in_payload: payload }))
+      const signIn = result.sign_in_result
+      if (!signIn) {
+        throw new Error('Wallet did not return a sign-in result')
+      }
 
-      // react-native-kit's convertSignInResult (4.3.0, pinned) runs the MWA base64
-      // strings through TextEncoder instead of base64-decoding them, so
-      // output.signedMessage / output.signature hold the base64 TEXT as bytes.
-      // Reading them back as ASCII recovers the exact wire strings the wallet
-      // produced. If a kit upgrade ever fixes this, the signature stops being
-      // base64 text and the server rejects with 400 — loud, not silent.
-      const signedMessageBase64 = bytesToUtf8(output.signedMessage)
-      const signatureBase64 = bytesToUtf8(output.signature)
-
+      // sign_in_result carries the base64 wire strings directly (address,
+      // signed_message, signature) — exactly what the backend verifier expects,
+      // with none of the byte-array gymnastics the kit's convertSignInResult needed.
       if (__DEV__) {
         // Dev-only probe: the exact text Seed Vault signed, to confirm the
         // backend-issued nonce/issuedAt/expirationTime survive into the message.
-        console.log(`SIWS signed message:\n${bytesToUtf8(getBase64Encoder().encode(signedMessageBase64))}`)
+        console.log(`SIWS signed message:\n${bytesToUtf8(getBase64Encoder().encode(signIn.signed_message))}`)
       }
 
-      // 3. Verify server-side. Read the account from the returned result — the
-      // hook's `account` is not updated until the next render.
+      // 3. Verify server-side.
       const { address, session } = await postSiwsVerify(payload.nonce, {
-        address: output.account.addressBase64,
-        signed_message: signedMessageBase64,
-        signature: signatureBase64,
+        address: signIn.address,
+        signed_message: signIn.signed_message,
+        signature: signIn.signature,
       })
 
       // 4. Seeker gate. An RPC hiccup must not cost the fresh session — the
@@ -102,4 +104,22 @@ function bytesToUtf8(bytes: Iterable<number>): string {
     text += String.fromCharCode(byte)
   }
   return text
+}
+
+/**
+ * True when the user dismissed the wallet sheet or declined, rather than a real
+ * failure. MWA surfaces this as a CancellationException or one of the
+ * cancelled/closed/timeout session codes; the class varies, so match on the text
+ * we can see. Used only to soften the UI copy — Approach D needs no state reset,
+ * because a fresh authorize is always clean.
+ */
+export function isUserCancellation(error: unknown): boolean {
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase()
+  return (
+    message.includes('cancel') ||
+    message.includes('declined') ||
+    message.includes('session closed') ||
+    message.includes('session_closed') ||
+    message.includes('timeout')
+  )
 }

@@ -20,6 +20,9 @@ export const appStyles = StyleSheet.create({
   errorText: {
     color: '#b3261e',
   },
+  hintText: {
+    color: '#5f6368',
+  },
   tierLabel: {
     fontWeight: 'bold',
   },
