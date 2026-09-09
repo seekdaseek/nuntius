@@ -4,6 +4,7 @@ import type { Config } from './config'
 import type { Store } from './db'
 import { buildPayload, NONCE_RE, parseSignInResult, verifySiws } from './siws'
 import { checkWalletForSgt } from './seeker'
+import { forwardRpc, parseRpcRequest } from './rpc-proxy'
 
 const SESSION_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/
 
@@ -79,6 +80,21 @@ export function createApp(config: Config, store: Store): express.Express {
         // Fail closed and say nothing about the RPC target.
         res.status(502).json({ ok: false, error: 'rpc_error' })
       })
+  })
+
+  app.post('/api/rpc', (req, res) => {
+    const request = parseRpcRequest(req.body)
+    if (!request) {
+      res.status(400).json({ ok: false, error: 'bad_request' })
+      return
+    }
+    if (!config.heliusRpc) {
+      res.status(503).json({ ok: false, error: 'not_configured' })
+      return
+    }
+    forwardRpc(config.heliusRpc, request)
+      .then((result) => res.json(result))
+      .catch(() => res.status(502).json({ ok: false, error: 'rpc_error' }))
   })
 
   app.use((_req, res) => {
