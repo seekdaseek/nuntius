@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { getBase64Decoder } from '@solana/kit'
+import { getBase64Encoder } from '@solana/kit'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
 import { getSiwsPayload, postSiwsVerify, postVerifySeeker } from '@/features/account/nuntius-api'
 
@@ -35,19 +35,27 @@ export function useSignInMutation() {
       // the same prompt, and connecting first is not required.
       const output = await signIn(payload)
 
+      // react-native-kit's convertSignInResult (4.3.0, pinned) runs the MWA base64
+      // strings through TextEncoder instead of base64-decoding them, so
+      // output.signedMessage / output.signature hold the base64 TEXT as bytes.
+      // Reading them back as ASCII recovers the exact wire strings the wallet
+      // produced. If a kit upgrade ever fixes this, the signature stops being
+      // base64 text and the server rejects with 400 — loud, not silent.
+      const signedMessageBase64 = bytesToUtf8(output.signedMessage)
+      const signatureBase64 = bytesToUtf8(output.signature)
+
       if (__DEV__) {
         // Dev-only probe: the exact text Seed Vault signed, to confirm the
         // backend-issued nonce/issuedAt/expirationTime survive into the message.
-        console.log(`SIWS signed message:\n${bytesToUtf8(output.signedMessage)}`)
+        console.log(`SIWS signed message:\n${bytesToUtf8(getBase64Encoder().encode(signedMessageBase64))}`)
       }
 
       // 3. Verify server-side. Read the account from the returned result — the
       // hook's `account` is not updated until the next render.
-      const base64 = getBase64Decoder()
       const { address, session } = await postSiwsVerify(payload.nonce, {
         address: output.account.addressBase64,
-        signed_message: base64.decode(output.signedMessage),
-        signature: base64.decode(output.signature),
+        signed_message: signedMessageBase64,
+        signature: signatureBase64,
       })
 
       // 4. Seeker gate. An RPC hiccup must not cost the fresh session — the
@@ -88,7 +96,7 @@ export function useSignOut() {
   }
 }
 
-function bytesToUtf8(bytes: Uint8Array): string {
+function bytesToUtf8(bytes: Iterable<number>): string {
   let text = ''
   for (const byte of bytes) {
     text += String.fromCharCode(byte)
