@@ -49,3 +49,6 @@ android/
 .env.*
 google-services.json
 server/nuntius.db*
+fcm-service-account.json
+*service-account*.json
+*-adminsdk-*.json
