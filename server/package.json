@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "start": "node --env-file-if-missing=.env dist/index.js"
+    "start": "node --env-file-if-exists=.env dist/index.js"
   },
   "dependencies": {
     "@solana/wallet-standard-features": "1.4.0",
