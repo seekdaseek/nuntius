@@ -42,3 +42,9 @@ app-example
 # generated native folders
 /ios
 /android
+android/
+.gradle/
+*.keystore
+.env
+.env.*
+google-services.json
