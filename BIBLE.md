@@ -99,7 +99,7 @@ Verification flow:
 3. Backend verifies with `verifySignIn` from `@solana/wallet-standard-util`. Check three things: the nonce is one you issued and is unused and unexpired, the signature is valid, the payload domain is your domain.
 4. Check the verified wallet holds an SGT. Documented query path is Helius `getTokenAccountsByOwnerV2`.
 
-**SGTs are transferable.** Uniqueness must key on the **SGT mint address**, never the wallet.
+**SGT transfers are narrow, not free-floating** (docs, verified 2026-09-09): the SGT can only move between a user's own wallet accounts within the Seed Vault Wallet, on a permissioned basis — a transfer happens when the user changes their primary account. The mint address stays the same across transfers. It is minted into the **primary account** of the Seed Vault Wallet. Uniqueness must still key on the **SGT mint address**, never the wallet.
 
 `Platform.constants.Model === "Seeker"` is spoofable. Fine for UI treatment, never for gating.
 

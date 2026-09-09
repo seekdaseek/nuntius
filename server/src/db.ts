@@ -77,9 +77,10 @@ export class Store {
   }
 
   /**
-   * SGTs are transferable, so uniqueness is keyed on the mint address, never the wallet.
-   * Claiming a mint releases it from every other session first: one physical Seeker is
-   * one verified identity, no matter how many wallets the token moves through.
+   * An SGT moves between a user's own Seed Vault accounts when they change their primary
+   * account; its mint address never changes. So uniqueness is keyed on the mint address,
+   * never the wallet. Claiming a mint releases it from every other session first: one
+   * physical Seeker is one verified identity, whichever of the user's accounts holds it.
    */
   claimSgtMint(token: string, mint: string): void {
     const claim = this.db.transaction(() => {
