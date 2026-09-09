@@ -18,7 +18,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "app.ochinimus.nuntius"
+      "package": "app.ochinimus.nuntius",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "output": "static",
@@ -26,6 +27,7 @@
     },
     "plugins": [
       "expo-font",
+      "expo-notifications",
       "expo-router",
       [
         "expo-splash-screen",

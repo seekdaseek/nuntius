@@ -4,11 +4,13 @@ import { Address } from '@solana/kit'
 import { AccountFeatureGetBalance } from '@/features/account/account-feature-get-balance'
 import { AccountFeatureSignIn } from '@/features/account/account-feature-sign-in'
 import { useNuntiusAuth, useSignOut, useVerifySeekerMutation } from '@/features/account/use-nuntius-auth'
+import { usePushRegistration } from '@/features/push/use-push-registration'
 import { appStyles } from '@/constants/app-styles'
 import { ellipsify } from '@/utils/ellipsify'
 
 export function AccountFeatureIndex() {
   const auth = useNuntiusAuth()
+  usePushRegistration(auth)
 
   return (
     <View style={appStyles.stack}>
