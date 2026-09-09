@@ -81,5 +81,16 @@ export function createApp(config: Config, store: Store): express.Express {
       })
   })
 
+  app.use((_req, res) => {
+    res.status(404).json({ ok: false, error: 'not_found' })
+  })
+
+  // Uniform JSON errors: the default Express handler prints an HTML stack trace
+  // with filesystem paths. Malformed JSON and anything unexpected land here.
+  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const status = typeof err === 'object' && err !== null && (err as { status?: unknown }).status === 413 ? 413 : 400
+    res.status(status).json({ ok: false, error: 'bad_request' })
+  })
+
   return app
 }
