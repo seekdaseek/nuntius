@@ -204,6 +204,92 @@ export async function buildRecurringDelegationTx(params: {
   }
 }
 
+/**
+ * Server-authorized delegation: the owner is a keypair we hold, so no wallet is
+ * involved. Used to exercise everything downstream of authorization while the
+ * Seed Vault path is blocked. The device path uses the two build* functions
+ * above instead and never exposes a user key to the server.
+ */
+export async function authorizeDelegationServerSide(params: {
+  rpcUrl: string
+  owner: TransactionSigner
+  delegatee: Address
+  amountPerPeriod: bigint
+  periodLengthS: bigint
+  decimals: number
+}): Promise<{
+  mint: Address
+  userAta: Address
+  authorityPda: Address
+  delegationPda: Address
+  authoritySignature: string
+  delegationSignature: string
+}> {
+  const { rpcUrl, owner, delegatee, amountPerPeriod, periodLengthS, decimals } = params
+  const rpc = createSolanaRpc(rpcUrl)
+
+  const mint = await generateKeyPairSigner()
+  const space = BigInt(getMintSize())
+  const rent = await rpc.getMinimumBalanceForRentExemption(space).send()
+  const [userAta] = await findAssociatedTokenPda({
+    mint: mint.address,
+    owner: owner.address,
+    tokenProgram: TOKEN_PROGRAM_ADDRESS,
+  })
+  await sendWithPayer(rpc, owner, [
+    getCreateAccountInstruction({
+      payer: owner,
+      newAccount: mint,
+      lamports: rent,
+      space,
+      programAddress: TOKEN_PROGRAM_ADDRESS,
+    }),
+    getInitializeMintInstruction({ mint: mint.address, decimals, mintAuthority: owner.address }),
+    await getCreateAssociatedTokenInstructionAsync({ payer: owner, mint: mint.address, owner: owner.address }),
+    getMintToInstruction({
+      mint: mint.address,
+      token: userAta,
+      mintAuthority: owner,
+      amount: amountPerPeriod * 10n,
+    }),
+  ])
+
+  const authoritySignature = await sendWithPayer(rpc, owner, [
+    await getInitSubscriptionAuthorityOverlayInstructionAsync({
+      owner,
+      tokenMint: mint.address,
+      tokenProgram: TOKEN_PROGRAM_ADDRESS,
+      userAta,
+    }),
+  ])
+
+  const [authorityPda] = await findSubscriptionAuthorityPda({ user: owner.address, tokenMint: mint.address })
+  const authority = await fetchSubscriptionAuthority(rpc, authorityPda)
+  const initId = (authority.data as unknown as { initId: bigint }).initId
+
+  const delegationSignature = await sendWithPayer(rpc, owner, [
+    await getCreateRecurringDelegationOverlayInstructionAsync({
+      delegator: owner,
+      delegatee,
+      tokenMint: mint.address,
+      nonce: 0n,
+      amountPerPeriod,
+      periodLengthS,
+      startTs: 0n,
+      expiryTs: BigInt(Math.floor(Date.now() / 1000) + 86_400),
+      expectedSubscriptionAuthorityInitId: initId,
+    }),
+  ])
+
+  const [delegationPda] = await findRecurringDelegationPda({
+    subscriptionAuthority: authorityPda,
+    delegator: owner.address,
+    delegatee,
+    nonce: 0n,
+  })
+  return { mint: mint.address, userAta, authorityPda, delegationPda, authoritySignature, delegationSignature }
+}
+
 /** Creates the delegatee's ATA if absent; returns its address. Server pays the rent. */
 export async function ensureReceiverAta(params: {
   rpcUrl: string

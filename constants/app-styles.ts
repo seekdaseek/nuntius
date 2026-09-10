@@ -23,6 +23,10 @@ export const appStyles = StyleSheet.create({
   hintText: {
     color: '#5f6368',
   },
+  linkText: {
+    color: '#1a73e8',
+    textDecorationLine: 'underline',
+  },
   tierLabel: {
     fontWeight: 'bold',
   },

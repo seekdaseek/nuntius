@@ -244,13 +244,28 @@ Spine first. The measurement drops into a slot that is already built.
 - FCM push arriving in **all three states**: foreground, backgrounded, and killed via `am kill`. Warm tap-through routes to the alert screen.
 - **MWA cancel bug fixed (`66ab4e8`)** - the kit replayed a cached `auth_token` and never cleared it, bricking every later sign-in. Now authorizes fresh via low-level `transact`. Proven: cancel -> retry -> succeed 3x with no restart, and cancel -> background -> foreground -> retry -> succeed.
 
-**Still open:** release-build cold-start tap-through. A release APK off HEAD is built (`android/app/build/outputs/apk/release/app-release.apk`, 44 MB, signed `CN=Android Debug` because Expo's release config points at `debug.keystore`) but **the proof is not run - the Seeker was physically disconnected at the time**. Debug builds route a cold-start notification tap through the Expo dev launcher and lose the notification response, so this must be confirmed in release.
+- **Release-build cold-start tap-through CLOSED.** From a 0-process release build, a push tap cold-launches straight to the alert screen with the right payload, splash intact. The earlier failure was **our bug, not the documented debug-splash issue**: a cold launch delivers the notification response before expo-router mounts its root navigator and the `router.push()` was silently dropped. Fixed in `b0e35c3` by gating on `useRootNavigationState().key`.
+
+### Delegation spike (BRIEF-05, 2026-09-10)
+
+The measurement payload is dead; the payload is now **Solana Subscriptions** recurring delegations. `@solana/subscriptions@0.5.0` is kit-native (peer `@solana/kit ^7`), ships CJS + ESM, and audits clean. Program `De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44` is deployed at the **same canonical address on devnet and mainnet** - verified live, no per-cluster switching.
+
+**Proven on devnet** (all seven spike items, real signatures in git history):
+
+- Over-cap pull is rejected by the chain: `custom program error: 0x190` = **`amountExceedsPeriodLimit`**. Enforcement is the program's, not ours.
+- After `revokeDelegation` the delegation account ceases to exist and a pull dies with `Invalid account owner`; `revokeSubscriptionAuthority` then leaves `userAta delegate: none`. **Never use `closeSubscriptionAuthority`** - it leaves the SPL delegate live and would give a false pass.
+- Pull -> FCM push -> tap -> evidence screen showing moved / remaining / reset / Explorer link, proven on the device.
+
+**BLOCKED - the one thing that decides the product:** Seed Vault refuses to sign a devnet delegation while the **wallet app's own network** is set to mainnet: _"Network mismatch - your current network is set to mainnet, but this transaction is for devnet."_ It parsed the transaction correctly, so this is a wallet setting, not a code fault. The app's own devnet toggle is not enough. **Sergiu must switch the Seed Vault Wallet to devnet** (it holds real mainnet funds, so this is his call, not something to flip automatically) - or the spike moves to mainnet with real value at risk.
+
+**Executor:** a single in-process timer (`server/src/executor.ts`). Production needs are documented in that file rather than half-built - durability, leader election, delegatee fee funding, KMS custody, lazy-period-aware scheduling, observability.
 
 - Repo scaffolded at `/Volumes/D/nuntius`. Two commits: `0d85185 chore: initial commit`, `df89ebd chore: set package app.ochinimus.nuntius and scheme nuntius`.
 - `app.json` corrected off the placeholders: package `app.ochinimus.nuntius`, scheme `nuntius`. Done before Firebase, because Firebase keys its config to the package name.
 - **Debug APK built and installed on the real Seeker, device `SM02E4060327059`. App runs, Metro connects. Verified on hardware, not assumed.**
 - `.gitignore` excludes `android/`, `.gradle/`, `*.keystore`, `.env`, `.env.*`, `google-services.json`.
-- `adb reverse tcp:8787 tcp:8787` set, so the Seeker reaches a Mac dev server at `http://localhost:8787`.
+- `adb reverse tcp:8787 tcp:8787` set, so the Seeker reaches a Mac dev server at `http://localhost:8787`. **The reverses are lost on reinstall and on reconnect** - `adb reverse --list` came back empty twice mid-session and the symptom is a useless "Failed to connect to localhost:8081". Re-run both (8787 and 8081) after every `adb install`.
+- **A release build cannot reach the local dev backend**: release blocks cleartext HTTP, so `http://localhost:8787` fails and the app shows `Version: undefined`. Dev-only - production is HTTPS - but device tests that need the backend must use the debug build.
 - **Claude Code Step 0 finding: the template's sign-in passes no nonce at all.** No replay protection whatsoever, so step 2 is a genuine build rather than a patch.
 
 ### Build environment
