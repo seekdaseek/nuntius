@@ -36,7 +36,7 @@ The user sets a rule once. Seed Vault approves a delegation once. After that it 
 ```
 Program ID   De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44
 Docs         https://solana.com/docs/payments/subscriptions/overview
-Repo         solana-program/subscriptions
+Repo         solana-foundation/subscriptions
 Demo app     linked from the docs overview page
 ```
 
@@ -75,7 +75,7 @@ Nothing beyond this section gets built until this works.
 
 ### Step 1 — read before writing
 
-Read the docs overview and the following pages in that section, and the `solana-program/subscriptions` repo. Report:
+Read the docs overview and the following pages in that section, and the `solana-foundation/subscriptions` repo. Report:
 
 - the JS/TS SDK package name and version, and whether it works with `@solana/kit` (the app is on kit, not web3.js v1 — do not drag in the legacy dependency tree that was already removed for audit reasons)
 - the instruction sequence to create a Subscription Authority and a recurring delegation
