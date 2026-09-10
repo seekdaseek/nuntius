@@ -17,10 +17,14 @@ const fcm =
  * only key that can pull against a delegation. Both are devnet-only and neither
  * can move user funds outside the cap the program enforces.
  */
-async function loadDelegationSigners(): Promise<{ payer: TransactionSigner; delegatee: TransactionSigner } | undefined> {
+async function loadDelegationSigners(): Promise<
+  { payer: TransactionSigner; delegatee: TransactionSigner } | undefined
+> {
   const payerPath = process.env.SPIKE_PAYER ?? `${process.env.HOME}/.config/solana/id.json`
   try {
-    const payer = createKeyPairSignerFromBytes(new Uint8Array(JSON.parse(await readFile(payerPath, 'utf8')) as number[]))
+    const payer = createKeyPairSignerFromBytes(
+      new Uint8Array(JSON.parse(await readFile(payerPath, 'utf8')) as number[]),
+    )
     // The delegatee must survive restarts: the device signs a delegation that
     // names this exact key, so regenerating it would orphan every delegation.
     const delegateePath = process.env.SPIKE_DELEGATEE ?? path.join(import.meta.dirname, '..', 'delegatee.json')

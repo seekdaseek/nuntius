@@ -330,7 +330,13 @@ export function createApp(
           ),
         ),
       )
-      return { signature, amount: (amount / unit).toString(), remaining: (remaining / unit).toString(), nextResetTs, pushes: pushes.map((p) => p.status) }
+      return {
+        signature,
+        amount: (amount / unit).toString(),
+        remaining: (remaining / unit).toString(),
+        nextResetTs,
+        pushes: pushes.map((p) => p.status),
+      }
     })()
       .then((out) => res.json({ ok: true, ...out }))
       .catch((e: unknown) => {
