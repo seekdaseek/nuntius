@@ -7,6 +7,7 @@ import { useNuntiusAuth, useSignOut, useVerifySeekerMutation } from '@/features/
 import { usePushRegistration } from '@/features/push/use-push-registration'
 import { appStyles } from '@/constants/app-styles'
 import { ellipsify } from '@/utils/ellipsify'
+import { DelegationFeatureSpike } from '@/features/delegation/delegation-feature-spike'
 
 export function AccountFeatureIndex() {
   const auth = useNuntiusAuth()
@@ -68,6 +69,7 @@ function SignedIn() {
           ) : null}
         </View>
       ) : null}
+      <DelegationFeatureSpike auth={auth} />
       <Button title="Sign out" onPress={() => void signOut()} />
     </View>
   )

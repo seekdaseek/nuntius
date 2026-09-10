@@ -1,6 +1,21 @@
 import Database from 'better-sqlite3'
 import type { SiwsPayload } from './siws.js'
 
+export interface DelegationRow {
+  delegationPda: string
+  address: string
+  mint: string
+  userAta: string
+  authorityPda: string
+  delegatee: string
+  amountPerPeriod: string
+  periodLengthS: number
+}
+
+export interface StoredDelegation extends DelegationRow {
+  receiverAta: string | null
+}
+
 export function openDb(file: string): Database.Database {
   const db = new Database(file)
   db.pragma('journal_mode = WAL')
@@ -28,6 +43,19 @@ export function openDb(file: string): Database.Database {
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_push_tokens_address ON push_tokens (address);
+    CREATE TABLE IF NOT EXISTS delegations (
+      delegation_pda TEXT PRIMARY KEY,
+      address TEXT NOT NULL,
+      mint TEXT NOT NULL,
+      user_ata TEXT NOT NULL,
+      receiver_ata TEXT,
+      authority_pda TEXT NOT NULL,
+      delegatee TEXT NOT NULL,
+      amount_per_period TEXT NOT NULL,
+      period_length_s INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_delegations_address ON delegations (address);
   `)
   return db
 }
@@ -42,6 +70,9 @@ export class Store {
   private readonly setSgtMint
   private readonly upsertPushTokenStmt
   private readonly selectPushTokens
+  private readonly upsertDelegationStmt
+  private readonly selectDelegationStmt
+  private readonly setReceiverAtaStmt
 
   constructor(private readonly db: Database.Database) {
     this.insertNonce = db.prepare(
@@ -66,6 +97,41 @@ export class Store {
       ON CONFLICT (token) DO UPDATE SET address = @address, sgt_mint = @sgtMint, platform = @platform, updated_at = @now
     `)
     this.selectPushTokens = db.prepare('SELECT token FROM push_tokens WHERE address = @address')
+    this.upsertDelegationStmt = db.prepare(`
+      INSERT INTO delegations (delegation_pda, address, mint, user_ata, authority_pda, delegatee, amount_per_period, period_length_s, created_at)
+      VALUES (@delegationPda, @address, @mint, @userAta, @authorityPda, @delegatee, @amountPerPeriod, @periodLengthS, @now)
+      ON CONFLICT (delegation_pda) DO UPDATE SET mint=@mint, user_ata=@userAta, authority_pda=@authorityPda,
+        delegatee=@delegatee, amount_per_period=@amountPerPeriod, period_length_s=@periodLengthS
+    `)
+    this.selectDelegationStmt = db.prepare(
+      'SELECT * FROM delegations WHERE address = @address ORDER BY created_at DESC LIMIT 1',
+    )
+    this.setReceiverAtaStmt = db.prepare('UPDATE delegations SET receiver_ata = @ata WHERE delegation_pda = @pda')
+  }
+
+  upsertDelegation(row: DelegationRow, nowMs: number): void {
+    this.upsertDelegationStmt.run({ ...row, now: nowMs })
+  }
+
+  /** Most recent delegation for a wallet. The caller's session decides the wallet. */
+  getDelegation(address: string): StoredDelegation | null {
+    const r = this.selectDelegationStmt.get({ address }) as Record<string, string | number> | undefined
+    if (!r) return null
+    return {
+      delegationPda: String(r.delegation_pda),
+      address: String(r.address),
+      mint: String(r.mint),
+      userAta: String(r.user_ata),
+      receiverAta: r.receiver_ata ? String(r.receiver_ata) : null,
+      authorityPda: String(r.authority_pda),
+      delegatee: String(r.delegatee),
+      amountPerPeriod: String(r.amount_per_period),
+      periodLengthS: Number(r.period_length_s),
+    }
+  }
+
+  setReceiverAta(delegationPda: string, ata: string): void {
+    this.setReceiverAtaStmt.run({ pda: delegationPda, ata })
   }
 
   issueNonce(payload: SiwsPayload): void {

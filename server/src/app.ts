@@ -6,12 +6,32 @@ import { buildPayload, NONCE_RE, parseSignInResult, verifySiws } from './siws.js
 import { checkWalletForSgt } from './seeker.js'
 import { forwardRpc, parseRpcRequest } from './rpc-proxy.js'
 import type { FcmSender } from './fcm.js'
+import {
+  buildDelegationSetup,
+  buildRecurringDelegationTx,
+  devnetRpcUrl,
+  executePull,
+  readDelegation,
+  ensureReceiverAta,
+} from './delegation.js'
+import type { TransactionSigner } from '@solana/kit'
+import type { Address } from '@solana/kit'
 
 const SESSION_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/
 // FCM registration tokens: instance id, a colon, then a URL-safe blob.
 const PUSH_TOKEN_RE = /^[A-Za-z0-9_:.-]{20,4096}$/
 
-export function createApp(config: Config, store: Store, fcm: FcmSender | null): express.Express {
+/** Spike parameters: small cap, short period, so a reset is observable live. */
+const SPIKE_DECIMALS = 6
+const SPIKE_CAP = 100n * 10n ** BigInt(SPIKE_DECIMALS)
+const SPIKE_PERIOD_S = 60n
+
+export function createApp(
+  config: Config,
+  store: Store,
+  fcm: FcmSender | null,
+  delegation?: { payer: TransactionSigner; delegatee: TransactionSigner },
+): express.Express {
   const app = express()
   app.disable('x-powered-by')
   app.use(express.json({ limit: '8kb' }))
@@ -164,6 +184,173 @@ export function createApp(config: Config, store: Store, fcm: FcmSender | null): 
     forwardRpc(config.heliusRpc, request)
       .then((result) => res.json(result))
       .catch(() => res.status(502).json({ ok: false, error: 'rpc_error' }))
+  })
+
+  /** Session-gated helper: resolves the caller's wallet or ends the response. */
+  const requireAuth = (req: express.Request, res: express.Response): { address: string } | null => {
+    const v = typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {}
+    const session = typeof v.session === 'string' && SESSION_TOKEN_RE.test(v.session) ? v.session : null
+    if (!session) {
+      res.status(400).json({ ok: false, error: 'bad_request' })
+      return null
+    }
+    const auth = store.getSession(session)
+    if (!auth) {
+      res.status(401).json({ ok: false, error: 'session_invalid' })
+      return null
+    }
+    return auth
+  }
+
+  // --- Delegation spike (devnet). The device signs; the server never holds the user's key. ---
+
+  app.post('/api/delegation/setup', (req, res) => {
+    const auth = requireAuth(req, res)
+    if (!auth) return
+    if (!delegation) {
+      res.status(503).json({ ok: false, error: 'not_configured' })
+      return
+    }
+    buildDelegationSetup({
+      rpcUrl: devnetRpcUrl(config.heliusRpc),
+      owner: auth.address as Address,
+      payer: delegation.payer,
+      delegatee: delegation.delegatee.address,
+      amountPerPeriod: SPIKE_CAP,
+      periodLengthS: SPIKE_PERIOD_S,
+      decimals: SPIKE_DECIMALS,
+    })
+      .then((setup) => {
+        store.upsertDelegation(
+          {
+            delegationPda: setup.delegationPda,
+            address: auth.address,
+            mint: setup.mint,
+            userAta: setup.userAta,
+            authorityPda: setup.authorityPda,
+            delegatee: setup.delegatee,
+            amountPerPeriod: setup.amountPerPeriod,
+            periodLengthS: setup.periodLengthS,
+          },
+          Date.now(),
+        )
+        res.json({ ok: true, ...setup })
+      })
+      .catch((e: unknown) => {
+        res.status(502).json({ ok: false, error: e instanceof Error ? e.message : 'setup_failed' })
+      })
+  })
+
+  app.post('/api/delegation/create', (req, res) => {
+    const auth = requireAuth(req, res)
+    if (!auth) return
+    const row = store.getDelegation(auth.address)
+    if (!row) {
+      res.status(404).json({ ok: false, error: 'no_delegation_setup' })
+      return
+    }
+    buildRecurringDelegationTx({
+      rpcUrl: devnetRpcUrl(config.heliusRpc),
+      owner: auth.address as Address,
+      mint: row.mint as Address,
+      delegatee: row.delegatee as Address,
+      amountPerPeriod: BigInt(row.amountPerPeriod),
+      periodLengthS: BigInt(row.periodLengthS),
+    })
+      .then((out) => res.json({ ok: true, ...out }))
+      .catch((e: unknown) => {
+        res.status(502).json({ ok: false, error: e instanceof Error ? e.message : 'create_failed' })
+      })
+  })
+
+  /** Executes one delegated pull, then pushes. This is the money path: the user is asleep. */
+  app.post('/api/delegation/pull', (req, res) => {
+    const auth = requireAuth(req, res)
+    if (!auth) return
+    if (!delegation || !fcm) {
+      res.status(503).json({ ok: false, error: 'not_configured' })
+      return
+    }
+    const row = store.getDelegation(auth.address)
+    if (!row) {
+      res.status(404).json({ ok: false, error: 'no_delegation' })
+      return
+    }
+    const rpcUrl = devnetRpcUrl(config.heliusRpc)
+    const amount = BigInt(row.amountPerPeriod) / 2n
+    ;(async () => {
+      const receiverAta =
+        row.receiverAta ??
+        (await ensureReceiverAta({
+          rpcUrl,
+          payer: delegation.payer,
+          mint: row.mint as Address,
+          owner: delegation.delegatee.address,
+        }))
+      if (!row.receiverAta) store.setReceiverAta(row.delegationPda, receiverAta)
+
+      const signature = await executePull({
+        rpcUrl,
+        delegatee: delegation.delegatee,
+        delegationPda: row.delegationPda as Address,
+        delegator: row.address as Address,
+        delegatorAta: row.userAta as Address,
+        receiverAta: receiverAta as Address,
+        mint: row.mint as Address,
+        amount,
+      })
+
+      // Read the post-transfer state straight off the chain — the push carries
+      // evidence, never a number we merely believe.
+      const state = await readDelegation(rpcUrl, row.delegationPda as Address)
+      const remaining =
+        state.exists && state.amountPerPeriod && state.amountPulledInPeriod
+          ? BigInt(state.amountPerPeriod) - BigInt(state.amountPulledInPeriod)
+          : 0n
+      const nextResetTs =
+        state.exists && state.currentPeriodStartTs && state.periodLengthS
+          ? state.currentPeriodStartTs + state.periodLengthS
+          : 0
+      const unit = 10n ** BigInt(SPIKE_DECIMALS)
+      const url =
+        `/alert?source=delegation&sig=${signature}` +
+        `&moved=${amount / unit}&remaining=${remaining / unit}&reset=${nextResetTs}&pda=${row.delegationPda}`
+
+      const tokens = store.getPushTokens(auth.address)
+      const pushes = await Promise.all(
+        tokens.map((t) =>
+          fcm.send(
+            t,
+            {
+              title: 'Delegated transfer executed',
+              body: `${amount / unit} tokens moved. ${remaining / unit} left this period.`,
+            },
+            'alerts',
+            { url, channelId: 'alerts' },
+          ),
+        ),
+      )
+      return { signature, amount: (amount / unit).toString(), remaining: (remaining / unit).toString(), nextResetTs, pushes: pushes.map((p) => p.status) }
+    })()
+      .then((out) => res.json({ ok: true, ...out }))
+      .catch((e: unknown) => {
+        res.status(502).json({ ok: false, error: e instanceof Error ? e.message : 'pull_failed' })
+      })
+  })
+
+  app.post('/api/delegation/state', (req, res) => {
+    const auth = requireAuth(req, res)
+    if (!auth) return
+    const row = store.getDelegation(auth.address)
+    if (!row) {
+      res.status(404).json({ ok: false, error: 'no_delegation' })
+      return
+    }
+    readDelegation(devnetRpcUrl(config.heliusRpc), row.delegationPda as Address)
+      .then((state) => res.json({ ok: true, delegationPda: row.delegationPda, mint: row.mint, ...state }))
+      .catch((e: unknown) => {
+        res.status(502).json({ ok: false, error: e instanceof Error ? e.message : 'state_failed' })
+      })
   })
 
   app.use((_req, res) => {

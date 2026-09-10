@@ -204,6 +204,22 @@ export async function buildRecurringDelegationTx(params: {
   }
 }
 
+/** Creates the delegatee's ATA if absent; returns its address. Server pays the rent. */
+export async function ensureReceiverAta(params: {
+  rpcUrl: string
+  payer: TransactionSigner
+  mint: Address
+  owner: Address
+}): Promise<Address> {
+  const { rpcUrl, payer, mint, owner } = params
+  const rpc = createSolanaRpc(rpcUrl)
+  const [ata] = await findAssociatedTokenPda({ mint, owner, tokenProgram: TOKEN_PROGRAM_ADDRESS })
+  const existing = await rpc.getAccountInfo(ata, { encoding: 'base64' }).send()
+  if (existing.value) return ata
+  await sendWithPayer(rpc, payer, [await getCreateAssociatedTokenInstructionAsync({ payer, mint, owner })])
+  return ata
+}
+
 /** Executes one delegated pull. Only the delegatee signs — the user is not involved. */
 export async function executePull(params: {
   rpcUrl: string

@@ -53,3 +53,4 @@ spike/node_modules/
 fcm-service-account.json
 *service-account*.json
 *-adminsdk-*.json
+server/delegatee.json
