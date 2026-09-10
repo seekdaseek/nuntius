@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { createSignInMessageText } from '@solana/wallet-standard-util'
 import bs58 from 'bs58'
-import type { SiwsPayload } from './siws'
+import type { SiwsPayload } from './siws.js'
 
 function fail(message: string): never {
   console.error(message)

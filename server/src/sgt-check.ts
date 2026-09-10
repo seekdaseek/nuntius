@@ -9,7 +9,7 @@
  *
  * Reads HELIUS_RPC from the environment and never prints it.
  */
-import { checkWalletForSgt, classifySgtMint, fetchMintAccounts, fetchToken2022Accounts } from './seeker'
+import { checkWalletForSgt, classifySgtMint, fetchMintAccounts, fetchToken2022Accounts } from './seeker.js'
 
 function fail(message: string): never {
   console.error(message)

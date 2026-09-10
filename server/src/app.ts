@@ -1,11 +1,11 @@
 import { randomBytes } from 'node:crypto'
 import express from 'express'
-import type { Config } from './config'
-import type { Store } from './db'
-import { buildPayload, NONCE_RE, parseSignInResult, verifySiws } from './siws'
-import { checkWalletForSgt } from './seeker'
-import { forwardRpc, parseRpcRequest } from './rpc-proxy'
-import type { FcmSender } from './fcm'
+import type { Config } from './config.js'
+import type { Store } from './db.js'
+import { buildPayload, NONCE_RE, parseSignInResult, verifySiws } from './siws.js'
+import { checkWalletForSgt } from './seeker.js'
+import { forwardRpc, parseRpcRequest } from './rpc-proxy.js'
+import type { FcmSender } from './fcm.js'
 
 const SESSION_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/
 // FCM registration tokens: instance id, a colon, then a URL-safe blob.

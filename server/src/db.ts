@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3'
-import type { SiwsPayload } from './siws'
+import type { SiwsPayload } from './siws.js'
 
 export function openDb(file: string): Database.Database {
   const db = new Database(file)

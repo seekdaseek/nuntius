@@ -1,8 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2023",
-    "module": "commonjs",
-    "moduleResolution": "node",
+    // node16 (not "node") so TypeScript can read packages that ship an `exports`
+    // map — @solana/subscriptions resolves its CJS build only through it.
+    // package.json is `type: commonjs`, so emit stays CommonJS.
+    "module": "node16",
+    "moduleResolution": "node16",
     "lib": ["ES2023"],
     "strict": true,
     "noUncheckedIndexedAccess": true,

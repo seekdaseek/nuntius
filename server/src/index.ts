@@ -1,11 +1,11 @@
 import path from 'node:path'
-import { loadConfig } from './config'
-import { openDb, Store } from './db'
-import { createApp } from './app'
-import { FcmSender } from './fcm'
+import { loadConfig } from './config.js'
+import { openDb, Store } from './db.js'
+import { createApp } from './app.js'
+import { FcmSender } from './fcm.js'
 
 const config = loadConfig()
-const db = openDb(path.join(__dirname, '..', 'nuntius.db'))
+const db = openDb(path.join(import.meta.dirname, '..', 'nuntius.db'))
 const store = new Store(db)
 const fcm =
   config.fcmServiceAccount && config.fcmProjectId ? new FcmSender(config.fcmServiceAccount, config.fcmProjectId) : null
