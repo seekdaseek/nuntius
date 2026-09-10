@@ -42,11 +42,11 @@ Demo app     linked from the docs overview page
 
 Three delegation models:
 
-| Model | What it does |
-|---|---|
-| Fixed delegation | Spend up to a fixed total, optional expiry. Solana's own docs call this the building block for AI agents operating within a budget. |
-| Recurring delegation | Spend up to a limit that resets every period — daily, weekly, monthly. Terms set by the user, not the merchant. |
-| Subscription plan | A merchant publishes billing tiers; approved collectors charge subscribers each period. |
+| Model                | What it does                                                                                                                        |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Fixed delegation     | Spend up to a fixed total, optional expiry. Solana's own docs call this the building block for AI agents operating within a budget. |
+| Recurring delegation | Spend up to a limit that resets every period — daily, weekly, monthly. Terms set by the user, not the merchant.                     |
+| Subscription plan    | A merchant publishes billing tiers; approved collectors charge subscribers each period.                                             |
 
 Why it exists at all, in their words: a Solana token account can only have **one** approved authority at a time, which makes it impossible for one wallet to safely hold several spending arrangements for the same token. The program gives each (user, mint) pair a program-controlled **Subscription Authority**. The token account approves that authority once; the program then checks every requested transfer against a separate record defining who may pull, how much, and when it expires or resets. **The Subscription Authority cannot move funds by itself.**
 

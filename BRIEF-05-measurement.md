@@ -40,7 +40,7 @@ Replace `BIBLE.md` §8 (currently "OPEN — what it alerts on") with this decisi
 
 ### What it actually computes
 
-A lending protocol marks your collateral at `oracle_price × amount`. That mark assumes marginal-token liquidity — the price for selling *one* token. It is not what your *position* would clear at.
+A lending protocol marks your collateral at `oracle_price × amount`. That mark assumes marginal-token liquidity — the price for selling _one_ token. It is not what your _position_ would clear at.
 
 The realisable value is what that exact amount would actually fetch right now, routed across live liquidity, including price impact.
 
@@ -71,7 +71,7 @@ Do not touch the app until this produces a defensible number. If the number is w
 I am giving you the shape, not the API surface. Establish each of these live and report what you find:
 
 1. **Position source.** Which Solana lending protocol, and how to read a wallet's collateral positions from it. Kamino is the largest by TVL and is the default target unless you find a reason otherwise. Determine whether positions are readable over a public API or require RPC account decoding. Report the exact endpoint or account layout you end up using.
-2. **The mark.** How the protocol values that collateral — which oracle, what price, at what staleness. The alert compares against *their* number, so read *their* number, not a price you fetched elsewhere.
+2. **The mark.** How the protocol values that collateral — which oracle, what price, at what staleness. The alert compares against _their_ number, so read _their_ number, not a price you fetched elsewhere.
 3. **Realisable value.** Quote selling the exact position size through Jupiter and read the effective execution price including price impact. Verify the current endpoint, the response fields, and the rate limits on the free tier before designing the polling cadence.
 4. **Sanity floor.** A quote for a trivial size gives you the marginal price. If your computed marginal price disagrees materially with the protocol's oracle mark, something is wrong with your inputs — surface that as a refusal, not as a gap.
 
