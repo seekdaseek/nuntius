@@ -49,6 +49,7 @@ android/
 .env.*
 google-services.json
 server/nuntius.db*
+spike/node_modules/
 fcm-service-account.json
 *service-account*.json
 *-adminsdk-*.json
