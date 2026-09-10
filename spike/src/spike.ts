@@ -37,6 +37,7 @@ import {
 } from '@solana-program/token'
 import {
   fetchMaybeRecurringDelegation,
+  fetchSubscriptionAuthority,
   findRecurringDelegationPda,
   findSubscriptionAuthorityPda,
   getCreateRecurringDelegationOverlayInstructionAsync,
@@ -53,8 +54,13 @@ import {
  * funding comes from a pre-funded payer keypair rather than a faucet call.
  */
 const heliusDevnet = process.env.HELIUS_RPC?.replace('mainnet.helius-rpc.com', 'devnet.helius-rpc.com')
-const RPC_HTTP = heliusDevnet ?? 'https://api.devnet.solana.com'
-const RPC_WS = heliusDevnet ? heliusDevnet.replace('https://', 'wss://') : 'wss://api.devnet.solana.com'
+/**
+ * SPIKE_RPC overrides everything — used to point at a local validator running the
+ * real program cloned from mainnet, which sidesteps the devnet faucet's IP rate
+ * limit while still exercising the genuine on-chain bytecode.
+ */
+const RPC_HTTP = process.env.SPIKE_RPC ?? heliusDevnet ?? 'https://api.devnet.solana.com'
+const RPC_WS = RPC_HTTP.replace('http://', 'ws://').replace('https://', 'wss://').replace(':8999', ':9000')
 /** Pre-funded devnet payer; funds the throwaway keypairs by transfer. */
 const PAYER_KEYPAIR = process.env.SPIKE_PAYER ?? `${process.env.HOME}/.config/solana/id.json`
 const DECIMALS = 6
@@ -91,8 +97,46 @@ async function sendExpectingFailure(feePayer: TransactionSigner, instructions: I
     throw new Error(`SPIKE FAILED: transaction was expected to be rejected but succeeded: ${sig}`)
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('SPIKE FAILED')) throw error
-    return error instanceof Error ? error.message : String(error)
+    return describeError(error)
   }
+}
+
+/**
+ * Program error codes we assert on, from the published IDL. Naming them turns an
+ * opaque `custom program error: 0x190` into evidence that the CHAIN enforced the
+ * cap rather than our code declining to send.
+ */
+const PROGRAM_ERRORS: Record<number, string> = {
+  400: 'amountExceedsPeriodLimit — Transfer amount exceeds period limit',
+  401: 'periodNotElapsed — Period has not elapsed yet',
+  407: 'delegationNotStarted — Delegation period has not started yet',
+}
+
+/** Unwrap a kit send error into the program's own message and logs. */
+function describeError(error: unknown): string {
+  const parts: string[] = []
+  let e: unknown = error
+  const seen = new Set<unknown>()
+  while (e && !seen.has(e)) {
+    seen.add(e)
+    if (e instanceof Error) parts.push(e.message)
+    const ctx = (e as { context?: Record<string, unknown> }).context
+    if (ctx) {
+      const code = ctx.code
+      if (typeof code === 'number' && PROGRAM_ERRORS[code]) {
+        parts.push(`program error ${code} (0x${code.toString(16)}): ${PROGRAM_ERRORS[code]}`)
+      } else if (code !== undefined) {
+        parts.push(`code=${JSON.stringify(code)}`)
+      }
+    }
+    const logs = (e as { logs?: string[] }).logs ?? (e as { context?: { logs?: string[] } }).context?.logs
+    if (Array.isArray(logs)) {
+      const relevant = logs.filter((l) => /Error|failed|Custom|Program log/i.test(l))
+      parts.push(...relevant.map((l) => `log: ${l}`))
+    }
+    e = (e as { cause?: unknown }).cause
+  }
+  return parts.join('\n')
 }
 
 /** Load the pre-funded devnet payer from a CLI keypair file (64-byte secret array). */
@@ -180,6 +224,12 @@ async function main(): Promise<void> {
   console.log(`  authority PDA : ${authorityPda}`)
   console.log(`  signature     : ${sig1}`)
 
+  const authorityAccount = await fetchSubscriptionAuthority(rpc, authorityPda)
+  const authorityData = authorityAccount.data as unknown as Record<string, unknown>
+  console.log(`  authority fields: ${Object.keys(authorityData).join(', ')}`)
+  const initId = authorityData.initId as bigint
+  console.log(`  initId        : ${initId}`)
+
   // --- 2. Recurring delegation ---
   step('2', `create recurring delegation — cap ${tokens(CAP_PER_PERIOD)}/period, period ${PERIOD_S}s`)
   const nonce = 0n
@@ -193,6 +243,7 @@ async function main(): Promise<void> {
       periodLengthS: PERIOD_S,
       startTs: 0n, // start when the tx lands
       expiryTs: BigInt(Math.floor(Date.now() / 1000) + 3600),
+      expectedSubscriptionAuthorityInitId: initId,
     }),
   ])
   const [delegationPda] = await findRecurringDelegationPda({
@@ -222,9 +273,13 @@ async function main(): Promise<void> {
       console.log(`  ${label}: delegation account does NOT exist`)
       return null
     }
-    const d = acct.data as unknown as Record<string, bigint>
-    const used = d.amountUsedThisPeriod ?? d.usedThisPeriod ?? 0n
-    console.log(`  ${label}: cap ${tokens(CAP_PER_PERIOD)} | used this period ${tokens(BigInt(used))}`)
+    const d = acct.data as unknown as Record<string, unknown>
+    const shown = Object.entries(d)
+      .filter(([k]) => k !== 'discriminator')
+      .filter(([k]) => k !== 'header')
+      .map(([k, v]) => `${k}=${typeof v === 'bigint' ? v.toString() : String(v)}`)
+      .join(' ')
+    console.log(`  ${label}: ${shown}`)
     return acct
   }
 
@@ -254,6 +309,7 @@ async function main(): Promise<void> {
   // --- 6. Period reset ---
   step('6', `wait ${PERIOD_S}s for the period to reset, then pull again`)
   await new Promise((r) => setTimeout(r, Number(PERIOD_S) * 1000 + 5000))
+  await showCap('cap state AFTER the period elapsed, BEFORE the next pull')
   const sig6 = await send(delegatee, [await transferIx(PULL)])
   console.log(`  signature     : ${sig6}`)
   console.log(`  receiver bal  : ${tokens(BigInt(await balance(receiverAta)))}  (cap reset — second 60 succeeded)`)
