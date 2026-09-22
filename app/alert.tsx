@@ -11,7 +11,7 @@ import { appStyles } from '@/constants/app-styles'
  * cap resets, and a link out so the claim can be checked independently.
  */
 export default function AlertScreen() {
-  const { source, at, sig, moved, remaining, reset, pda } = useLocalSearchParams<{
+  const { source, at, sig, moved, remaining, reset, pda, cluster } = useLocalSearchParams<{
     source?: string
     at?: string
     sig?: string
@@ -19,10 +19,13 @@ export default function AlertScreen() {
     remaining?: string
     reset?: string
     pda?: string
+    cluster?: string
   }>()
 
   const resetAt = reset ? new Date(Number(reset) * 1000) : null
-  const explorer = sig ? `https://explorer.solana.com/tx/${sig}?cluster=devnet` : null
+  // Explorer defaults to mainnet-beta with no query param; only devnet needs one.
+  // Hardcoding a cluster here would hand the user a link to the wrong chain.
+  const explorer = sig ? `https://explorer.solana.com/tx/${sig}${cluster === 'devnet' ? '?cluster=devnet' : ''}` : null
 
   return (
     <SafeAreaView style={appStyles.screen}>
@@ -32,8 +35,8 @@ export default function AlertScreen() {
         {source === 'delegation' ? (
           <View style={appStyles.cardVerified}>
             <Text style={appStyles.tierLabel}>Delegated transfer executed</Text>
-            <Text>Moved: {moved} tokens</Text>
-            <Text>Remaining this period: {remaining} tokens</Text>
+            <Text>Moved: {moved} USDC</Text>
+            <Text>Remaining this period: {remaining} USDC</Text>
             <Text>Cap resets: {resetAt ? resetAt.toLocaleTimeString() : 'unknown'}</Text>
             <Text>Delegation: {pda}</Text>
             {explorer ? (

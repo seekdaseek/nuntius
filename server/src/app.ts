@@ -8,9 +8,14 @@ import { forwardRpc, parseRpcRequest } from './rpc-proxy.js'
 import type { FcmSender } from './fcm.js'
 import {
   buildDelegationSetup,
+  buildInitAuthorityTx,
   buildRecurringDelegationTx,
+  buildRevokeAuthorityTx,
+  buildRevokeDelegationTx,
   devnetRpcUrl,
   executePull,
+  mainnetRpcUrl,
+  readAtaDelegate,
   readDelegation,
   ensureReceiverAta,
 } from './delegation.js'
@@ -18,13 +23,35 @@ import type { TransactionSigner } from '@solana/kit'
 import type { Address } from '@solana/kit'
 
 const SESSION_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/
+// A pull amount is a whole number of base units, capped only by what u64 can hold.
+const AMOUNT_RE = /^\d{1,20}$/
+
+/**
+ * Pull amount in base units. Absent means half the per-period cap, which is the
+ * ordinary scheduled draw. An explicit value is passed through untouched — over
+ * the cap included — because only the program may decide that.
+ */
+function parsePullAmount(value: unknown, capBaseUnits: bigint): bigint {
+  if (value === undefined || value === null) return capBaseUnits / 2n
+  const raw = typeof value === 'number' ? String(value) : value
+  if (typeof raw !== 'string' || !AMOUNT_RE.test(raw)) throw new Error('amount must be a whole number of base units')
+  const amount = BigInt(raw)
+  if (amount === 0n) throw new Error('amount must be greater than zero')
+  if (amount > 18_446_744_073_709_551_615n) throw new Error('amount exceeds u64')
+  return amount
+}
 // FCM registration tokens: instance id, a colon, then a URL-safe blob.
 const PUSH_TOKEN_RE = /^[A-Za-z0-9_:.-]{20,4096}$/
 
-/** Spike parameters: small cap, short period, so a reset is observable live. */
-const SPIKE_DECIMALS = 6
-const SPIKE_CAP = 100n * 10n ** BigInt(SPIKE_DECIMALS)
-const SPIKE_PERIOD_S = 60n
+/** Base units rendered as a decimal string — `5000n` at 6 dp is `0.005`, not `0`. */
+function formatUnits(baseUnits: bigint, decimals: number): string {
+  if (decimals === 0) return baseUnits.toString()
+  const negative = baseUnits < 0n
+  const digits = (negative ? -baseUnits : baseUnits).toString().padStart(decimals + 1, '0')
+  const whole = digits.slice(0, digits.length - decimals)
+  const frac = digits.slice(digits.length - decimals).replace(/0+$/, '')
+  return `${negative ? '-' : ''}${whole}${frac ? `.${frac}` : ''}`
+}
 
 export function createApp(
   config: Config,
@@ -202,7 +229,12 @@ export function createApp(
     return auth
   }
 
-  // --- Delegation spike (devnet). The device signs; the server never holds the user's key. ---
+  // --- Delegation. The device signs; the server never holds the user's key. ---
+
+  /** Whichever cluster this deployment delegates on. Same program address either way. */
+  function delegationRpcUrl(): string {
+    return config.delegation.cluster === 'mainnet' ? mainnetRpcUrl(config.heliusRpc) : devnetRpcUrl(config.heliusRpc)
+  }
 
   app.post('/api/delegation/setup', (req, res) => {
     const auth = requireAuth(req, res)
@@ -211,15 +243,29 @@ export function createApp(
       res.status(503).json({ ok: false, error: 'not_configured' })
       return
     }
-    buildDelegationSetup({
-      rpcUrl: devnetRpcUrl(config.heliusRpc),
-      owner: auth.address as Address,
-      payer: delegation.payer,
-      delegatee: delegation.delegatee.address,
-      amountPerPeriod: SPIKE_CAP,
-      periodLengthS: SPIKE_PERIOD_S,
-      decimals: SPIKE_DECIMALS,
-    })
+    const { cluster, mint, capBaseUnits, periodLengthS, decimals } = config.delegation
+    // Mainnet delegates against a mint the user already holds and creates nothing.
+    // Devnet mints a throwaway token first, which is why only it needs a payer.
+    const build =
+      cluster === 'mainnet'
+        ? buildInitAuthorityTx({
+            rpcUrl: mainnetRpcUrl(config.heliusRpc),
+            owner: auth.address as Address,
+            mint: mint as Address,
+            delegatee: delegation.delegatee.address,
+            amountPerPeriod: capBaseUnits,
+            periodLengthS,
+          })
+        : buildDelegationSetup({
+            rpcUrl: devnetRpcUrl(config.heliusRpc),
+            owner: auth.address as Address,
+            payer: delegation.payer,
+            delegatee: delegation.delegatee.address,
+            amountPerPeriod: capBaseUnits,
+            periodLengthS,
+            decimals,
+          })
+    build
       .then((setup) => {
         store.upsertDelegation(
           {
@@ -250,7 +296,7 @@ export function createApp(
       return
     }
     buildRecurringDelegationTx({
-      rpcUrl: devnetRpcUrl(config.heliusRpc),
+      rpcUrl: delegationRpcUrl(),
       owner: auth.address as Address,
       mint: row.mint as Address,
       delegatee: row.delegatee as Address,
@@ -276,14 +322,26 @@ export function createApp(
       res.status(404).json({ ok: false, error: 'no_delegation' })
       return
     }
-    const rpcUrl = devnetRpcUrl(config.heliusRpc)
-    const amount = BigInt(row.amountPerPeriod) / 2n
+    const rpcUrl = delegationRpcUrl()
+    // The caller may name an amount so an over-cap pull can be attempted through
+    // the real path. There is deliberately NO cap check here: the program is what
+    // rejects an over-cap transfer, and a refusal from this server would prove
+    // nothing about the chain.
+    let amount: bigint
+    try {
+      amount = parsePullAmount((req.body as { amount?: unknown }).amount, BigInt(row.amountPerPeriod))
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e instanceof Error ? e.message : 'bad_amount' })
+      return
+    }
     ;(async () => {
       const receiverAta =
         row.receiverAta ??
         (await ensureReceiverAta({
           rpcUrl,
-          payer: delegation.payer,
+          // On mainnet the delegatee funds its own receiving account; there is no
+          // server payer holding real SOL.
+          payer: config.delegation.cluster === 'mainnet' ? delegation.delegatee : delegation.payer,
           mint: row.mint as Address,
           owner: delegation.delegatee.address,
         }))
@@ -311,10 +369,13 @@ export function createApp(
         state.exists && state.currentPeriodStartTs && state.periodLengthS
           ? state.currentPeriodStartTs + state.periodLengthS
           : 0
-      const unit = 10n ** BigInt(SPIKE_DECIMALS)
+      const decimals = config.delegation.decimals
+      const movedText = formatUnits(amount, decimals)
+      const remainingText = formatUnits(remaining, decimals)
       const url =
         `/alert?source=delegation&sig=${signature}` +
-        `&moved=${amount / unit}&remaining=${remaining / unit}&reset=${nextResetTs}&pda=${row.delegationPda}`
+        `&moved=${movedText}&remaining=${remainingText}&reset=${nextResetTs}&pda=${row.delegationPda}` +
+        `&cluster=${config.delegation.cluster}`
 
       const tokens = store.getPushTokens(auth.address)
       const pushes = await Promise.all(
@@ -323,7 +384,7 @@ export function createApp(
             t,
             {
               title: 'Delegated transfer executed',
-              body: `${amount / unit} tokens moved. ${remaining / unit} left this period.`,
+              body: `${movedText} moved. ${remainingText} left this period.`,
             },
             'alerts',
             { url, channelId: 'alerts' },
@@ -332,8 +393,10 @@ export function createApp(
       )
       return {
         signature,
-        amount: (amount / unit).toString(),
-        remaining: (remaining / unit).toString(),
+        amount: movedText,
+        amountBaseUnits: amount.toString(),
+        remaining: remainingText,
+        remainingBaseUnits: remaining.toString(),
         nextResetTs,
         pushes: pushes.map((p) => p.status),
       }
@@ -341,6 +404,49 @@ export function createApp(
       .then((out) => res.json({ ok: true, ...out }))
       .catch((e: unknown) => {
         res.status(502).json({ ok: false, error: e instanceof Error ? e.message : 'pull_failed' })
+      })
+  })
+
+  /**
+   * Revocation, built for the device to sign. Two transactions, in this order:
+   * closing the delegation PDA does not clear the SPL delegate, so a run that
+   * stopped after the first would still leave the token account delegated.
+   */
+  app.post('/api/delegation/revoke-delegation', (req, res) => {
+    const auth = requireAuth(req, res)
+    if (!auth) return
+    const row = store.getDelegation(auth.address)
+    if (!row) {
+      res.status(404).json({ ok: false, error: 'no_delegation' })
+      return
+    }
+    buildRevokeDelegationTx({
+      rpcUrl: delegationRpcUrl(),
+      owner: auth.address as Address,
+      delegationPda: row.delegationPda as Address,
+    })
+      .then((out) => res.json({ ok: true, ...out, delegationPda: row.delegationPda }))
+      .catch((e: unknown) => {
+        res.status(502).json({ ok: false, error: e instanceof Error ? e.message : 'revoke_delegation_failed' })
+      })
+  })
+
+  app.post('/api/delegation/revoke-authority', (req, res) => {
+    const auth = requireAuth(req, res)
+    if (!auth) return
+    const row = store.getDelegation(auth.address)
+    if (!row) {
+      res.status(404).json({ ok: false, error: 'no_delegation' })
+      return
+    }
+    buildRevokeAuthorityTx({
+      rpcUrl: delegationRpcUrl(),
+      owner: auth.address as Address,
+      mint: row.mint as Address,
+    })
+      .then((out) => res.json({ ok: true, ...out, userAta: row.userAta }))
+      .catch((e: unknown) => {
+        res.status(502).json({ ok: false, error: e instanceof Error ? e.message : 'revoke_authority_failed' })
       })
   })
 
@@ -352,8 +458,21 @@ export function createApp(
       res.status(404).json({ ok: false, error: 'no_delegation' })
       return
     }
-    readDelegation(devnetRpcUrl(config.heliusRpc), row.delegationPda as Address)
-      .then((state) => res.json({ ok: true, delegationPda: row.delegationPda, mint: row.mint, ...state }))
+    const rpcUrl = delegationRpcUrl()
+    Promise.all([readDelegation(rpcUrl, row.delegationPda as Address), readAtaDelegate(rpcUrl, row.userAta as Address)])
+      .then(([state, ata]) =>
+        res.json({
+          ok: true,
+          cluster: config.delegation.cluster,
+          delegationPda: row.delegationPda,
+          mint: row.mint,
+          userAta: row.userAta,
+          userAtaDelegate: ata.delegate,
+          userAtaDelegatedAmount: ata.delegatedAmount,
+          userAtaBalance: ata.amount,
+          ...state,
+        }),
+      )
       .catch((e: unknown) => {
         res.status(502).json({ ok: false, error: e instanceof Error ? e.message : 'state_failed' })
       })

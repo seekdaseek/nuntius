@@ -6,8 +6,10 @@
  * base64 transaction to sign through Mobile Wallet Adapter. That keeps kit 7 out
  * of the app bundle, which still resolves kit 6 at the root.
  *
- * Devnet only for the spike — the program is deployed at the same canonical
- * address on every cluster.
+ * The program is deployed at the same canonical address on every cluster, so
+ * cluster selection is purely a choice of RPC. Devnet mints its own throwaway
+ * token (`buildDelegationSetup`); mainnet delegates against a mint the user
+ * already holds and creates nothing (`buildInitAuthorityTx`).
  */
 import {
   appendTransactionMessageInstructions,
@@ -42,6 +44,8 @@ import {
   findSubscriptionAuthorityPda,
   getCreateRecurringDelegationOverlayInstructionAsync,
   getInitSubscriptionAuthorityOverlayInstructionAsync,
+  getRevokeDelegationOverlayInstruction,
+  getRevokeSubscriptionAuthorityOverlayInstructionAsync,
   getTransferRecurringOverlayInstructionAsync,
 } from '@solana/subscriptions'
 
@@ -384,4 +388,153 @@ async function sendWithPayer(
     await new Promise((r) => setTimeout(r, 500))
   }
   throw new Error(`transaction ${sig} not confirmed`)
+}
+
+/** Mainnet RPC. There is no public default: the Helius URL is load-bearing. */
+export function mainnetRpcUrl(heliusRpc: string | null): string {
+  if (!heliusRpc) throw new Error('HELIUS_RPC is required for mainnet delegation')
+  return heliusRpc
+}
+
+/**
+ * Mainnet setup: the ONE transaction the device signs to open a delegation
+ * against a mint the user already holds.
+ *
+ * Unlike the devnet path this mints nothing and needs no server payer. The
+ * user's ATA must already exist and already be the ATA for this mint, so both
+ * are read off the chain and the request fails closed rather than producing a
+ * confusing on-chain error later. `initSubscriptionAuthority` creates the
+ * authority PDA and performs the SPL approve in a single instruction, so Seed
+ * Vault sees one approval, not two.
+ */
+export async function buildInitAuthorityTx(params: {
+  rpcUrl: string
+  owner: Address
+  mint: Address
+  delegatee: Address
+  amountPerPeriod: bigint
+  periodLengthS: bigint
+}): Promise<DelegationSetup> {
+  const { rpcUrl, owner, mint, delegatee, amountPerPeriod, periodLengthS } = params
+  const rpc = createSolanaRpc(rpcUrl)
+
+  const [userAta] = await findAssociatedTokenPda({ mint, owner, tokenProgram: TOKEN_PROGRAM_ADDRESS })
+  const ataInfo = await rpc.getAccountInfo(userAta, { encoding: 'jsonParsed' }).send()
+  if (!ataInfo.value) {
+    throw new Error(`token account ${userAta} does not exist — fund the wallet with this mint first`)
+  }
+  const parsed = (ataInfo.value.data as unknown as { parsed?: { info?: { mint?: string; owner?: string } } }).parsed
+  if (parsed?.info?.mint !== mint || parsed?.info?.owner !== owner) {
+    throw new Error(`token account ${userAta} is not the ${mint} account of ${owner}`)
+  }
+
+  const ownerSigner = createNoopSigner(owner)
+  const initIx = await getInitSubscriptionAuthorityOverlayInstructionAsync({
+    owner: ownerSigner,
+    tokenMint: mint,
+    tokenProgram: TOKEN_PROGRAM_ADDRESS,
+    userAta,
+  })
+  const [authorityPda] = await findSubscriptionAuthorityPda({ user: owner, tokenMint: mint })
+
+  const { value: blockhash } = await rpc.getLatestBlockhash().send()
+  const message = pipe(
+    createTransactionMessage({ version: 0 }),
+    (m) => setTransactionMessageFeePayer(owner, m),
+    (m) => setTransactionMessageLifetimeUsingBlockhash(blockhash, m),
+    (m) => appendTransactionMessageInstructions([initIx], m),
+  )
+  const compiled = compileTransaction(message)
+  const [delegationPda] = await findRecurringDelegationPda({
+    subscriptionAuthority: authorityPda,
+    delegator: owner,
+    delegatee,
+    nonce: 0n,
+  })
+
+  return {
+    transactionBase64: getBase64Decoder().decode(getTransactionEncoder().encode(compiled)),
+    mint,
+    userAta,
+    authorityPda,
+    delegationPda,
+    delegatee,
+    amountPerPeriod: amountPerPeriod.toString(),
+    periodLengthS: Number(periodLengthS),
+  }
+}
+
+/** Reads the SPL delegate fields straight off a token account — the revoke proof. */
+export async function readAtaDelegate(
+  rpcUrl: string,
+  ata: Address,
+): Promise<{ delegate: string | null; delegatedAmount: string | null; amount: string | null }> {
+  const rpc = createSolanaRpc(rpcUrl)
+  const info = await rpc.getAccountInfo(ata, { encoding: 'jsonParsed' }).send()
+  if (!info.value) return { delegate: null, delegatedAmount: null, amount: null }
+  const i = (
+    info.value.data as unknown as {
+      parsed?: {
+        info?: {
+          delegate?: string
+          delegatedAmount?: { amount?: string }
+          tokenAmount?: { amount?: string }
+        }
+      }
+    }
+  ).parsed?.info
+  return {
+    delegate: i?.delegate ?? null,
+    delegatedAmount: i?.delegatedAmount?.amount ?? null,
+    amount: i?.tokenAmount?.amount ?? null,
+  }
+}
+
+/**
+ * Revocation, in the order that actually ends the arrangement.
+ *
+ * `revokeDelegation` closes the delegation PDA; `revokeSubscriptionAuthority`
+ * then clears the SPL delegate on the user's ATA. `closeSubscriptionAuthority`
+ * is deliberately absent — it leaves the SPL delegate live and would report a
+ * false pass. Only the delegator (or the original rent payer) may revoke, so
+ * both transactions are signed by the device, never by the server.
+ */
+export async function buildRevokeDelegationTx(params: {
+  rpcUrl: string
+  owner: Address
+  delegationPda: Address
+}): Promise<{ transactionBase64: string }> {
+  const { rpcUrl, owner, delegationPda } = params
+  const ix = getRevokeDelegationOverlayInstruction({
+    authority: createNoopSigner(owner),
+    delegationAccount: delegationPda,
+  })
+  return { transactionBase64: await compileForOwner(rpcUrl, owner, [ix]) }
+}
+
+export async function buildRevokeAuthorityTx(params: {
+  rpcUrl: string
+  owner: Address
+  mint: Address
+}): Promise<{ transactionBase64: string }> {
+  const { rpcUrl, owner, mint } = params
+  const ix = await getRevokeSubscriptionAuthorityOverlayInstructionAsync({
+    user: createNoopSigner(owner),
+    tokenMint: mint,
+    tokenProgram: TOKEN_PROGRAM_ADDRESS,
+  })
+  return { transactionBase64: await compileForOwner(rpcUrl, owner, [ix]) }
+}
+
+/** Compiles instructions into an unsigned transaction the owner alone must sign. */
+async function compileForOwner(rpcUrl: string, owner: Address, instructions: Instruction[]): Promise<string> {
+  const rpc = createSolanaRpc(rpcUrl)
+  const { value: blockhash } = await rpc.getLatestBlockhash().send()
+  const message = pipe(
+    createTransactionMessage({ version: 0 }),
+    (m) => setTransactionMessageFeePayer(owner, m),
+    (m) => setTransactionMessageLifetimeUsingBlockhash(blockhash, m),
+    (m) => appendTransactionMessageInstructions(instructions, m),
+  )
+  return getBase64Decoder().decode(getTransactionEncoder().encode(compileTransaction(message)))
 }

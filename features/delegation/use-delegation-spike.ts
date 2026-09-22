@@ -39,8 +39,8 @@ export function useDelegationSpike() {
 
   return useMutation({
     mutationFn: async (auth: NuntiusAuth): Promise<DelegationResult> => {
-      // 1. Server prepares a devnet mint the wallet holds and builds the
-      //    initSubscriptionAuthority transaction.
+      // 1. Server builds the initSubscriptionAuthority transaction against a
+      //    mint the wallet already holds (mainnet) or one it mints first (devnet).
       const setup = await post<{ transactionBase64: string; mint: string; delegationPda: string }>(
         '/api/delegation/setup',
         { session: auth.session },
@@ -67,15 +67,57 @@ export function useDelegationSpike() {
   })
 
   async function signAndSend(transactionBase64: string): Promise<string> {
-    const transaction = decodeTransaction(transactionBase64)
-    const signatures = await transact(async (wallet) => {
-      await wallet.authorize({ chain, identity })
-      return wallet.signAndSendTransactions({ transactions: [transaction as never] })
-    })
-    const first = signatures[0]
-    if (!first) throw new Error('wallet returned no signature')
-    return bytesToBase58(first)
+    return signAndSendWith(chain, identity, transactionBase64)
   }
+}
+
+export interface RevokeResult {
+  revokeDelegationSignature: string
+  revokeAuthoritySignature: string
+}
+
+/**
+ * Revocation, both halves, in order. `revokeDelegation` closes the delegation
+ * PDA; only `revokeSubscriptionAuthority` clears the SPL delegate on the token
+ * account. Stopping after the first would leave the account still delegated,
+ * which is exactly the false pass `closeSubscriptionAuthority` produces.
+ */
+export function useDelegationRevoke() {
+  const { chain, identity } = useMobileWallet()
+
+  return useMutation({
+    mutationFn: async (auth: NuntiusAuth): Promise<RevokeResult> => {
+      const one = await post<{ transactionBase64: string }>('/api/delegation/revoke-delegation', {
+        session: auth.session,
+      })
+      const revokeDelegationSignature = await signAndSendWith(chain, identity, one.transactionBase64)
+
+      const two = await post<{ transactionBase64: string }>('/api/delegation/revoke-authority', {
+        session: auth.session,
+      })
+      const revokeAuthoritySignature = await signAndSendWith(chain, identity, two.transactionBase64)
+
+      return { revokeDelegationSignature, revokeAuthoritySignature }
+    },
+  })
+}
+
+type MobileWallet = ReturnType<typeof useMobileWallet>
+
+/** Shared MWA path. Authorizes FRESH every session — never a stored auth_token. */
+async function signAndSendWith(
+  chain: MobileWallet['chain'],
+  identity: MobileWallet['identity'],
+  transactionBase64: string,
+): Promise<string> {
+  const transaction = decodeTransaction(transactionBase64)
+  const signatures = await transact(async (wallet) => {
+    await wallet.authorize({ chain, identity })
+    return wallet.signAndSendTransactions({ transactions: [transaction as never] })
+  })
+  const first = signatures[0]
+  if (!first) throw new Error('wallet returned no signature')
+  return bytesToBase58(first)
 }
 
 const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'

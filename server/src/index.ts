@@ -66,4 +66,10 @@ app.listen(config.port, '127.0.0.1', () => {
   console.log(
     `nuntius server on 127.0.0.1:${config.port} · domain ${config.domain} · helius ${config.heliusRpc ? 'configured' : 'NOT configured'} · fcm ${fcm ? 'configured' : 'NOT configured'}`,
   )
+  // Printed, not assumed: on mainnet these four numbers are the difference
+  // between a capped test and an uncapped one.
+  const d = config.delegation
+  console.log(
+    `delegation · cluster ${d.cluster} · mint ${d.mint ?? '(devnet mints its own)'} · cap ${d.capBaseUnits} base units · period ${d.periodLengthS}s · decimals ${d.decimals}`,
+  )
 })
