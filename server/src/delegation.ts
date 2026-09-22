@@ -320,7 +320,13 @@ export async function executePull(params: {
   receiverAta: Address
   mint: Address
   amount: bigint
-}): Promise<string> {
+  /**
+   * Skip preflight so a rejected pull still LANDS, producing a real signature
+   * whose recorded error is the program's. Preflight catches an over-cap pull
+   * before it reaches the ledger, which leaves nothing to point a judge at.
+   */
+  landFailure?: boolean
+}): Promise<{ signature: string; onChainError: string | null; logs: string[] }> {
   const { rpcUrl, delegatee, delegationPda, delegator, delegatorAta, receiverAta, mint, amount } = params
   const rpc = createSolanaRpc(rpcUrl)
   const ix = await getTransferRecurringOverlayInstructionAsync({
@@ -333,7 +339,50 @@ export async function executePull(params: {
     tokenMint: mint,
     tokenProgram: TOKEN_PROGRAM_ADDRESS,
   })
-  return sendWithPayer(rpc, delegatee, [ix])
+  if (!params.landFailure) {
+    return { signature: await sendWithPayer(rpc, delegatee, [ix]), onChainError: null, logs: [] }
+  }
+  return sendAndRecord(rpc, delegatee, [ix])
+}
+
+/**
+ * Sends with preflight off and reports what the ledger recorded rather than
+ * throwing. Used only to capture a rejection as evidence.
+ */
+async function sendAndRecord(
+  rpc: ReturnType<typeof createSolanaRpc>,
+  payer: TransactionSigner,
+  instructions: Instruction[],
+): Promise<{ signature: string; onChainError: string | null; logs: string[] }> {
+  const { value: blockhash } = await rpc.getLatestBlockhash().send()
+  const message = pipe(
+    createTransactionMessage({ version: 0 }),
+    (m) => setTransactionMessageFeePayer(payer.address, m),
+    (m) => setTransactionMessageLifetimeUsingBlockhash(blockhash, m),
+    (m) => appendTransactionMessageInstructions(instructions, m),
+  )
+  const signed = await signTransactionMessageWithSigners(message)
+  const wire = getBase64Decoder().decode(getTransactionEncoder().encode(signed))
+  const signature = await rpc
+    .sendTransaction(wire as never, { encoding: 'base64', skipPreflight: true, preflightCommitment: 'confirmed' })
+    .send()
+  for (let i = 0; i < 60; i++) {
+    const { value } = await rpc.getSignatureStatuses([signature], { searchTransactionHistory: true }).send()
+    const st = value[0]
+    if (st && (st.err || st.confirmationStatus === 'confirmed' || st.confirmationStatus === 'finalized')) {
+      const tx = await rpc
+        .getTransaction(signature, { maxSupportedTransactionVersion: 0, encoding: 'json' })
+        .send()
+        .catch(() => null)
+      return {
+        signature,
+        onChainError: st.err ? JSON.stringify(st.err, (_k, v) => (typeof v === 'bigint' ? Number(v) : v)) : null,
+        logs: (tx?.meta?.logMessages as string[] | undefined) ?? [],
+      }
+    }
+    await new Promise((r) => setTimeout(r, 500))
+  }
+  throw new Error(`transaction ${signature} not confirmed`)
 }
 
 /** Current on-chain state of a recurring delegation, for the evidence screen. */
@@ -468,10 +517,10 @@ export async function buildInitAuthorityTx(params: {
 export async function readAtaDelegate(
   rpcUrl: string,
   ata: Address,
-): Promise<{ delegate: string | null; delegatedAmount: string | null; amount: string | null }> {
+): Promise<{ delegate: string | null; delegatedAmount: string | null; amount: string | null; mint: string | null }> {
   const rpc = createSolanaRpc(rpcUrl)
   const info = await rpc.getAccountInfo(ata, { encoding: 'jsonParsed' }).send()
-  if (!info.value) return { delegate: null, delegatedAmount: null, amount: null }
+  if (!info.value) return { delegate: null, delegatedAmount: null, amount: null, mint: null }
   const i = (
     info.value.data as unknown as {
       parsed?: {
@@ -479,6 +528,7 @@ export async function readAtaDelegate(
           delegate?: string
           delegatedAmount?: { amount?: string }
           tokenAmount?: { amount?: string }
+          mint?: string
         }
       }
     }
@@ -487,6 +537,7 @@ export async function readAtaDelegate(
     delegate: i?.delegate ?? null,
     delegatedAmount: i?.delegatedAmount?.amount ?? null,
     amount: i?.tokenAmount?.amount ?? null,
+    mint: i?.mint ?? null,
   }
 }
 

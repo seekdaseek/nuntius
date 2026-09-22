@@ -25,6 +25,8 @@ The same canonical address is deployed on devnet and mainnet, so there is no per
 
 **Why the cap is the product.** The exposure is bounded by the chain, not by this codebase. An over-cap pull is rejected by the program with `custom program error: 0x190` (`amountExceedsPeriodLimit`). That is the load-bearing guarantee, and it is enforced whether or not our server behaves.
 
+**What the cap does not bound, stated plainly.** `initSubscriptionAuthority` approves the Subscription Authority PDA for **`u64::MAX`** at the SPL level — the Foundation's own architecture diagram labels it exactly that. The per-period cap lives in the delegation record the program checks, not in the token account's approval. So while an authority is live, what stands between a delegatee and the _whole_ token-account balance is the program behaving correctly. Keep the balance of a delegated account near what the delegation actually needs, and revoke when done.
+
 The program account is **upgradeable** (upgrade authority `DXtFpbPjcn2hxPnw79x1Pfoj35vXh5AsWBkS37YnXMVv`, measured 2026-09-22). That is a real dependency risk, disclosed rather than glossed, and it is exactly why the per-period cap rather than trust is what bounds a user's exposure.
 
 ---
@@ -47,10 +49,33 @@ Nothing below is claimed from a successful build. Each line was executed and the
 - After `revokeDelegation` the delegation account ceases to exist and a further pull dies with `Invalid account owner`; `revokeSubscriptionAuthority` then leaves `userAta delegate: none`. **`closeSubscriptionAuthority` is never used** — it leaves the SPL delegate live and would report a false pass.
 - Pull → FCM push → tap → evidence screen showing moved / remaining / reset / Explorer link.
 
+**On mainnet, with real USDC — 22 September 2026**
+
+The full life cycle ran end to end on mainnet-beta, signed by Seed Vault on the device. Every signature below is real and openable.
+
+| step                          | signature                                                                                  |
+| ----------------------------- | ------------------------------------------------------------------------------------------ |
+| `initSubscriptionAuthority`   | `bBNbUgwhwFAmb8GM7L9AwJJjcn8UFCymrHaajLXS9R4uTTxvNUwKGVSNkj5A8EAmVuRW2PJBzjrBCuZUqGS2Sks`  |
+| `createRecurringDelegation`   | `5r7YnGrbRCPb74W1t1p1xDzMtaTPL47orLsbGmpiMgAkmwbEfU9MKW7hGpZP4mcwv1cFLAXTq8pGWNsFUGinugMw` |
+| `transferRecurring` ×4        | `59Zn57sY…qtjJF`, `5kSbpeH6…y1TXJ`, `3utaq3gm…VN96W`, `41emXYEH…82B5vy`                    |
+| over-cap, 2× the cap          | `3RpcCkkLmwq5wT4moE1TQrXpnjRn36kWgmtRah9Y6kZuo3n5bVYdWTvnov4zQMXEr3vcS15pbE7jJENPmaZpWyR7` |
+| cap exhausted in-period       | `5ryxPMPjNXzYCGtA9yQ6ZGG2enVmXjyN9PnotF9x1h7N9MqZjS5Kk9K1YQsh4661Hn7xNPhn1N6pcoQ1TKAjsDpd` |
+| `revokeDelegation`            | `Vh2yr9VTe8YeqcGqffuVZEa26ZicoJP3FV5k8y4FYNXtECCEXu6bvbWZ6u8XuRXWP6XSp5hxUpq1X97TYmsb1wT`  |
+| `revokeSubscriptionAuthority` | `2doDFNXUxvBcstNJJDwjWCyrEGMLEugQAUeXTth4eCJnsXHb3S89s17Jtr34Raxg25vwQF1MGTC5cMFjgVsij9Y8` |
+| pull after revocation         | `cfESoUjxbXF341RwzBtqyuBMAZ7rwA6mhbJCqQ1fqs91Gc48eFd5yzqLfT2vnazxJwB2JL7WcuSqzEzTtM5GPzm`  |
+
+- **Seed Vault signs a delegation on mainnet.** The devnet block was never a code fault — the wallet's own network is mainnet, so it refused a devnet transaction as a network mismatch. On mainnet there is no mismatch and it signs.
+- **The user signs nothing after authorizing.** Every `transferRecurring` above has exactly **one** signer, the delegatee, and the delegator is not among the signers. Verified from each transaction's recorded account keys, not from intent.
+- **The cap is the chain's, not ours.** A pull of 2× the cap, and a pull of one extra base unit after the cap was consumed, both failed with `custom program error: 0x190` (`amountExceedsPeriodLimit`). Both were sent with preflight disabled so the rejection is a **landed mainnet transaction**, not a simulation the RPC refused.
+- **The period resets.** After the 60-second window rolled over, the same delegation allowed a further pull with no new user signature.
+- **Revocation is complete.** After `revokeDelegation` then `revokeSubscriptionAuthority`, both PDAs are closed and the token account reads `delegate: none`. A subsequent pull dies on chain with `InvalidAccountOwner`.
+
+Cap was 10,000 base units (0.01 USDC) per 60-second period. 17,000 base units moved in total across four pulls. The delegator's SOL ended 112,000 lamports down — both account rents were returned by the revokes.
+
 **Not yet proven**
 
-- **Mainnet authorization through Seed Vault.** On devnet the wallet refuses to sign, because the Seed Vault Wallet's own network is set to mainnet and it reports a network mismatch — a wallet setting, not a code fault; the transaction parsed correctly. The mainnet run is the open item. Until it is executed and observed, treat mainnet Seed Vault signing as untested.
 - The executor is a single in-process timer. Durability, leader election, delegatee fee funding, KMS custody and observability are documented as production needs in `server/src/executor.ts` rather than half-built.
+- The rule-creation UI, the tier gate, the widget and the daily digest are not built.
 
 ---
 

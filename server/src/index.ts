@@ -70,6 +70,6 @@ app.listen(config.port, '127.0.0.1', () => {
   // between a capped test and an uncapped one.
   const d = config.delegation
   console.log(
-    `delegation · cluster ${d.cluster} · mint ${d.mint ?? '(devnet mints its own)'} · cap ${d.capBaseUnits} base units · period ${d.periodLengthS}s · decimals ${d.decimals}`,
+    `delegation · cluster ${d.cluster} · mint ${d.mint ?? '(devnet mints its own)'} · cap ${d.capBaseUnits} base units · period ${d.periodLengthS}s · decimals ${d.decimals} · receiver ${d.receiverAta ?? "(delegatee's own ATA, created on first pull)"}`,
   )
 })

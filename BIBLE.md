@@ -265,7 +265,7 @@ The measurement payload is dead; the payload is now **Solana Subscriptions** rec
 - After `revokeDelegation` the delegation account ceases to exist and a pull dies with `Invalid account owner`; `revokeSubscriptionAuthority` then leaves `userAta delegate: none`. **Never use `closeSubscriptionAuthority`** - it leaves the SPL delegate live and would give a false pass.
 - Pull -> FCM push -> tap -> evidence screen showing moved / remaining / reset / Explorer link, proven on the device.
 
-**BLOCKED - the one thing that decides the product:** Seed Vault refuses to sign a devnet delegation while the **wallet app's own network** is set to mainnet: _"Network mismatch - your current network is set to mainnet, but this transaction is for devnet."_ It parsed the transaction correctly, so this is a wallet setting, not a code fault. The app's own devnet toggle is not enough. **Sergiu must switch the Seed Vault Wallet to devnet** (it holds real mainnet funds, so this is his call, not something to flip automatically) - or the spike moves to mainnet with real value at risk.
+**~~BLOCKED~~ - RESOLVED ON MAINNET 2026-09-22 (BRIEF-06).** The devnet block was never a code fault: Seed Vault refused a devnet delegation because the **wallet app's own network** is mainnet - _"Network mismatch - your current network is set to mainnet, but this transaction is for devnet."_ It had parsed the transaction correctly. Moving to mainnet removes the mismatch, and **Seed Vault signs.** See section 11a.
 
 **Executor:** a single in-process timer (`server/src/executor.ts`). Production needs are documented in that file rather than half-built - durability, leader election, delegatee fee funding, KMS custody, lazy-period-aware scheduling, observability.
 
@@ -276,6 +276,40 @@ The measurement payload is dead; the payload is now **Solana Subscriptions** rec
 - `adb reverse tcp:8787 tcp:8787` set, so the Seeker reaches a Mac dev server at `http://localhost:8787`. **The reverses are lost on reinstall and on reconnect** - `adb reverse --list` came back empty twice mid-session and the symptom is a useless "Failed to connect to localhost:8081". Re-run both (8787 and 8081) after every `adb install`.
 - **A release build cannot reach the local dev backend**: release blocks cleartext HTTP, so `http://localhost:8787` fails and the app shows `Version: undefined`. Dev-only - production is HTTPS - but device tests that need the backend must use the debug build.
 - **Claude Code Step 0 finding: the template's sign-in passes no nonce at all.** No replay protection whatsoever, so step 2 is a genuine build rather than a patch.
+
+### 11a. Mainnet proof, 2026-09-22 (BRIEF-06)
+
+**The product exists.** The full life cycle ran on mainnet-beta with real USDC, signed by Seed Vault on device `SM02E4060327059`.
+
+Payer/delegator was **natX** `ASCQRp616JVQKMpynYfcPVdKPext719WUf7CuFcnnatX`, not the cj7 treasury. Destination was cj7's existing ATA `HqbmBbn...az5z`, which **was never delegated** - it stayed `delegate: none` throughout, confirmed in the init simulation's post-state before signing and in every reading after.
+
+| step                        | signature                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------ |
+| initSubscriptionAuthority   | `bBNbUgwhwFAmb8GM7L9AwJJjcn8UFCymrHaajLXS9R4uTTxvNUwKGVSNkj5A8EAmVuRW2PJBzjrBCuZUqGS2Sks`  |
+| createRecurringDelegation   | `5r7YnGrbRCPb74W1t1p1xDzMtaTPL47orLsbGmpiMgAkmwbEfU9MKW7hGpZP4mcwv1cFLAXTq8pGWNsFUGinugMw` |
+| transferRecurring x4        | `59Zn57sY...qtjJF` `5kSbpeH6...y1TXJ` `3utaq3gm...VN96W` `41emXYEH...82B5vy`               |
+| over-cap (2x cap)           | `3RpcCkkLmwq5wT4moE1TQrXpnjRn36kWgmtRah9Y6kZuo3n5bVYdWTvnov4zQMXEr3vcS15pbE7jJENPmaZpWyR7` |
+| cap exhausted in-period     | `5ryxPMPjNXzYCGtA9yQ6ZGG2enVmXjyN9PnotF9x1h7N9MqZjS5Kk9K1YQsh4661Hn7xNPhn1N6pcoQ1TKAjsDpd` |
+| revokeDelegation            | `Vh2yr9VTe8YeqcGqffuVZEa26ZicoJP3FV5k8y4FYNXtECCEXu6bvbWZ6u8XuRXWP6XSp5hxUpq1X97TYmsb1wT`  |
+| revokeSubscriptionAuthority | `2doDFNXUxvBcstNJJDwjWCyrEGMLEugQAUeXTth4eCJnsXHb3S89s17Jtr34Raxg25vwQF1MGTC5cMFjgVsij9Y8` |
+| pull after revocation       | `cfESoUjxbXF341RwzBtqyuBMAZ7rwA6mhbJCqQ1fqs91Gc48eFd5yzqLfT2vnazxJwB2JL7WcuSqzEzTtM5GPzm`  |
+
+- **The user signs nothing after authorizing.** Each `transferRecurring` has exactly ONE signer - the delegatee - and the delegator is absent from the signer set. Read from the recorded account keys, not asserted.
+- **Over-cap rejection is the chain's.** `custom program error: 0x190` = `amountExceedsPeriodLimit`, recorded as `{"InstructionError":[0,{"Custom":400}]}`. Sent with `skipPreflight` deliberately, so the rejection is a **landed mainnet transaction** rather than a preflight refusal with nothing to point at.
+- **Reset works.** After the 60 s window rolled, the same delegation allowed another pull, no new user signature.
+- **Revocation is complete.** Both PDAs closed, `userAta delegate: none`, further pull dies `InvalidAccountOwner`.
+- Cap 10,000 base units / 60 s. 17,000 base units moved across four pulls. natX ended 112,000 lamports down - both rents came back on revoke.
+
+**The u64::MAX fact, which the cap does NOT bound.** `initSubscriptionAuthority` approves the authority PDA for `u64::MAX` at the SPL level (the Foundation's architecture doc labels the PDA exactly that). The per-period cap lives in the delegation record, not in the token approval. While an authority is live, the _entire_ balance of that token account is reachable if the program misbehaves - and the program is **upgradeable** (authority `DXtFpbPjcn2hxPnw79x1Pfoj35vXh5AsWBkS37YnXMVv`). Operational rule: delegate from an account holding near what the delegation needs, and revoke when done.
+
+**Period choice.** The program's floor is 1 second (`period_length_s > 0`, max 365 days, from `create_recurring_delegation.rs`). 60 s was chosen because `transfer_validation.rs` advances the period **lazily on each transfer** and zeroes `amount_pulled_in_period` - so a 1 s period would let an over-cap attempt find a fresh budget and succeed, destroying the proof. 60 s keeps a pull and an immediate second attempt inside one window while still showing a reset live.
+
+**Two bugs the mainnet cap exposed**, both invisible at the devnet 100-token cap:
+
+- The push formatted base units with integer division, so a 5,000-base-unit draw at 6 decimals rendered as `0 tokens moved`.
+- The evidence screen hardcoded `?cluster=devnet` on the Explorer link, pointing a mainnet user at the wrong chain.
+
+**Repo is public:** `https://github.com/seekdaseek/nuntius`, MIT.
 
 ### Build environment
 

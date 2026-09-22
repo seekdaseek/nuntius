@@ -20,6 +20,13 @@ export interface DelegationConfig {
   /** Base units the delegatee may pull per period. */
   capBaseUnits: bigint
   periodLengthS: bigint
+  /**
+   * Where pulled tokens land. When unset the delegatee's own ATA is created and
+   * used, which costs rent. Naming an existing account avoids that — the program
+   * places no ownership constraint on the receiver, it only records the owner in
+   * the emitted event.
+   */
+  receiverAta: string | null
 }
 
 // Bare host, optionally with a port. This is the SIWS binding domain, not a URL.
@@ -96,7 +103,13 @@ function loadDelegationConfig(env: NodeJS.ProcessEnv): DelegationConfig {
     throw new Error('DELEGATION_PERIOD_S must be between 1 and 31536000')
   }
 
-  return { cluster, mint, decimals, capBaseUnits, periodLengthS }
+  const receiverAta =
+    env.DELEGATION_RECEIVER_ATA === undefined || env.DELEGATION_RECEIVER_ATA === '' ? null : env.DELEGATION_RECEIVER_ATA
+  if (receiverAta !== null && !ADDRESS_RE.test(receiverAta)) {
+    throw new Error('DELEGATION_RECEIVER_ATA must be a base58 address')
+  }
+
+  return { cluster, mint, decimals, capBaseUnits, periodLengthS, receiverAta }
 }
 
 function parseBigint(value: string, name: string): bigint {

@@ -327,6 +327,9 @@ export function createApp(
     // the real path. There is deliberately NO cap check here: the program is what
     // rejects an over-cap transfer, and a refusal from this server would prove
     // nothing about the chain.
+    // Opt-in: land a rejected pull on chain instead of letting preflight hide
+    // it, so an over-cap attempt leaves a real signature as evidence.
+    const landFailure = (req.body as { landFailure?: unknown }).landFailure === true
     let amount: bigint
     try {
       amount = parsePullAmount((req.body as { amount?: unknown }).amount, BigInt(row.amountPerPeriod))
@@ -335,19 +338,34 @@ export function createApp(
       return
     }
     ;(async () => {
-      const receiverAta =
-        row.receiverAta ??
-        (await ensureReceiverAta({
-          rpcUrl,
-          // On mainnet the delegatee funds its own receiving account; there is no
-          // server payer holding real SOL.
-          payer: config.delegation.cluster === 'mainnet' ? delegation.delegatee : delegation.payer,
-          mint: row.mint as Address,
-          owner: delegation.delegatee.address,
-        }))
+      // A configured receiver is verified before use rather than trusted: a
+      // wrong account here would send a real transfer somewhere unintended, and
+      // the program will not catch it because it places no constraint on the
+      // receiver beyond it being a token account.
+      const configured = config.delegation.receiverAta
+      let receiverAta: string
+      if (configured) {
+        const check = await readAtaDelegate(rpcUrl, configured as Address)
+        if (check.amount === null) throw new Error(`configured receiver ${configured} is not a token account`)
+        if (check.mint !== row.mint) {
+          throw new Error(`configured receiver ${configured} holds ${check.mint ?? 'nothing'}, not ${row.mint}`)
+        }
+        receiverAta = configured
+      } else {
+        receiverAta =
+          row.receiverAta ??
+          (await ensureReceiverAta({
+            rpcUrl,
+            // On mainnet the delegatee funds its own receiving account; there is
+            // no server payer holding real SOL.
+            payer: config.delegation.cluster === 'mainnet' ? delegation.delegatee : delegation.payer,
+            mint: row.mint as Address,
+            owner: delegation.delegatee.address,
+          }))
+      }
       if (!row.receiverAta) store.setReceiverAta(row.delegationPda, receiverAta)
 
-      const signature = await executePull({
+      const pull = await executePull({
         rpcUrl,
         delegatee: delegation.delegatee,
         delegationPda: row.delegationPda as Address,
@@ -356,7 +374,24 @@ export function createApp(
         receiverAta: receiverAta as Address,
         mint: row.mint as Address,
         amount,
+        landFailure,
       })
+      const signature = pull.signature
+
+      // A rejected pull is reported, not pushed: nothing moved, so there is no
+      // evidence to deliver. The signature is still returned so the rejection
+      // can be opened on an explorer.
+      if (pull.onChainError) {
+        return {
+          signature,
+          rejected: true,
+          onChainError: pull.onChainError,
+          programError: pull.logs.filter((l) => /failed: custom program error/.test(l)).slice(-1)[0] ?? null,
+          logs: pull.logs,
+          amountBaseUnits: amount.toString(),
+          pushes: [],
+        }
+      }
 
       // Read the post-transfer state straight off the chain — the push carries
       // evidence, never a number we merely believe.
