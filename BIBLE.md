@@ -12,7 +12,7 @@ Started 2026-09-08. Fresh repo, no prior code, no reuse.
 A Seeker-native alert app.
 
 - **Push** is the delivery mechanism.
-- **A measurement nobody else computes** is the payload.
+- **A capped, revocable recurring delegation that executes while the app is closed** is the payload (section 8).
 - **Verified Seeker ownership** is the gate.
 - **SKR staking** is the paid tier.
 
@@ -55,7 +55,7 @@ It is a startup competition, not an engineering one.
 **How this design resolves the conflict between them**
 
 - Push _is_ the stickiness mechanism, which is Clock In criterion 1
-- The measurement _is_ the insight and the moat, which is Colosseum insight + founder fit
+- The capped delegation _is_ the insight and the moat, which is Colosseum insight + founder fit
 - The subscription _is_ the viability answer
 
 **Judges:** Toly, Mert (Helius CEO), Chase (Solana Foundation), Akshay and Beeman (Solana Mobile), Voynich and a2nkf/Ilias (both security researchers, Ethelsec).
@@ -145,63 +145,72 @@ Deploy rule: edit and verify in sandbox, scp to VPS, `pm2 delete X && pm2 start 
 
 ---
 
-## 8. DECIDED - what it alerts on
+## 8. DECIDED - what it moves
 
-**The realisable-exit gap on Solana lending collateral.** Decided 2026-09-10 on Colosseum Copilot evidence.
+**A capped, revocable, recurring on-chain payment authority, granted once in Seed Vault.** Decided 2026-09-10 (BRIEF-05). This **supersedes the realisable-exit-gap measurement payload**, which is dead and must not be built. Sections 1 and 7 still hold unchanged: push is the delivery, verified Seeker ownership is the gate, SKR staking is the paid tier. Only the payload changed.
 
-### What it computes
+The app no longer computes a number and tells you about it. **It moves money on terms the user set once, and the push is the receipt.**
 
-A lending protocol marks collateral at `oracle_price x amount`. That mark assumes marginal-token liquidity - the price for selling _one_ token. It is not what the _position_ would clear at.
+### What it does
+
+The user sets a rule once. Seed Vault approves a delegation once. After that it executes on a schedule - a recurring deposit into yield, a scheduled buy, a capped allowance a merchant or an agent may draw against. Push fires on every execution and taps through to the evidence screen: moved, remaining, reset, Explorer link. The cap resets each period. Revocation is one transaction.
+
+The one-liner in section 1 survives the pivot verbatim: _every Solana app tells you what happened after you open it; nuntius acts on days you never open it._
+
+### The primitive it is built on
+
+**Solana Subscriptions & Allowances** - the Subscriptions Delegation Program. Native, open source, audited by Cantina, built by Moonsong Labs with the Solana Foundation, announced 2 June 2026.
 
 ```
-mark        = oracle_price x amount
-realisable  = proceeds of routing a sell of `amount` across live liquidity, now
-gap         = (mark - realisable) / mark
+Program ID   De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44
+Docs         https://solana.com/docs/payments/subscriptions/overview
+Repo         solana-foundation/subscriptions
+SDK          @solana/subscriptions 0.5.0 (kit-native, peer @solana/kit ^7)
 ```
 
-The sharp alert is not "the gap is large" but: the position is effectively under-collateralised **while the protocol's health factor still looks fine**, because that health factor is computed from the same marginal mark.
+Same canonical address on devnet and mainnet - verified live, no per-cluster switching. The program account is **upgradeable**; upgrade authority `DXtFpbPjcn2hxPnw79x1Pfoj35vXh5AsWBkS37YnXMVv` as measured 2026-09-22. That is a real dependency risk and is the reason the per-period cap, not trust, is what bounds exposure.
 
-### Why this one survives
+Why the program exists at all, in the Foundation's words: a Solana token account can hold **only one** approved authority at a time, which makes it impossible for one wallet to safely carry several spending arrangements for the same token. The program gives each `(user, mint)` pair a program-controlled **Subscription Authority**. The token account approves that authority once; the program then checks every requested transfer against a separate record defining who may pull, how much, and when it resets or expires. **The Subscription Authority cannot move funds by itself.**
 
-Dialect commoditized generic transaction and balance alerts, so any payload already visible in a wallet is dead on arrival. This is not visible anywhere - it is a computation over private state (position size) and public state (live depth), so it cannot be looked up. Every alerting product indexed in The Grid is classified `developer_tooling`, `messaging_protocol`, `risk_assessment` or `data_terminal`; **not one is a consumer app**. The computation exists in institutional risk tooling and nobody delivers it to the holder whose position it describes.
+Three models ship - fixed delegation, recurring delegation, subscription plan. **nuntius uses recurring.**
 
-**Measured live 2026-09-10, SOL/USDC through Jupiter** - the thesis in one table, and the demo shot:
+### Why the cap is the product, not a feature
 
-| size (SOL) | effective px | price impact |
-| ---------- | ------------ | ------------ |
-| 1          | 102.2545     | 0.0000%      |
-| 100        | 102.2541     | 0.0049%      |
-| 1,000      | 102.2598     | 0.0053%      |
-| 10,000     | 102.2095     | 0.0499%      |
-| 50,000     | 101.8242     | 0.4337%      |
+The mechanism is only sellable because the blast radius is bounded **by the chain**, not by our code:
 
-0.43% on the deepest asset on Solana - about $21.5k on a $5.1M position. A mid-cap LST collateral gaps far wider.
+- An over-cap pull is rejected by the program: `custom program error: 0x190` = `amountExceedsPeriodLimit`. Proven on devnet (section 11), not asserted.
+- `revokeDelegation` then `revokeSubscriptionAuthority` leaves `userAta delegate: none` and kills further pulls. **Never `closeSubscriptionAuthority`** - it leaves the SPL delegate live and reports a false pass.
+- The user signs once, at authorization. Every later pull is signed by the delegatee alone. That is the whole point, and it is also exactly what makes the cap load-bearing.
 
-### The four candidates that died
+### Why this one survives the corpus
 
-- **Realized-vs-advertised APY drift** - occupied. YieldCompass took a Frontier Top 25 slot (DeFi cohort, announced Jun 26 2026) and is open-sourcing its methodology, which commoditizes the moat. It _validates_ the insight shape - stated number vs real number - which is why (a) wins: same shape, applied where nobody has taken it.
-- **Unlock / vesting cliffs** - saturated. CryptoRank already ships portfolio-integrated unlock alerts with email notification, free; Tokenomist, DefiLlama and CoinMarketCap all publish the calendars. Public data, reachable without the app.
-- **Agent-spend anomalies** - genuinely novel, but the payer is an operator watching a server, not a person carrying a phone. Wrong delivery channel, forfeits Seeker resonance. Parked as an AgentFeed feature.
-- **"Wallet-scoped, before it's public"** - a shape, not a measurement. Collapses into (a) or (b) once made concrete. Attempted literally by `trixy` and `mywhale`; neither placed.
+The corpus work behind the retired measurement still binds the product, because it was never about which number to compute - it was about what does **not** differentiate:
 
-### Corpus evidence behind the ruling
-
-- Top two problem tags across Cypherpunk + Breakout are **"information overload" (47)** and **"information asymmetry" (32)** - the corpus agrees on the problem and attacks it with dashboards.
+- Top two problem tags across Cypherpunk + Breakout are **"information overload" (47)** and **"information asymmetry" (32)**. The corpus agrees on the problem and attacks it with dashboards.
 - Consumer Apps is the most crowded track that exists (1,090 Cypherpunk + 923 Breakout submissions).
-- Every alerting _winner_ sold infrastructure: `tokamai` (2nd Infra, $20k, accelerator C2), `conyr` (5th Infra), `ionic` (3rd Infra). Every consumer push attempt failed to place: `nova`, `notifease`, `solsignal.xyz`, `basin-1`. **The differentiator cannot be that you send a push.**
-- Archive grounding: Paradigm, _Understanding AMMs Part 1: Price Impact_ (Apr 2021) - the quote "only shows the price the AMM wants for the **marginal token**"; Galaxy Research (Jan 23 2026) - "What's missing are channels that support recurring behavior."
+- Every alerting _winner_ sold infrastructure: `tokamai` (2nd Infra, $20k, accelerator C2), `conyr` (5th Infra), `ionic` (3rd Infra). Every consumer push attempt failed to place: `nova`, `notifease`, `solsignal.xyz`, `basin-1`.
+- **The differentiator cannot be that you send a push.** Dialect commoditized generic transaction and balance alerts, so any payload already visible in a wallet is dead on arrival.
 
-### Tool that settled it
+A measurement is still a notification, and notifications are the commoditized layer. A **capped delegation that executes while the app is closed** is not a notification - it is an action the user authorized and can revoke, and the push is merely its receipt. That is the differentiator the corpus says is required.
+
+### Why it fits both clocks
+
+- **Clock In** - Seed Vault is the mechanism, not decoration. The app acts on days the user never opens it, which satisfies the stickiness criterion structurally rather than by hoping for engagement. First mobile use of a primitive Solana shipped in June 2026.
+- **Colosseum** - payments infrastructure with a consumer face, on an audited program, so there is no unaudited-code risk to defend. Fee-on-flow business model, already validated at 0.25% by Solana Mobile's own Earn Vault.
+
+Both descriptions are true of the same repo with no repositioning.
+
+### Tool that settled the pivot
 
 **Colosseum Copilot**, installed globally and symlinked. 5,400 hackathon projects, 84,000 archive documents, 6,300 crypto products, Full/Partial/False gap classification, evidence floors. Deep Dive triggers on "vet this idea", "should I build X?", "deep dive".
 
-**Status: WORKING as of 2026-09-10** - `{"authenticated":true,"expiresAt":"2026-12-08T18:31:20.000Z","scope":"colosseum_copilot:read"}`. The 2026-09-09 502s were their gateway and have cleared. Token valid past both deadlines.
+**`source ~/.zshrc` first, every time.** Each non-interactive shell starts without `COLOSSEUM_COPILOT_API_BASE` / `COLOSSEUM_COPILOT_PAT` even though they are in `~/.zshrc` (lines 20-23, duplicated). Without it curl fails with "No host part in the URL".
 
 ```
 source ~/.zshrc && curl "$COLOSSEUM_COPILOT_API_BASE/status" -H "Authorization: Bearer $COLOSSEUM_COPILOT_PAT"
 ```
 
-**`source ~/.zshrc` first, every time.** Each non-interactive shell starts without these vars even though they are in `~/.zshrc` (lines 20-23, duplicated). Without it curl fails with "No host part in the URL".
+**Build state for this payload is section 11.** Do not restate it here - that split is what produced the contradiction this section was rewritten to remove.
 
 ---
 
@@ -219,14 +228,14 @@ source ~/.zshrc && curl "$COLOSSEUM_COPILOT_API_BASE/status" -H "Authorization: 
 
 ## 10. Build order
 
-Spine first. The measurement drops into a slot that is already built.
+Spine first. The payload drops into a slot that is already built.
 
 1. ~~Fresh repo, RN Expo skeleton, first commit~~ **DONE**
 2. MWA connect + SIWS with a real backend-issued single-use nonce
 3. SGT verification end to end, uniqueness keyed on mint address
 4. FCM push delivering a hardcoded test alert to a real device
 5. Rule engine + evidence screen + daily digest
-6. Drop the chosen measurement into the slot
+6. Drop the delegation payload into the slot (BRIEF-05, BRIEF-06)
 7. SKR stake check to tier gate
 8. Widget, polish, UX pass
 9. Demo video under 3 min, deck, Colosseum pitch video 2-3 min + product demo video under 3 min, GTM and demand validation
