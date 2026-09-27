@@ -6,7 +6,7 @@ import { useNuntiusAuth, useSignOut, useVerifySeekerMutation } from '@/features/
 import { AccountFeatureSignIn } from '@/features/account/account-feature-sign-in'
 import { usePushRegistration } from '@/features/push/use-push-registration'
 import { useDemoOverCap, useMandateList, useReceipts, useRevoke } from '@/features/mandates/use-mandates'
-import type { MandateView, OtherDelegation } from '@/features/mandates/mandates-api'
+import { ApiError, type MandateView, type OtherDelegation } from '@/features/mandates/mandates-api'
 import { ReceiptRow } from '@/components/receipt-row'
 import { remainingShare, resetsIn, shortAddr } from '@/core/format'
 import { refreshWidget } from '@/features/widget/refresh-widget'
@@ -53,9 +53,15 @@ function SignedIn() {
   const receipts = useReceipts(auth)
   const data = list.data
 
+  const signOut = useSignOut()
   useEffect(() => {
     if (data) void refreshWidget(auth.session)
   }, [data, auth.session])
+  // Sessions expire after 30 days server-side; an expired one goes back to sign-in.
+  const expired = list.error instanceof ApiError && list.error.code === 'session_invalid'
+  useEffect(() => {
+    if (expired) void signOut()
+  }, [expired, signOut])
 
   return (
     <View style={{ gap: 14 }}>

@@ -200,3 +200,12 @@ test('digestDue fires once per local day at or after the chosen hour', () => {
   assert.equal(digestDue(at(22), { ...pref, lastSentDay: '2026-10-01' }), false, '01:00 next local day is before 08:00')
   assert.equal(digestDue(at(29), { ...pref, lastSentDay: '2026-10-01' }), true, '08:00 next local day')
 })
+
+test('sessions expire 30 days after sign-in', async () => {
+  const { openDb, Store, SESSION_TTL_MS } = await import('./db.js')
+  const store = new Store(openDb(':memory:'))
+  const t0 = Date.UTC(2026, 8, 1)
+  store.createSession('T'.repeat(43), 'Addr', t0)
+  assert.ok(store.getSession('T'.repeat(43), t0 + SESSION_TTL_MS - 1))
+  assert.equal(store.getSession('T'.repeat(43), t0 + SESSION_TTL_MS), null)
+})

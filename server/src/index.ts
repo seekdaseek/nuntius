@@ -65,7 +65,10 @@ async function loadDelegationSigners(): Promise<
   }
 }
 
-const delegationSigners = await loadDelegationSigners()
+// The BRIEF-05/06 spike routes (/api/delegation/*) can trigger pulls with an
+// arbitrary amount. They only exist when explicitly asked for — never because a
+// CLI keypair happens to sit in the default path on the host.
+const delegationSigners = process.env.SPIKE_ROUTES === '1' ? await loadDelegationSigners() : undefined
 
 /**
  * mandatum. Off unless MANDATE_CLUSTER is set. On mainnet the executor key must

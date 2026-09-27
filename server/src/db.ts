@@ -60,6 +60,8 @@ export function openDb(file: string): Database.Database {
   return db
 }
 
+export const SESSION_TTL_MS = 30 * 24 * 3600 * 1000
+
 export class Store {
   private readonly insertNonce
   private readonly consumeNonceStmt
@@ -87,7 +89,9 @@ export class Store {
     this.insertSession = db.prepare(
       'INSERT INTO sessions (token, address, created_at) VALUES (@token, @address, @createdAt)',
     )
-    this.selectSession = db.prepare('SELECT address, sgt_mint FROM sessions WHERE token = @token')
+    this.selectSession = db.prepare(
+      'SELECT address, sgt_mint FROM sessions WHERE token = @token AND created_at > @notBefore',
+    )
     this.releaseSgtMint = db.prepare('UPDATE sessions SET sgt_mint = NULL WHERE sgt_mint = @mint AND token != @token')
     this.setSgtMint = db.prepare('UPDATE sessions SET sgt_mint = @mint WHERE token = @token')
     // Re-registering an existing token updates in place — unique on token, never duplicated.
@@ -155,8 +159,15 @@ export class Store {
     this.insertSession.run({ token, address, createdAt: nowMs })
   }
 
-  getSession(token: string): { address: string; sgtMint: string | null } | null {
-    const row = this.selectSession.get({ token }) as { address: string; sgt_mint: string | null } | undefined
+  /**
+   * A session lives SESSION_TTL_MS (30 days) from sign-in, then the wallet must
+   * sign in again. It never authorizes a transfer on its own — every grant and
+   * revoke is still signed in Seed Vault — but a token that never expires is a
+   * standing liability on a lost phone.
+   */
+  getSession(token: string, nowMs: number = Date.now()): { address: string; sgtMint: string | null } | null {
+    const row = this.selectSession.get({ token, notBefore: nowMs - SESSION_TTL_MS }) as
+      { address: string; sgt_mint: string | null } | undefined
     return row ? { address: row.address, sgtMint: row.sgt_mint } : null
   }
 
