@@ -1,12 +1,34 @@
 # nuntius — mandatum
 
-**Money that moves without you opening the app: a capped, revocable, recurring on-chain payment authority you grant once in Seed Vault, and a push that arrives as the receipt.**
+**Grant a payment once in Seed Vault. The chain holds the line. Your phone gets a receipt for every pull, including the ones the chain refused.**
 
-`nuntius` is the app. **mandatum** is what it does — a recurring delegation the user authorizes a single time, after which a delegatee may pull up to a hard per-period cap, on schedule, while the phone stays in a pocket. Every pull fires a push that taps through to evidence: how much moved, how much is left this period, when the cap resets, and a link to the transaction. Revocation is one transaction and the user owns it.
+`nuntius` is the app. **mandatum** is what it does: a capped, revocable, recurring on-chain payment authority. The user fills in one sentence (_"Rent to Ana can receive up to 25 USDC every week, until 26 Dec 2026"_) and approves it with **one** Seed Vault signature. After that, payments run on schedule while the phone stays in a pocket. Anything above the cap is rejected by the Solana Subscriptions program itself, with custom error `0x190`. Every pull, and every refusal, arrives as a push that opens the on-chain proof. Revoking is also one signature.
 
-Built for the Solana Seeker. Android only — Mobile Wallet Adapter and Seed Vault are the mechanism, not decoration.
+nuntius also works as a **permission manager for the whole Subscriptions standard**. It lists every delegation the wallet has granted, whether to nuntius or to any other app. It sends a receipt when _any_ delegatee pulls. It flags permissions that were created outside nuntius, and it revokes any of them with one approval.
+
+Built for the Solana Seeker. Android only: Mobile Wallet Adapter and Seed Vault are the mechanism, not decoration.
+
+|                              |                                                                      |
+| ---------------------------- | -------------------------------------------------------------------- |
+| Judges, start here           | [JUDGE_GUIDE.md](JUDGE_GUIDE.md): install and verify in five minutes |
+| Threat model                 | [SECURITY.md](SECURITY.md): what the cap bounds and what it does not |
+| Build state                  | [STATUS.md](STATUS.md)                                               |
+| Why this, not something else | [RESEARCH.md](RESEARCH.md), [PLAN.md](PLAN.md)                       |
 
 ---
+
+## What this build adds (Crypto World's Fair window, from 14 Sep 2026)
+
+| Feature                                                                                                                                                                                                                                     | Where                                       | Evidence                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| **One-signature grant.** `initSubscriptionAuthority` and `createRecurringDelegation` go in one transaction, using the program's `UNKNOWN_INIT_ID` same-slot check (or the real `init_id` when the authority already exists)                 | `server/src/mandate-chain.ts`               | localnet against the real program: one required signer, delegation live with the exact terms |
+| **One-signature revoke.** `revokeDelegation`, plus `revokeSubscriptionAuthority` when it is the last delegation on that mint, in one transaction                                                                                            | `mandate-chain.ts`                          | localnet: `delegate: none` after the last revoke                                             |
+| **Rule-creation screen.** One sentence with four blanks; the text shown is the server's parse of the exact terms                                                                                                                            | `app/new.tsx`, `server/src/mandate-text.ts` | unit tests; rendered in the web build                                                        |
+| **Hardened executor.** Idempotent per (delegation, period); a replacement is built only after the old blockhash is dead; backoff with jitter; 0x190 recorded as a refusal and receipt, never retried; revocation and expiry end the mandate | `server/src/executor.ts`                    | 12 unit tests on a simulated program and 4 localnet tests on the real one                    |
+| **Guard.** Receipts for delegations nuntius did not create: foreign pulls, foreign 0x190 refusals, new permissions, revocations                                                                                                             | `server/src/guard.ts`                       | 5 localnet tests with a foreign delegatee                                                    |
+| **Tier gate.** The guard is free for any wallet; Seeker verification lifts the limit from 1 mandate to 10 and adds the digest and streak                                                                                                    | `server/src/tier.ts`                        | unit and API tests                                                                           |
+| **Daily clock-in.** A morning digest at an hour the user sets, and a streak of days checked in                                                                                                                                              | `server/src/digest*.ts`, `app/digest.tsx`   | unit and API tests                                                                           |
+| **Home-screen widget.** Cap left and time to reset for each permission, plus the clock-in                                                                                                                                                   | `features/widget/*`, `core/widget-model.ts` | view-model unit tests; `expo prebuild` generates the receiver. On-device: **UNTESTED**       |
 
 ## The primitive
 
@@ -72,10 +94,33 @@ The full life cycle ran end to end on mainnet-beta, signed by Seed Vault on the 
 
 Cap was 10,000 base units (0.01 USDC) per 60-second period. 17,000 base units moved in total across four pulls. The delegator's SOL ended 112,000 lamports down — both account rents were returned by the revokes.
 
+**On localnet — the real program, built from source (2026-09-27)**
+
+The build environment cannot reach devnet or mainnet. Instead, `scripts/localnet.sh` builds `solana-foundation/subscriptions` at **`364a419`**, the commit the program's CHANGELOG names as the mainnet release, and loads it at its canonical address in `solana-test-validator` (Agave 3.1.10). Binary sha256: `31309d4202746b1af2040b792c127cde51cd549b5738096603e4504a30974648`. Whether this binary is byte-identical to mainnet is **not measured** yet (see MAC-HANDOFF.md).
+
+```
+$ LOCALNET_RPC=http://127.0.0.1:8899 npm --prefix server test
+ℹ tests 51
+ℹ pass 51
+ℹ fail 0
+```
+
+These tests cover:
+
+- **One-signature grant**: exactly one required signer, and the token account delegate is the authority PDA at `u64::MAX`.
+- **Pulls**: signed by the delegatee alone.
+- **Refusals**: an over-cap pull and a pull of one base unit over are both refused with `{"Custom":400}` and move nothing.
+- **Second mandate on the same authority**: uses the real `init_id`.
+- **Revoke**: one-signature revoke that keeps the authority while another mandate needs it and clears it with the last one.
+- **Executor**: pulls, rolls the period and pulls again with no user signature, lands a real 0x190, and notices a revoke.
+- **Guard**: sends receipts for a foreign delegatee.
+- **HTTP API**: the whole surface, driven exactly as the app drives it.
+
 **Not yet proven**
 
-- The executor is a single in-process timer. Durability, leader election, delegatee fee funding, KMS custody and observability are documented as production needs in `server/src/executor.ts` rather than half-built.
-- The rule-creation UI, the tier gate, the widget and the daily digest are not built.
+- **Seed Vault signing the one-transaction grant on the Seeker, on mainnet.** The two-transaction grant was signed on mainnet on 22 Sep. The one-transaction version is proven only on localnet so far. **UNTESTED on device.**
+- **Parts of the app not yet exercised on the phone.** The new screens, the widget, persisted sessions and the digest push have been rendered only in a web build against localnet, not on the phone. **UNTESTED on device.**
+- **Executor limits.** The executor runs as a single process, and the delegatee key is a file, not a KMS (SECURITY.md §4).
 
 ---
 
@@ -83,73 +128,77 @@ Cap was 10,000 base units (0.01 USDC) per 60-second period. 17,000 base units mo
 
 ```
 Seeker (React Native, Expo SDK 55, expo-router)
-  │  MWA + Seed Vault  — signs; never holds a server key
-  │  FCM               — notification + data, routed to the `alerts` channel
+  │  MWA + Seed Vault  — signs ONE transaction per grant or revoke; never holds a server key
+  │  FCM               — receipts on the HIGH `alerts` channel, the digest on the quiet `digest` channel
+  │  home-screen widget — headless render from /api/widget, cached for offline
   ▼
 Node backend (Express 5, TypeScript ESM, SQLite)
-  │  builds every transaction with the subscriptions SDK's overlay builders,
-  │  hands the device ONE base64 transaction to sign
+  │  mandates API       — preview, create (unsigned tx), confirm-against-chain, list, revoke
+  │  executor           — pulls once per (delegation, period); idempotent ledger; backoff
+  │  guard              — every delegation on the wallet: foreign pulls, refusals, new grants, revokes
+  │  digest scheduler   — once per local day at the user's hour (Seeker tier)
   │  allowlisted RPC proxy — the Helius key never enters the app bundle
   ▼
-Subscriptions Delegation Program (mainnet)
+Solana Subscriptions program  De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44
 ```
 
-The device never carries the subscriptions SDK. The server composes instructions with the SDK's `get*OverlayInstruction*` builders, which return plain Kit `Instruction`s, so `@solana/kit` v7 stays out of the app bundle while the app resolves v6 at its root.
+The device never carries the subscriptions SDK. The server composes instructions with the SDK's overlay builders and hands the phone base64 bytes in which the user is fee payer and sole signer. `@solana/kit` v7 stays on the server; the app resolves v6.
 
-Push is sent as **`notification` + `data`**, not data-only: a data-only FCM message returns 200 but never wakes a killed app without a background task, and waking a phone the user is not holding is the entire point.
+Push is sent as **`notification` + `data`**, not data-only. A data-only FCM message returns 200 but never wakes a killed app without a background task, and waking a phone the user is not holding is the entire point. This was proven on device on 2026-09-09.
 
 ---
 
 ## Run it
 
+### Tests
+
+```bash
+npm ci && npm run test:core                 # app logic: widget model, form checks, formatting (node --test)
+npx tsc --noEmit && npx expo lint && npx prettier --check .
+
+cd server && npm ci
+npm test                                    # unit tests; localnet suites report "skipped"
+../scripts/localnet.sh &                    # validator + the program built from 364a419 (first run builds it)
+npm run test:localnet                       # everything, against the real program
+```
+
 ### Backend
 
 ```bash
-cd server
-npm install
-npm run build
-npm start
+cd server && npm ci && npm run build && npm start
 ```
 
-Listens on `127.0.0.1:8787`, loopback only. Configuration is read from `server/.env`, which is gitignored and must be created by hand:
-
-| var                   | required                                | meaning                                                                                                             |
-| --------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `NUNTIUS_DOMAIN`      | yes                                     | SIWS binding domain, a bare host such as `ochinimus.app`. Signed messages must carry exactly this domain.           |
-| `HELIUS_RPC`          | for the Seeker gate and all chain reads | Mainnet RPC URL including the API key. Without it `/api/verify-seeker` answers 503 and everything else still works. |
-| `PORT`                | no                                      | Defaults to `8787`.                                                                                                 |
-| `FCM_SERVICE_ACCOUNT` | for push                                | Path to a Firebase service-account JSON. Must be set together with `FCM_PROJECT_ID`.                                |
-| `FCM_PROJECT_ID`      | for push                                | Firebase project id.                                                                                                |
-
-Endpoint semantics, including why each one fails closed, are in [`server/README.md`](server/README.md).
+Listens on `127.0.0.1:8787`, loopback only. Configuration comes from `server/.env`, which is gitignored. Every variable is listed with placeholders in [`server/.env.example`](server/.env.example). Mandates are off unless `MANDATE_CLUSTER` is set. On mainnet the executor key must already exist at `MANDATE_DELEGATEE` and be funded for fees; the server will not invent a mainnet key. Endpoint semantics for auth, SGT and push are in [`server/README.md`](server/README.md); the mandate routes are documented at the top of [`server/src/mandates-api.ts`](server/src/mandates-api.ts).
 
 ### App
 
-Requires a real Android device — Mobile Wallet Adapter needs Kotlin native modules, so **Expo Go will not work**. A custom dev build is mandatory.
+The app needs a real Android device. Mobile Wallet Adapter uses Kotlin native modules, so **Expo Go will not work**. See [MAC-HANDOFF.md](MAC-HANDOFF.md) for the exact build.
 
 ```bash
-npm install
+npm ci
 npx expo prebuild -p android
 cd android && ANDROID_HOME=/path/to/android-sdk ./gradlew app:assembleDebug --no-daemon -PreactNativeArchitectures=arm64-v8a
 cd .. && adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-adb reverse tcp:8787 tcp:8787   # device reaches the backend
-adb reverse tcp:8081 tcp:8081   # device reaches Metro
+adb reverse tcp:8787 tcp:8787 && adb reverse tcp:8081 tcp:8081
 npm run dev
 ```
 
-Both `adb reverse` mappings are lost on every reinstall and on reconnect — re-run them after each `adb install`, or the app reports a useless "Failed to connect to localhost:8081".
-
-A **release** build cannot reach a local dev backend, because release blocks cleartext HTTP. That is a dev-only constraint (production is HTTPS), but device tests that need the backend must use the debug build.
+The screens can also be rendered in a browser for review: `npx expo export -p web`, then run `server/src/tools/preview-server.ts` against a localnet. Wallet signing does not exist on web.
 
 ---
 
 ## Security posture
 
-- No secrets in the repository, and none in its history — `.env`, keystores, Firebase service accounts, `google-services.json` and the delegatee key are all gitignored, and the full object history was scanned for both secret-shaped paths and the exact live secret values before this repo was made public.
-- The Helius API key never enters the app bundle. The app reaches the chain through an allowlisted server proxy that forwards only `getBalance`, `getVersion`, `getGenesisHash` and `getLatestBlockhash`; batches and every other method are rejected.
-- SIWS nonces are crypto-random, five-minute, and consumed **atomically** — genuinely single-use, not best-effort.
-- Push tokens are session-gated: a token binds to the verified session's own wallet address, never to a client-supplied one.
-- Dependencies are pinned to exact versions in both `package.json` files.
+The full threat model is in [SECURITY.md](SECURITY.md). In short:
+
+- The per-period cap is enforced by the program, not by this code.
+- The SPL approval behind it is `u64::MAX`, and the program is upgradeable. Both are stated plainly.
+- The destination of a pull is bound by nuntius, not by the chain.
+- There are no secrets in the repository. `.env`, keystores, the Firebase service account, `google-services.json` and the delegatee key are gitignored.
+- Logs are JSON with API keys, keypairs and session and FCM tokens redacted.
+- SIWS nonces are single-use and atomic, and sessions expire after 30 days.
+- The legacy spike routes exist only with `SPIKE_ROUTES=1`.
+- Server `npm audit`: 0 vulnerabilities. App: 15 moderate, all transitive through the Expo SDK 55 toolchain (SECURITY.md §5).
 
 ---
 
@@ -157,11 +206,11 @@ A **release** build cannot reach a local dev backend, because release blocks cle
 
 **Disclosure, as the Colosseum rules require.**
 
-This repository was created on **9 September 2026**. All 41 commits that existed before this line was written are dated **9–10 September 2026**, which **predates the Crypto World's Fair submission window that opened on 14 September 2026**. That work was done for the Solana Mobile × RadiantsDAO _Clock In_ hackathon, whose window opened on 8 September 2026, and it is disclosed here rather than presented as in-window work.
-
-Everything in this repository was written from scratch for these two events. **No code was reused** from any earlier project. The commit history is complete and unrewritten; `git log` is the record.
-
-The one vendored third-party component is `.agents/skills/solana-dev`, the Solana Foundation's published development skill, included under its own MIT licence and pinned by hash in `skills-lock.json`.
+- **Before the window.** This repository was created on **9 September 2026**. **41 commits are dated 9–10 September 2026**, before the Crypto World's Fair window opened on 14 September 2026. That work was done for the Solana Mobile × RadiantsDAO _Clock In_ hackathon, whose window opened on 8 September. It is: SIWS auth, the Seeker Genesis Token gate, FCM push in all app states, the MWA cancel fix, and the devnet delegation spike.
+- **In the window.** From `819382d` (22 September) onward: the mainnet delegation path and the landed mainnet proof (22 September), then everything in _What this build adds_ above.
+- **Hashes and history.** Measure the split with `git log --before=2026-09-14 --oneline | wc -l`. Commit history up to `f25a9e9` is unrewritten. Later commits keep their original timestamps (author and committer dates) and are published under the repository owner's name.
+- **No reused code.** Everything in this repository was written for these two events. **No code was reused** from any earlier project.
+- **Third-party components.** The vendored component is `.agents/skills/solana-dev`, the Solana Foundation's published development skill, included under its own MIT licence and pinned by hash in `skills-lock.json`. The on-chain program is the Foundation's Subscriptions program, used as deployed. Its source is only fetched and built for local tests by `scripts/localnet.sh`; nothing of it is vendored here.
 
 ---
 

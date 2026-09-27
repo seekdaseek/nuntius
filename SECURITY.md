@@ -1,0 +1,76 @@
+# SECURITY
+
+Threat model for nuntius / mandatum: what the per-period cap bounds, what it does not, and what this codebase adds or leaves open. Every claim here is either measured by a test in this repository (the test is named) or recorded as proven on mainnet in README.md. Anything else is marked **UNTESTED** or **NOT BUILT**.
+
+Report a vulnerability to the repository owner through GitHub (`seekdaseek`). Please do not open a public issue for it.
+
+---
+
+## 1. What the user grants
+
+One transaction, one Seed Vault signature, two instructions of the Solana Foundation's Subscriptions program (`De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44`):
+
+1. `initSubscriptionAuthority` — creates a program-owned **Subscription Authority** PDA for `(user, mint)` and makes it the SPL delegate of the user's token account **for `u64::MAX`**.
+2. `createRecurringDelegation` — a delegation record: this delegatee may pull up to `amountPerPeriod` every `periodLengthS`, until `expiryTs`.
+
+Measured on a local validator running the program built from release commit `364a419` (`server/src/mandate-chain.localnet.test.ts`):
+
+- The grant transaction has exactly one required signer, the owner (`requiredSigners(...) == [owner]`).
+- After the grant, the token account reads `delegate = <authority PDA>` and `delegatedAmount = 18446744073709551615`. The test asserts both.
+
+## 2. What the cap bounds, and who enforces it
+
+| Guarantee                                                                                                                       | Enforced by                            | Evidence                                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| A pull above what is left in the period fails with `custom program error: 0x190` (`AmountExceedsPeriodLimit`) and moves nothing | the program                            | mainnet, 2026-09-22 (README); localnet tests `over-cap pull…`, `demo: one unit above…`                          |
+| Exactly one base unit over is refused                                                                                           | the program                            | localnet: `pull(1n)` after exhausting the cap → Custom 400                                                      |
+| Pulls are signed by the delegatee alone; the user signs nothing after the grant                                                 | the program's account checks           | mainnet signer sets (README); localnet `pull within the cap: signed by the delegatee alone`                     |
+| The period resets by whole periods; unused budget does not roll over                                                            | the program (`transfer_validation.rs`) | mainnet reset after 60 s (README); localnet `after the period rolls…`; `effectiveWindow` mirrors it (unit test) |
+| Nothing is pullable at or after `expiryTs`                                                                                      | the program (hard stop since 0.4.0)    | program CHANGELOG 0.4.0 (read); unit test on `effectiveWindow`                                                  |
+| After revoke, the delegation account is gone, further pulls fail, and the last revoke leaves `delegate: none`                   | the program                            | mainnet (README); localnet `revoke the last: one transaction clears the SPL delegate too`                       |
+
+**nuntius's server cannot raise any of these.** The executor key can only do what the delegation record allows. The cap is what bounds the damage if that key is stolen.
+
+## 3. What the cap does NOT bound
+
+State these plainly to any user:
+
+1. **The SPL approval is `u64::MAX`.** The per-period cap lives in the delegation record that the program checks, not in the token approval. While an authority is live, what stands between the delegatee and the **whole** balance of that token account is the Subscriptions program behaving correctly. Operational rule: keep a delegated account's balance near what its mandates need, and revoke when done.
+2. **The program is upgradeable.** The upgrade authority was measured at `DXtFpbPjcn2hxPnw79x1Pfoj35vXh5AsWBkS37YnXMVv` on 2026-09-22 (README). The program's own `docs/004-program-upgrade-mechanism.md` (read in this session) says upgrades go through a Squads multisig. An upgrade could change every rule in section 2. That is a dependency risk, and it is disclosed here rather than glossed over.
+3. **The destination is not bound by the program.** `transferRecurring` lets the delegatee name any token account of the right mint as the receiver. nuntius binds the destination **off chain**:
+   - `receiver_ata` = the payee's associated token account, stored at creation.
+   - The executor re-checks before every pull that it exists, holds the mandate's mint and is owned by the payee (`rpcChain.receiverOk`; unit test `an invalid receiver sends nothing`).
+   - A compromised nuntius server could redirect a mandate's pulls elsewhere, **up to the cap**. The cap bounds the amount, not the recipient.
+4. **Audit scope.** Cantina's latest report covers the program through commit `d6b3a5dc` (fixes verified through `debb4f75`), per the program's `audits/AUDIT_STATUS.md`. The one-transaction path used here (`UNKNOWN_INIT_ID`, #206, commit `55a3efd`) **is inside** that baseline (measured: `git merge-base --is-ancestor 55a3efd d6b3a5dc`). The release commit `364a419` is 8 commits after `debb4f75`. Those 8 commits are outside the audit.
+5. **Whether the mainnet binary equals this repository's localnet build** was **not measured**: mainnet RPC is not reachable from the build environment. Check it with `solana-verify` (see MAC-HANDOFF.md).
+
+## 4. Threats and what stops them
+
+| Threat                                                             | Mitigation                                                                                                                                                                                                   | Status                                                                                                                                     |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Executor key stolen                                                | Loss is capped per mandate per period by the program. Every user can revoke with one signature.                                                                                                              | Mitigated by the chain. Key custody is a file with mode `0600`, not a KMS: **NOT BUILT** (KMS/HSM)                                         |
+| Executor double-pulls a period after a crash or a lost transaction | A UNIQUE ledger row per `(delegation, period start)` stores the signature before sending. A replacement is built only after the old blockhash is past `lastValidBlockHeight`. The chain cap is the backstop. | Unit tests: `a lost transaction is replaced only after its blockhash is dead`, `a send that throws after the transfer landed is recovered` |
+| Two executor instances                                             | The UNIQUE claim works across processes sharing the SQLite file. There is no leader election across machines.                                                                                                | Partial. Multi-host: **NOT BUILT**                                                                                                         |
+| RPC flakiness makes the executor hammer or give up                 | Exponential backoff with jitter per mandate. A transport error never marks a pull failed.                                                                                                                    | Unit test `RPC failure backs off…`                                                                                                         |
+| Retrying a refusal wastes fees                                     | 0x190 is terminal for the period. When the period's cap is already used, the executor sends nothing.                                                                                                         | Unit tests `0x190…never retried`, `cap already used…`                                                                                      |
+| Grant for terms other than those shown                             | `/api/mandates/confirm` activates only when delegator, delegatee, mint, amount, period and expiry on chain equal the stored terms. Seed Vault shows the transaction before signing.                          | API localnet test `create → one owner signature → confirm`. Seed Vault display on device: **UNTESTED in this build**                       |
+| A permission appears that the user never made in nuntius           | The guard flags it with "granted outside nuntius — check it" and offers a one-signature revoke.                                                                                                              | Localnet test `a new permission appears that nuntius did not create: flagged`                                                              |
+| A foreign delegatee pulls or tries to over-pull                    | The guard sends a receipt with the amount from the transaction's own token balances, plus a "refused by the chain" receipt.                                                                                  | Localnet tests in `guard.localnet.test.ts`                                                                                                 |
+| Someone else's session reads or revokes my delegations             | Every route takes the wallet from the verified SIWS session, never from the body. Revoke checks on chain that the delegation's delegator is the session wallet.                                              | API localnet test (401/400 paths). Ownership is read from `listDelegations`                                                                |
+| Session token theft (lost phone, backup)                           | The token lives in app storage. It can list, and it can build **unsigned** transactions; it cannot move money. It expires 30 days after sign-in.                                                             | Unit test `sessions expire 30 days after sign-in`                                                                                          |
+| SIWS replay                                                        | Nonces are crypto-random, 5-minute, consumed atomically.                                                                                                                                                     | Proven on device (README)                                                                                                                  |
+| Secrets in logs                                                    | JSON logs pass through `redact()`, which strips API keys, bearer tokens, keypair arrays, FCM and session tokens. Signatures and addresses are kept.                                                          | Unit test `redact removes…`; the executor test asserts that no log line contains the injected API key                                      |
+| Helius key in the app                                              | The app only talks to the backend, and the RPC proxy is allowlisted.                                                                                                                                         | README (proven)                                                                                                                            |
+| A spike route pulls arbitrary amounts in production                | `/api/delegation/*` exists only with `SPIKE_ROUTES=1`.                                                                                                                                                       | `server/src/index.ts`                                                                                                                      |
+| Open-ended permissions                                             | Every nuntius mandate has an expiry of at most 365 days. There is a server-side beta ceiling per period (`MANDATE_MAX_PER_PERIOD`, default 100).                                                             | API localnet test `bad_until`, `over_beta_ceiling`                                                                                         |
+| Fee drain through many hourly mandates                             | Tier limits cap mandates at 1 (basic) or 10 (Seeker). The minimum period is 1 hour. The executor pays about 5,000 lamports per pull.                                                                         | Documented; no per-wallet fee budget: **NOT BUILT**                                                                                        |
+
+## 5. Dependencies
+
+- **Server**: `npm audit` → **0 vulnerabilities** (measured 2026-09-27). Versions are pinned exactly.
+- **App**: `npm audit --omit=dev` → **15 moderate**, all transitive through the Expo SDK 55 toolchain (`@expo/config-plugins` → `xcode` → `uuid`) and routing (`expo-router` → `query-string` → `decode-uri-component`). The baseline at `f25a9e9` had 14. The one added is `react-native-android-widget`, flagged only because it depends on `expo`. None is fixable without leaving Expo SDK 55.
+- The Subscriptions program is used as deployed; nothing of it is vendored. `@solana/subscriptions` 0.5.0 is pinned.
+
+## 6. Not built, and not claimed
+
+KMS custody of the delegatee key; multi-host leader election; a per-wallet fee budget; SKR-stake tier; push delivery receipts (FCM accepts the message, but whether the phone shows it is only proven on device, see README); iOS.
