@@ -54,3 +54,4 @@ fcm-service-account.json
 *service-account*.json
 *-adminsdk-*.json
 server/delegatee.json
+!.env.example
