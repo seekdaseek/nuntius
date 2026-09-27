@@ -19,8 +19,8 @@ import {
   readDelegation,
   ensureReceiverAta,
 } from './delegation.js'
-import type { TransactionSigner } from '@solana/kit'
-import type { Address } from '@solana/kit'
+import type { Address, TransactionSigner } from '@solana/kit'
+import { registerMandateRoutes, type MandateApiDeps } from './mandates-api.js'
 
 const SESSION_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/
 // A pull amount is a whole number of base units, capped only by what u64 can hold.
@@ -58,6 +58,7 @@ export function createApp(
   store: Store,
   fcm: FcmSender | null,
   delegation?: { payer: TransactionSigner; delegatee: TransactionSigner },
+  mandates?: Omit<MandateApiDeps, 'store'>,
 ): express.Express {
   const app = express()
   app.disable('x-powered-by')
@@ -512,6 +513,9 @@ export function createApp(
         res.status(502).json({ ok: false, error: e instanceof Error ? e.message : 'state_failed' })
       })
   })
+
+  // mandatum: one-signature grant/revoke, guard, receipts, digest, widget.
+  if (mandates) registerMandateRoutes(app, { ...mandates, store })
 
   app.use((_req, res) => {
     res.status(404).json({ ok: false, error: 'not_found' })

@@ -164,6 +164,21 @@ export class Store {
     this.upsertPushTokenStmt.run({ token, address, sgtMint, platform, now: nowMs })
   }
 
+  /** Seeker verification for a wallet, from any of its sessions. Used where no session is in hand (scheduled digest). */
+  sgtForAddress(address: string): string | null {
+    const r = this.db
+      .prepare('SELECT sgt_mint FROM sessions WHERE address = ? AND sgt_mint IS NOT NULL LIMIT 1')
+      .get(address) as { sgt_mint: string } | undefined
+    return r?.sgt_mint ?? null
+  }
+
+  /** Every wallet with at least one registered device — the set the guard watches. */
+  pushAddresses(): string[] {
+    return (this.db.prepare('SELECT DISTINCT address FROM push_tokens').all() as { address: string }[]).map(
+      (r) => r.address,
+    )
+  }
+
   getPushTokens(address: string): string[] {
     const rows = this.selectPushTokens.all({ address }) as { token: string }[]
     return rows.map((r) => r.token)
