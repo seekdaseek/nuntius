@@ -4,9 +4,11 @@ export class AppConfig {
   /**
    * Base URL of the nuntius backend. In development the Seeker reaches the Mac's
    * dev server through `adb reverse tcp:8787 tcp:8787`, so localhost is correct
-   * on-device. Swap for the VPS hostname at deploy time.
+   * on-device. A release build blocks cleartext, so it MUST be built with
+   * EXPO_PUBLIC_API_BASE=https://<backend host> (inlined by Expo at bundle time;
+   * see MAC-HANDOFF.md). It is a public URL, not a secret.
    */
-  static apiBase = 'http://localhost:8787'
+  static apiBase = process.env.EXPO_PUBLIC_API_BASE ?? 'http://localhost:8787'
 
   /**
    * MWA app identity. `uri` must be absolute (wallets may decline authorization
