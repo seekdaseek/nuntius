@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>nuntius — deck</title>
+<style>
+  @page { size: 1600px 900px; margin: 0; }
+  :root { --paper:#F6F4EE; --ink:#101418; --muted:#5C636B; --faint:#E4E1D8; --chain:#127A4E; --chainSoft:#E3F2EA; --refused:#B3261E; --refusedSoft:#FBE9E7; --amber:#9A6200; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: Inter, Roboto, "Helvetica Neue", Arial, sans-serif; color: var(--ink); background: var(--paper); }
+  .slide { width:1600px; height:900px; padding:72px 88px; page-break-after: always; position: relative; overflow: hidden; background: var(--paper); display:flex; flex-direction:column; }
+  .slide:last-child { page-break-after: auto; }
+  .kicker { font-size:20px; font-weight:700; color: var(--muted); letter-spacing:.06em; text-transform:uppercase; }
+  h1 { font-size:72px; line-height:1.04; margin:14px 0 0; letter-spacing:-1.5px; }
+  h2 { font-size:52px; line-height:1.08; margin:12px 0 28px; letter-spacing:-1px; }
+  p, li { font-size:26px; line-height:1.4; }
+  .muted { color: var(--muted); }
+  .green { color: var(--chain); } .red { color: var(--refused); }
+  .row { display:flex; gap:36px; align-items:flex-start; }
+  .card { background:#fff; border:1px solid var(--faint); border-radius:22px; padding:26px 28px; }
+  .card.chain { background: var(--chainSoft); border-color:#BFE0CD; }
+  .card.refused { background: var(--refusedSoft); border-color:#F2C4BF; }
+  .card h3 { font-size:28px; margin:0 0 8px; }
+  .card p { font-size:22px; margin:0; color: var(--muted); }
+  .phone { height:640px; border-radius:28px; border:10px solid #1B1F24; background:#1B1F24; box-shadow: 0 20px 50px rgba(0,0,0,.12); }
+  .cap { font-size:16px; color: var(--muted); margin-top:10px; max-width:340px; }
+  table { border-collapse: collapse; width:100%; font-size:21px; }
+  td, th { text-align:left; padding:11px 14px; border-bottom:1px solid var(--faint); vertical-align: top; }
+  th { color: var(--muted); font-weight:600; font-size:18px; text-transform: uppercase; letter-spacing:.04em; }
+  code, .mono { font-family: "JetBrains Mono", Menlo, Consolas, monospace; font-size: .86em; }
+  .foot { position:absolute; bottom:34px; left:88px; right:88px; display:flex; justify-content:space-between; font-size:16px; color: var(--muted); }
+  .big { font-size:120px; font-weight:800; letter-spacing:-3px; line-height:1; }
+  .pill { display:inline-block; padding:6px 16px; border-radius:999px; font-weight:700; font-size:18px; background: var(--chainSoft); color: var(--chain); }
+  .pill.red { background: var(--refusedSoft); color: var(--refused); }
+  .pill.amber { background:#FFF3DC; color: var(--amber); }
+  ul { margin: 0; padding-left: 28px; } li { margin: 6px 0; }
+  .tx { display:flex; gap:18px; align-items:stretch; }
+  .ix { flex:1; border:2px solid var(--ink); border-radius:18px; padding:20px 22px; background:#fff; }
+  .ix b { font-size:24px; display:block; margin-bottom:6px; } .ix span { font-size:20px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- 1 -->
+<section class="slide" style="justify-content:center">
+  <div class="kicker">Solana Seeker · Subscriptions standard · Clock In &amp; Crypto World's Fair</div>
+  <h1 style="font-size:120px;margin-top:22px">nuntius</h1>
+  <p style="font-size:44px;margin:18px 0 0;font-weight:700">Grant it once in Seed Vault.<br/>The chain holds the line.</p>
+  <p class="muted" style="margin-top:30px">A capped, revocable, recurring payment you approve once, with a push receipt for every pull, including the ones the chain refused.</p>
+  <div class="foot"><span>github.com/seekdaseek/nuntius · MIT</span><span>Sergiu · ochinimus · Chisinau</span></div>
+</section>
+
+<!-- 2 -->
+<section class="slide">
+  <div class="kicker">Problem</div>
+  <h2>Solana has a recurring-payments standard.<br/>Users have no place to see or stop it.</h2>
+  <div class="row">
+    <div class="card" style="flex:1"><h3>Live since 2 June 2026</h3><p>The Foundation's Subscriptions program. Audited by Cantina. The same address on devnet and mainnet.</p></div>
+    <div class="card refused" style="flex:1"><h3>u64::MAX at the token level</h3><p>Every grant makes a program PDA the token account's delegate for the maximum amount. The per-period cap lives inside the program.</p></div>
+    <div class="card" style="flex:1"><h3>Every integration is merchant-side</h3><p>Plans, billing, collection. We found no wallet or app that shows the user these permissions, alerts when money moves, or ends them in one tap.</p></div>
+  </div>
+  <p class="muted" style="margin-top:30px;font-size:20px">Sources: the program repository and CHANGELOG (read at commit 299dfea); twins survey in RESEARCH.md. "Merchant-side only" is a search result, not a census.</p>
+</section>
+
+<!-- 3 -->
+<section class="slide">
+  <div class="kicker">Product</div>
+  <h2>Grant. Watch. Control.</h2>
+  <div class="row" style="align-items:center">
+    <div style="flex:1;display:flex;flex-direction:column;gap:22px">
+      <div class="card"><h3>Grant, in one sentence</h3><p>"Ana can receive up to 25 USDC every week, until 26 Dec." One Seed Vault approval. The first payment goes out at once, then one per period, with the phone in your pocket.</p></div>
+      <div class="card chain"><h3>Watch, with a receipt for every pull</h3><p>Every pull opens the on-chain proof. When anything asks above the cap, the program refuses it (0x190) and the phone says so.</p></div>
+      <div class="card"><h3>Control every permission</h3><p>All Subscriptions delegations on the wallet, to nuntius or to any other app. Each ends with one approval.</p></div>
+    </div>
+    <div style="text-align:center"><img class="phone" style="height:580px" src="img/02-permissions.png"/><div class="cap">Permissions screen. Web build of the app against a local validator running the real program; test mint tUSDC.</div></div>
+  </div>
+</section>
+
+<!-- 4 -->
+<section class="slide">
+  <div class="kicker">The phone</div>
+  <h2>What the user sees</h2>
+  <div class="row" style="justify-content:space-between">
+    <div style="text-align:center"><img class="phone" style="height:560px" src="img/03-new-mandate.png"/><div class="cap">The sentence is the server's parse of the exact terms the transaction carries.</div></div>
+    <div style="text-align:center"><img class="phone" style="height:560px" src="img/07-pull-receipt.png"/><div class="cap">Pull receipt: what moved, what is left, the reset, the transaction.</div></div>
+    <div style="text-align:center"><img class="phone" style="height:560px" src="img/06-refused-receipt.png"/><div class="cap">Refused by the chain: 0x190. One base unit over is enough to be refused.</div></div>
+  </div>
+  <p class="muted" style="font-size:18px;margin-top:14px">All three are the real app screens, rendered from its web build against a local validator (test mint tUSDC). On-device recording: see the demo video.</p>
+</section>
+
+<!-- 5 -->
+<section class="slide">
+  <div class="kicker">How one approval is enough</div>
+  <h2>Authority and delegation in one transaction</h2>
+  <div class="tx">
+    <div class="ix"><b>initSubscriptionAuthority</b><span>Creates the (user, mint) authority PDA and makes it the token account's delegate. Idempotent when it already exists.</span></div>
+    <div style="font-size:48px;align-self:center">+</div>
+    <div class="ix"><b>createRecurringDelegation</b><span>Amount per period, period length, expiry. It pins the authority's <code>init_id</code>, or <code>UNKNOWN_INIT_ID</code> when the authority is created in the same slot (program 0.5.0, #206).</span></div>
+    <div style="font-size:48px;align-self:center">=</div>
+    <div class="ix" style="border-color:var(--chain)"><b class="green">1 signer: the user</b><span>One Seed Vault sheet. Revoke is the same: <code>revokeDelegation</code> + <code>revokeSubscriptionAuthority</code> in one transaction when it is the last delegation on that mint.</span></div>
+  </div>
+  <div class="row" style="margin-top:36px">
+    <div class="card chain" style="flex:1"><h3>Measured</h3><p>The localnet test asserts the grant's required signers are <code>[owner]</code>, the delegation carries the exact terms, and the token account delegate is the authority at <code>18446744073709551615</code>.</p></div>
+    <div class="card" style="flex:1"><h3>Not yet measured</h3><p>Seed Vault signing the one-transaction grant on the Seeker, on mainnet. The two-transaction grant was signed there on 22 Sep. The one-transaction version is still to be recorded (see "Next").</p></div>
+  </div>
+</section>
+
+<!-- 6 -->
+<section class="slide">
+  <div class="kicker">Proof · mainnet-beta · real USDC · 22 Sep 2026</div>
+  <h2>It already ran on mainnet from the phone</h2>
+  <table>
+    <tr><th>Step</th><th>Result</th><th>Signature</th></tr>
+    <tr><td>initSubscriptionAuthority · createRecurringDelegation</td><td>signed by Seed Vault, Seeker SM02E4060327059</td><td class="mono">bBNbUgwh…qGS2Sks · 5r7YnGrb…FUGinugMw</td></tr>
+    <tr><td>transferRecurring ×4</td><td class="green">17,000 base units moved; one signer, the delegatee</td><td class="mono">59Zn57sY… 5kSbpeH6… 3utaq3gm… 41emXYEH…</td></tr>
+    <tr><td>Pull of 2× the cap</td><td class="red">custom program error 0x190, landed</td><td class="mono">3RpcCkkL…PmaZpWyR7</td></tr>
+    <tr><td>One unit after the cap was used</td><td class="red">0x190, landed</td><td class="mono">5ryxPMPj…oQ1TKAjsDpd</td></tr>
+    <tr><td>Period rolled (60 s)</td><td class="green">pull allowed again, no new user signature</td><td class="muted">see README</td></tr>
+    <tr><td>revokeDelegation · revokeSubscriptionAuthority</td><td>both PDAs closed; <code>delegate: none</code></td><td class="mono">Vh2yr9VT… · 2doDFNXU…</td></tr>
+    <tr><td>Pull after revocation</td><td class="red">fails: account gone</td><td class="mono">cfESoUjx…uSqzEzTtM5GPzm</td></tr>
+  </table>
+  <p class="muted" style="font-size:18px">Cap 10,000 base units (0.01 USDC) per 60 s. The delegator ended 112,000 lamports down; both rents came back on revoke. Full signatures and Explorer links: README.md and JUDGE_GUIDE.md.</p>
+</section>
+
+<!-- 7 -->
+<section class="slide">
+  <div class="kicker">Proof · the real program, built from its release commit</div>
+  <div class="row" style="align-items:center;margin-top:10px">
+    <div style="flex:0 0 520px">
+      <div class="big green">51 / 51</div>
+      <p style="margin-top:14px">tests pass against <b>solana-foundation/subscriptions @ 364a419</b>, the commit its CHANGELOG names as the mainnet release, in a local validator (Agave 3.1.10).</p>
+      <p class="muted" style="font-size:18px">sha256 31309d42…a30974648 · <code>scripts/localnet.sh</code> reproduces it</p>
+    </div>
+    <div style="flex:1">
+      <ul>
+        <li>One-signature grant; second mandate reuses the authority with the real <code>init_id</code></li>
+        <li>Delegatee-only pulls; over-cap and one-unit-over refused with <code>{"Custom":400}</code></li>
+        <li>Executor: pulls, period roll and a second pull, a real 0x190, notices a revoke</li>
+        <li>Guard: receipts for a foreign delegatee's pulls and refusals; flags new grants</li>
+        <li>HTTP API end to end, driven exactly as the app drives it</li>
+        <li>Revoke of the last delegation leaves <code>delegate: none</code></li>
+      </ul>
+      <p class="muted" style="font-size:18px;margin-top:16px">Also: 24 server unit tests, 6 app-logic tests, typecheck, lint and prettier clean. Whether the local binary is byte-identical to mainnet has not been measured yet.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 8 -->
+<section class="slide">
+  <div class="kicker">Engineering</div>
+  <h2>An executor that cannot double-pull</h2>
+  <div class="row">
+    <div class="card" style="flex:1"><h3>Idempotent per period</h3><p>One ledger row per (delegation, period start), holding the signature <i>before</i> sending. A replacement is built only once the old blockhash can no longer land.</p></div>
+    <div class="card refused" style="flex:1"><h3>0x190 is final</h3><p>Recorded as a refusal, pushed once, never retried. If the period's cap is already used, nothing is sent: no fees spent on a known no.</p></div>
+    <div class="card" style="flex:1"><h3>Flaky RPC, gone users</h3><p>Exponential backoff with jitter. A closed delegation means revoked; past expiry means over. Each ends with one receipt.</p></div>
+  </div>
+  <p class="muted" style="margin-top:30px;font-size:20px">12 unit tests on a simulated program (lost transactions, restarts, a send that throws after landing, max attempts). Logs are JSON with keys and tokens redacted.</p>
+</section>
+
+<!-- 9 -->
+<section class="slide">
+  <div class="kicker">Stickiness</div>
+  <h2>It comes to you, every day</h2>
+  <div class="row" style="align-items:center">
+    <div style="flex:1;display:flex;flex-direction:column;gap:20px">
+      <div class="card"><h3>A receipt on every pull</h3><p>Money moves while the app is closed. The push is the reason to look.</p></div>
+      <div class="card"><h3>Morning clock-in</h3><p>At the hour you choose: what moved overnight, what was refused, what is left. Opening it is the clock-in, and it keeps a streak.</p></div>
+      <div class="card"><h3>Home-screen widget</h3><p>Cap left and time to reset for each permission.</p><img src="img/widget.png" style="width:360px;margin-top:12px"/></div>
+    </div>
+    <div style="text-align:center"><img class="phone" style="height:580px" src="img/04-clock-in.png"/><div class="cap">Clock-in screen, web build against a local validator (test mint).</div></div>
+  </div>
+</section>
+
+<!-- 10 -->
+<section class="slide">
+  <div class="kicker">Security · stated, not glossed</div>
+  <h2>What the cap bounds, and what it does not</h2>
+  <div class="row">
+    <div class="card chain" style="flex:1"><h3>Bounded by the program</h3><p>Amount per period (0x190); the delegatee is the only signer; whole-period resets; hard expiry; revoke closes it. Our server cannot raise any of it.</p></div>
+    <div class="card refused" style="flex:1"><h3>Not bounded by the cap</h3><p>The token approval is <b>u64::MAX</b>. The program is <b>upgradeable</b> (Squads multisig, per its ADR-004). The <b>destination</b> is bound by nuntius, not by the chain.</p></div>
+  </div>
+  <div class="row" style="margin-top:26px">
+    <div class="card" style="flex:1"><h3>Audit scope</h3><p>The one-transaction path (#206) is inside Cantina's audited baseline d6b3a5dc. The release commit is 8 commits past the audit-fix commit.</p></div>
+    <div class="card" style="flex:1"><h3>This codebase</h3><p>No secrets in the repo; SIWS nonces are single-use; sessions expire in 30 days; the server has 0 npm advisories. Full table in SECURITY.md.</p></div>
+  </div>
+</section>
+
+<!-- 11 -->
+<section class="slide">
+  <div class="kicker">Field</div>
+  <h2>Nobody else ships this on Seeker</h2>
+  <table>
+    <tr><th></th><th>Standard audited program</th><th>Per-period cap</th><th>One Seed Vault approval</th><th>Receipt per pull</th><th>Other apps' permissions</th><th>Mainnet</th></tr>
+    <tr><td><b>nuntius</b></td><td class="green">yes</td><td class="green">yes</td><td class="green">yes (localnet-proven)</td><td class="green">yes, incl. refused</td><td class="green">yes</td><td class="green">yes (22 Sep)</td></tr>
+    <tr><td>Veto (Clock In)</td><td>own Anchor program</td><td>total and daily limits</td><td>Seed Vault owner key</td><td>on-chain refusal records</td><td>no</td><td>devnet</td></tr>
+    <tr><td>Kin (Clock In)</td><td>plain SPL approve</td><td>per round</td><td>MWA</td><td>reminders</td><td>no</td><td>devnet</td></tr>
+    <tr><td>Loonie</td><td class="green">yes</td><td class="green">yes</td><td>web wallet</td><td>no</td><td>no</td><td>devnet</td></tr>
+    <tr><td>Explorer card</td><td class="green">yes</td><td>read-only</td><td>—</td><td>no</td><td>read-only</td><td class="green">yes</td></tr>
+  </table>
+  <p class="muted" style="font-size:18px">From each project's public README, read on 27 Sep 2026 (RESEARCH.md). nuntius "Mainnet" is the 22 Sep life cycle (two approvals). The one-approval grant and receipts are proven on localnet and are still to be recorded on mainnet.</p>
+</section>
+
+<!-- 12 -->
+<section class="slide">
+  <div class="kicker">Status · next</div>
+  <h2>Where it stands, honestly</h2>
+  <div class="row">
+    <div class="card chain" style="flex:1"><h3>Done</h3><p>Mainnet life cycle from the phone (22 Sep). One-approval grant and revoke, executor, guard, tier gate, digest, streak and widget, all built and tested against the real program. Docs, threat model, judge guide.</p></div>
+    <div class="card" style="flex:1"><h3>Before submission</h3><p>Record the one-approval grant on mainnet from the Seeker. Pass the device checklist for the widget, receipts and digest. Publish the APK release.</p></div>
+    <div class="card" style="flex:1"><h3>After</h3><p>dApp Store listing. Talk to the merchants on the standard. A disclosed fee on mandated flow, with the guard free for everyone. No users or revenue yet.</p></div>
+  </div>
+  <p style="margin-top:40px;font-size:30px;font-weight:700">Grant once. The chain holds the line.</p>
+  <div class="foot"><span>github.com/seekdaseek/nuntius</span><span>Sergiu · solo · Chisinau</span></div>
+</section>
+
+</body>
+</html>

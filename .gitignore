@@ -55,3 +55,4 @@ fcm-service-account.json
 *-adminsdk-*.json
 server/delegatee.json
 !.env.example
+deck/preview/
