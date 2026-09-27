@@ -132,6 +132,8 @@ export function migrateMandates(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS guard_cursor (
       delegation_pda TEXT PRIMARY KEY,
       address TEXT NOT NULL,
+      delegatee TEXT,
+      mint TEXT,
       last_signature TEXT,
       seen_at INTEGER NOT NULL
     );
@@ -403,13 +405,28 @@ export class MandateStore {
     return this.db.prepare('SELECT 1 FROM guard_cursor WHERE delegation_pda = ?').get(delegationPda) !== undefined
   }
 
-  setGuardCursor(delegationPda: string, address: string, lastSignature: string | null, nowMs: number): void {
+  setGuardCursor(
+    delegationPda: string,
+    address: string,
+    lastSignature: string | null,
+    nowMs: number,
+    who: { delegatee: string | null; mint: string | null } = { delegatee: null, mint: null },
+  ): void {
     this.db
       .prepare(
-        `INSERT INTO guard_cursor (delegation_pda, address, last_signature, seen_at) VALUES (?, ?, ?, ?)
-         ON CONFLICT (delegation_pda) DO UPDATE SET last_signature = COALESCE(excluded.last_signature, last_signature), seen_at = excluded.seen_at`,
+        `INSERT INTO guard_cursor (delegation_pda, address, delegatee, mint, last_signature, seen_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (delegation_pda) DO UPDATE SET last_signature = COALESCE(excluded.last_signature, last_signature),
+           delegatee = COALESCE(excluded.delegatee, delegatee), mint = COALESCE(excluded.mint, mint), seen_at = excluded.seen_at`,
       )
-      .run(delegationPda, address, lastSignature, nowMs)
+      .run(delegationPda, address, who.delegatee, who.mint, lastSignature, nowMs)
+  }
+
+  /** What the guard last knew about a delegation — all that is left once its account is closed. */
+  guardMemory(delegationPda: string): { delegatee: string | null; mint: string | null } {
+    const r = this.db
+      .prepare('SELECT delegatee, mint FROM guard_cursor WHERE delegation_pda = ?')
+      .get(delegationPda) as { delegatee: string | null; mint: string | null } | undefined
+    return r ?? { delegatee: null, mint: null }
   }
 
   guardedPdas(address: string): string[] {
