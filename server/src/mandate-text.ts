@@ -80,12 +80,19 @@ export interface MandateWords {
  * Three parts, always in this order: what it may do, what the chain refuses,
  * how to stop it.
  */
-export function describeMandate(m: MandateWords): { headline: string; guarantee: string; exit: string } {
+export function describeMandate(m: MandateWords): {
+  headline: string
+  schedule: string
+  guarantee: string
+  exit: string
+} {
   const amount = `${formatUnits(m.amountBaseUnits, m.decimals)} ${m.symbol}`
   const who = m.label ? `${m.label} (${shortAddress(m.payee)})` : shortAddress(m.payee)
   const until = m.expiryTs > 0 ? `, until ${dateWords(m.expiryTs)}` : ''
   return {
     headline: `${who} can receive up to ${amount} ${periodWords(m.periodLengthS)}${until}.`,
+    // The executor pays at the start of each period, and the first period starts at approval.
+    schedule: `nuntius sends the first ${amount} right after you approve, then one payment ${periodWords(m.periodLengthS)}.`,
     guarantee: `Anything above ${amount} in a period is refused by the Solana program itself, not by nuntius.`,
     exit: 'Revoke any time with one approval. Nothing is taken without a receipt on this phone.',
   }

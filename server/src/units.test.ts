@@ -42,6 +42,7 @@ test('describeMandate states the cap, who enforces it, and the exit', () => {
     expiryTs: Date.UTC(2026, 11, 31) / 1000,
   })
   assert.equal(d.headline, 'Rent to Ana (ASCQ…natX) can receive up to 10 USDC every week, until 31 Dec 2026.')
+  assert.equal(d.schedule, 'nuntius sends the first 10 USDC right after you approve, then one payment every week.')
   assert.match(d.guarantee, /refused by the Solana program itself/)
   assert.match(d.exit, /one approval/)
 })

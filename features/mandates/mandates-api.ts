@@ -32,6 +32,7 @@ export async function post<T>(path: string, body: Record<string, unknown>): Prom
 
 export interface MandateText {
   headline: string
+  schedule: string
   guarantee: string
   exit: string
 }

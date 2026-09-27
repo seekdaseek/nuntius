@@ -133,6 +133,7 @@ export default function NewMandateScreen() {
       {preview ? (
         <Card tone="chain">
           <Body strong>{preview.text.headline}</Body>
+          <Body>{preview.text.schedule}</Body>
           <Muted>{preview.text.guarantee}</Muted>
           <Muted>{preview.text.exit}</Muted>
         </Card>
