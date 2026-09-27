@@ -7,7 +7,9 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "start": "node --env-file-if-exists=.env dist/index.js"
+    "start": "node --env-file-if-exists=.env dist/index.js",
+    "test": "tsc && node --test --test-reporter=spec \"dist/**/*.test.js\"",
+    "test:localnet": "LOCALNET_RPC=${LOCALNET_RPC:-http://127.0.0.1:8899} npm test"
   },
   "dependencies": {
     "@solana-program/system": "0.13.0",
