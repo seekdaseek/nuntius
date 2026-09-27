@@ -12,7 +12,10 @@ import type { Logger } from './log.js'
 
 export interface PushPort {
   /** Sends to every device registered for the address; resolves with per-token status. */
-  toAddress(address: string, msg: { title: string; body: string; url: string }): Promise<number[]>
+  toAddress(
+    address: string,
+    msg: { title: string; body: string; url: string; channel?: 'alerts' | 'digest' },
+  ): Promise<number[]>
 }
 
 export interface ReceiptExtra {

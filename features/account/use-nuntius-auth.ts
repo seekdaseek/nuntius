@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getBase64Encoder } from '@solana/kit'
 import { transact, useMobileWallet } from '@wallet-ui/react-native-kit'
 import { getSiwsPayload, postSiwsVerify, postVerifySeeker } from '@/features/account/nuntius-api'
+import { loadAuth, saveAuth } from '@/features/account/auth-storage'
 
 /** Backend-verified identity: SIWS session plus the Seeker gate result. */
 export interface NuntiusAuth {
@@ -15,11 +16,18 @@ const AUTH_QUERY_KEY = ['nuntius-auth']
 export function useNuntiusAuth() {
   const { data } = useQuery<NuntiusAuth | null>({
     queryKey: AUTH_QUERY_KEY,
-    queryFn: () => null,
+    // Restored from storage so a restart (or the widget) does not need a new sign-in.
+    queryFn: () => loadAuth(),
     staleTime: Infinity,
     gcTime: Infinity,
   })
   return data ?? null
+}
+
+/** Stores and publishes a new auth state in one place. */
+async function setAuth(queryClient: ReturnType<typeof useQueryClient>, auth: NuntiusAuth | null) {
+  queryClient.setQueryData(AUTH_QUERY_KEY, auth)
+  await saveAuth(auth)
 }
 
 export function useSignInMutation() {
@@ -71,7 +79,7 @@ export function useSignInMutation() {
 
       return { address, session, sgtMint }
     },
-    onSuccess: (auth) => queryClient.setQueryData(AUTH_QUERY_KEY, auth),
+    onSuccess: (auth) => setAuth(queryClient, auth),
   })
 }
 
@@ -84,7 +92,7 @@ export function useVerifySeekerMutation() {
       const { sgtMint } = await postVerifySeeker(auth.session)
       return { ...auth, sgtMint }
     },
-    onSuccess: (auth) => queryClient.setQueryData(AUTH_QUERY_KEY, auth),
+    onSuccess: (auth) => setAuth(queryClient, auth),
   })
 }
 
@@ -93,7 +101,8 @@ export function useSignOut() {
   const queryClient = useQueryClient()
 
   return async () => {
-    queryClient.setQueryData(AUTH_QUERY_KEY, null)
+    await setAuth(queryClient, null)
+    queryClient.removeQueries({ queryKey: ['mandates'] })
     await disconnect()
   }
 }

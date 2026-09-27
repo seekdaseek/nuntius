@@ -30,7 +30,12 @@ export async function runDigests(d: DigestDeps, nowMs: number): Promise<string[]
         await d.live(pref.address),
         nowMs,
       )
-      await d.push.toAddress(pref.address, { title: digest.title, body: digest.body, url: '/digest?source=digest' })
+      await d.push.toAddress(pref.address, {
+        title: digest.title,
+        body: digest.body,
+        url: '/digest?source=digest',
+        channel: 'digest',
+      })
       d.mandates.markDigestSent(pref.address, localDay(nowMs, pref.tzOffsetMin))
       d.log.info('digest_sent', { address: pref.address, pulls: digest.totals.pulls, refused: digest.totals.refused })
       sent.push(pref.address)

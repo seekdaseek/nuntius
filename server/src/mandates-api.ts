@@ -382,6 +382,7 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       limits: a.limits,
       mints: cfg.mints.map((m) => m.symbol),
       cluster: cfg.cluster,
+      demo: cfg.demoEndpoints,
       mine,
       others,
       tokenAccount: { delegate: ata.delegate, delegatedAmount: ata.delegatedAmount, balance: ata.amount },

@@ -1,6 +1,6 @@
-import { Button, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
 import React from 'react'
-import { appStyles } from '@/constants/app-styles'
+import { Button, theme } from '@/components/ui'
 import { isUserCancellation, useSignInMutation } from '@/features/account/use-nuntius-auth'
 
 export function AccountFeatureSignIn() {
@@ -10,18 +10,17 @@ export function AccountFeatureSignIn() {
   const cancelled = signIn.isError && isUserCancellation(signIn.error)
 
   return (
-    <View style={appStyles.stack}>
+    <View style={{ gap: 8 }}>
       <Button
-        title={signIn.isPending ? 'Signing in…' : 'Sign in with Solana'}
-        disabled={signIn.isPending}
+        title={signIn.isPending ? 'Approve in Seed Vault…' : 'Sign in with Solana'}
+        busy={signIn.isPending}
         onPress={() => signIn.mutate()}
+        testID="sign-in"
       />
       {signIn.isError ? (
-        cancelled ? (
-          <Text style={appStyles.hintText}>Sign-in dismissed. Tap to try again.</Text>
-        ) : (
-          <Text style={appStyles.errorText}>Sign-in failed: {signIn.error.message}</Text>
-        )
+        <Text style={{ color: cancelled ? theme.muted : theme.refused }}>
+          {cancelled ? 'Sign-in dismissed. Tap to try again.' : `Sign-in failed: ${signIn.error.message}`}
+        </Text>
       ) : null}
     </View>
   )

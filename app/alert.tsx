@@ -1,58 +1,110 @@
-import { Linking, Text, View } from 'react-native'
-import { useLocalSearchParams } from 'expo-router'
-import { SafeAreaView } from 'react-native-safe-area-context'
 import React from 'react'
-import { appStyles } from '@/constants/app-styles'
+import { Linking, Text } from 'react-native'
+import { useLocalSearchParams } from 'expo-router'
+import { Body, Card, H1, Mono, Muted, Screen, theme } from '@/components/ui'
+import { explorerTx, resetsIn } from '@/core/format'
+
+const TITLES: Record<string, string> = {
+  pull: 'Received',
+  refused: 'Refused by the chain',
+  granted: 'Permission granted',
+  revoked: 'Revoked',
+  expired: 'Expired',
+}
 
 /**
- * Evidence screen — what a notification opens.
+ * Evidence screen — what every receipt push opens.
  *
- * Never a bare number: it shows what moved, what is left this period, when the
- * cap resets, and a link out so the claim can be checked independently.
+ * Never a bare number: what moved, what is left this period, when the cap
+ * resets, and a link out so the claim can be checked independently.
  */
 export default function AlertScreen() {
-  const { source, at, sig, moved, remaining, reset, pda, cluster } = useLocalSearchParams<{
+  const p = useLocalSearchParams<{
     source?: string
-    at?: string
+    kind?: string
+    who?: string
     sig?: string
-    moved?: string
+    amount?: string
+    symbol?: string
     remaining?: string
+    cap?: string
     reset?: string
     pda?: string
     cluster?: string
+    actor?: string
+    at?: string
+    moved?: string
   }>()
 
-  const resetAt = reset ? new Date(Number(reset) * 1000) : null
-  // Explorer defaults to mainnet-beta with no query param; only devnet needs one.
-  // Hardcoding a cluster here would hand the user a link to the wrong chain.
-  const explorer = sig ? `https://explorer.solana.com/tx/${sig}${cluster === 'devnet' ? '?cluster=devnet' : ''}` : null
+  // Receipt pushes (mandatum) and the older delegation spike share this screen.
+  const kind = p.kind ?? (p.source === 'delegation' ? 'pull' : undefined)
+  const amount = p.amount || p.moved
+  const explorer = p.sig ? explorerTx(p.sig, p.cluster) : null
 
+  if (!kind) {
+    return (
+      <Screen>
+        <H1>Notification</H1>
+        <Card>
+          <Muted>Source: {p.source ?? 'unknown'}</Muted>
+          <Muted>Sent at: {p.at ?? 'unknown'}</Muted>
+        </Card>
+      </Screen>
+    )
+  }
+
+  const refused = kind === 'refused'
   return (
-    <SafeAreaView style={appStyles.screen}>
-      <View style={appStyles.stack}>
-        <Text style={appStyles.title}>Alert</Text>
-
-        {source === 'delegation' ? (
-          <View style={appStyles.cardVerified}>
-            <Text style={appStyles.tierLabel}>Delegated transfer executed</Text>
-            <Text>Moved: {moved} USDC</Text>
-            <Text>Remaining this period: {remaining} USDC</Text>
-            <Text>Cap resets: {resetAt ? resetAt.toLocaleTimeString() : 'unknown'}</Text>
-            <Text>Delegation: {pda}</Text>
-            {explorer ? (
-              <Text style={appStyles.linkText} onPress={() => void Linking.openURL(explorer)}>
-                Verify on Solana Explorer
-              </Text>
-            ) : null}
-          </View>
-        ) : (
-          <View style={appStyles.card}>
-            <Text style={appStyles.tierLabel}>Opened from a push notification</Text>
-            <Text>Source: {source ?? 'unknown'}</Text>
-            <Text>Sent at: {at ?? 'unknown'}</Text>
-          </View>
-        )}
-      </View>
-    </SafeAreaView>
+    <Screen>
+      <H1>{TITLES[kind] ?? kind}</H1>
+      <Card tone={refused ? 'refused' : kind === 'pull' ? 'chain' : 'plain'}>
+        <Body strong>{p.who ?? 'Delegation'}</Body>
+        {refused ? (
+          <Body>
+            A pull above your cap was rejected by the Solana Subscriptions program (custom error 0x190,
+            AmountExceedsPeriodLimit). Nothing moved.
+          </Body>
+        ) : null}
+        {refused && amount ? (
+          <Muted>
+            It asked for {amount} {p.symbol ?? ''}. Even one base unit above what is left is refused.
+          </Muted>
+        ) : null}
+        {kind === 'pull' && amount ? (
+          <Text style={{ fontSize: 34, fontWeight: '800', color: theme.ink }}>
+            {amount} {p.symbol ?? ''}
+          </Text>
+        ) : null}
+        {p.remaining && p.cap ? (
+          <Muted>
+            {p.remaining} of {p.cap} {p.symbol ?? ''} left this period
+            {p.reset ? ` · ${resetsIn(Number(p.reset), Date.now())}` : ''}
+          </Muted>
+        ) : null}
+        {p.actor === 'other' ? <Muted>This delegation was not created in nuntius.</Muted> : null}
+      </Card>
+      {p.pda ? (
+        <Card>
+          <Muted>Delegation account</Muted>
+          <Mono>{p.pda}</Mono>
+        </Card>
+      ) : null}
+      {p.sig ? (
+        <Card>
+          <Muted>Transaction</Muted>
+          <Mono>{p.sig}</Mono>
+          {explorer ? (
+            <Text
+              style={{ color: '#1a73e8', textDecorationLine: 'underline' }}
+              onPress={() => void Linking.openURL(explorer)}
+            >
+              Verify on Solana Explorer
+            </Text>
+          ) : (
+            <Muted>Local test validator — not on a public explorer.</Muted>
+          )}
+        </Card>
+      ) : null}
+    </Screen>
   )
 }

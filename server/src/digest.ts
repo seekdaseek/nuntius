@@ -72,7 +72,9 @@ export function buildDigest(events: LedgerEvent[], live: LiveMandate[], nowMs: n
   const lines: string[] = []
   for (const r of refused) lines.push(`Refused by the chain: ${who(r)} asked above its cap.`)
   for (const g of granted) {
-    lines.push(`New permission: ${who(g)}${g.actor === 'other' ? ' (granted outside nuntius — check it)' : ''}.`)
+    lines.push(
+      g.actor === 'other' ? `New permission: ${who(g)} (granted outside nuntius — check it).` : `Granted: ${who(g)}.`,
+    )
   }
   for (const p of pulls) {
     lines.push(`${who(p)} received ${formatUnits(BigInt(p.amountBaseUnits ?? '0'), p.decimals)} ${p.symbol}.`)

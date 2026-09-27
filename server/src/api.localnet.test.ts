@@ -167,6 +167,7 @@ test('mandatum API end to end on the real program', { skip: skipLocalnet, timeou
     assert.equal(l.json.others[0].delegatee, merchant.address)
     assert.equal(l.json.others[0].cap, '1')
     assert.equal(l.json.others[0].revocable, true)
+    assert.equal(l.json.demo, true)
     assert.ok(l.json.tokenAccount.delegate, 'token account currently delegated to the authority PDA')
   })
 
