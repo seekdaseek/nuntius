@@ -168,7 +168,9 @@ function SignedIn() {
 
               <Section>Other apps with access</Section>
               {data.others.length === 0 ? (
-                <Note tone="moved">No other app can pull from this wallet.</Note>
+                <Note tone="moved" shield>
+                  No other app can pull from this wallet.
+                </Note>
               ) : (
                 data.others.map((o) => <OtherCard key={o.delegationPda} o={o} now={now} />)
               )}
@@ -202,7 +204,7 @@ function SignedIn() {
         <Button
           big
           kind="ink"
-          title="New permission"
+          title="+ New permission"
           testID="new-mandate"
           disabled={!data || atLimit}
           onPress={() => router.push({ pathname: '/new', params: { mints: (data?.mints ?? ['USDC']).join(',') } })}

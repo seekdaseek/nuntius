@@ -155,14 +155,34 @@ export function Row({ children, gap = 10, style }: PropsWithChildren<{ gap?: num
   return <View style={[l.row, { gap }, style]}>{children}</View>
 }
 
-/** Mint, raspberry or amber box with one message. */
-export function Note({ children, tone = 'moved' }: PropsWithChildren<{ tone?: 'moved' | 'refused' | 'foreign' }>) {
+/** Mint, raspberry or amber box with one message, optionally led by the shield. */
+export function Note({
+  children,
+  tone = 'moved',
+  shield,
+}: PropsWithChildren<{ tone?: 'moved' | 'refused' | 'foreign'; shield?: boolean }>) {
   const bg = tone === 'moved' ? color.moved50 : tone === 'refused' ? color.refused50 : color.foreign50
   const fg = tone === 'moved' ? color.movedInk : tone === 'refused' ? color.refusedInk : color.foreignInk
   return (
-    <View style={[l.note, { backgroundColor: bg }]}>
-      <Text style={[t.noteText, { color: fg }]}>{children}</Text>
+    <View style={[l.note, { backgroundColor: bg }, shield ? l.noteRow : null]}>
+      {shield ? <Shield color={fg} /> : null}
+      <Text style={[t.noteText, { color: fg }, shield ? l.flexShrink : null]}>{children}</Text>
     </View>
+  )
+}
+
+/** The mockup's shield: an outline, in the note's ink. */
+export function Shield({ color: stroke, size = 18 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path
+        d="M12 2.8 L19.5 5.6 V11.2 C19.5 15.9 16.3 19.6 12 21.2 C7.7 19.6 4.5 15.9 4.5 11.2 V5.6 Z"
+        fill="none"
+        stroke={stroke}
+        strokeWidth={2}
+        strokeLinejoin="round"
+      />
+    </Svg>
   )
 }
 
@@ -409,6 +429,8 @@ const l = StyleSheet.create({
   card: { backgroundColor: color.card, borderRadius: radius.card, padding: 16, gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   note: { borderRadius: radius.panel, paddingVertical: 14, paddingHorizontal: 16 },
+  noteRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  flexShrink: { flexShrink: 1 },
   chip: { borderRadius: radius.chip, paddingVertical: 7, paddingHorizontal: 12, alignSelf: 'flex-start' },
   seg: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   segItem: { borderRadius: radius.chip, paddingVertical: 9, paddingHorizontal: 14, backgroundColor: color.card },

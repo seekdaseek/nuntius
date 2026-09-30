@@ -18,7 +18,15 @@ import {
   whenWords,
   windowWords,
 } from './home-model.ts'
-import { applyStarter, checkForm, isStarter, sanitizeAmount, SKR_STARTERS, startersFor } from './mandate-form.ts'
+import {
+  applyStarter,
+  checkForm,
+  isStarter,
+  PERIOD_OPTIONS,
+  sanitizeAmount,
+  SKR_STARTERS,
+  startersFor,
+} from './mandate-form.ts'
 import { isBlockhashExpired } from './grant-errors.ts'
 
 const NOW = Date.UTC(2026, 9, 1, 12)
@@ -282,4 +290,13 @@ test('copy: counts agree with their nouns, and a basic home says basic from the 
   assert.equal(count(7, 'day'), '7 days')
   assert.match(basicTierLine(false, 1), /^Basic tier: you can hold one permission\./)
   assert.match(basicTierLine(true, 1), /^Basic tier holds one permission\./)
+})
+
+test('period chips match the mockup: "month" is the fixed 30-day period the program counts', () => {
+  assert.deepEqual(
+    PERIOD_OPTIONS.map((o) => o.label),
+    ['hour', 'day', 'week', 'month'],
+  )
+  assert.equal(PERIOD_OPTIONS.find((o) => o.label === 'month')!.key, '30days')
+  assert.equal(perWords(2_592_000), 'every 30 days', 'the sentence stays exact')
 })

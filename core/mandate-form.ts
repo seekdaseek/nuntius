@@ -9,8 +9,9 @@ export const PERIOD_OPTIONS: { key: PeriodKey; label: string }[] = [
   { key: 'hour', label: 'hour' },
   { key: 'day', label: 'day' },
   { key: 'week', label: 'week' },
-  // The program counts fixed seconds, so this is "30 days", never "month".
-  { key: '30days', label: '30 days' },
+  // The chip says "month", as in the mockup. The program counts fixed seconds, so
+  // the sentence above it and the chain's line both say "every 30 days".
+  { key: '30days', label: 'month' },
 ]
 
 export const UNTIL_OPTIONS = [7, 30, 90] as const
