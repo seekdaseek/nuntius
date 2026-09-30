@@ -18,6 +18,7 @@ import {
   windowWords,
 } from './home-model.ts'
 import { applyStarter, checkForm, isStarter, sanitizeAmount, SKR_STARTERS, startersFor } from './mandate-form.ts'
+import { isBlockhashExpired } from './grant-errors.ts'
 
 const NOW = Date.UTC(2026, 9, 1, 12)
 const nowS = NOW / 1000
@@ -262,4 +263,14 @@ test('receipt slip meter: what the receipt recorded, in the mockup words', async
   assert.equal(slipMeter({ cap: '25', remaining: '0', per: 604_800 }, now)!.left, '0 of 25 left this week')
   assert.equal(slipMeter({ cap: '0.05', remaining: null }, now), null, 'no record, no meter')
   assert.equal(slipMeter({ cap: null, remaining: '0' }, now), null)
+})
+
+test('grant: a blockhash that died in Seed Vault is told apart from a dismissal and a real failure', () => {
+  assert.equal(isBlockhashExpired({ code: -4, message: 'x' }), true)
+  assert.equal(isBlockhashExpired({ code: 'ERROR_NOT_SUBMITTED', message: '' }), true)
+  assert.equal(isBlockhashExpired(new Error('Transaction simulation failed: Blockhash not found')), true)
+  assert.equal(isBlockhashExpired(new Error('block height exceeded')), true)
+  assert.equal(isBlockhashExpired(new Error('User declined the request')), false)
+  assert.equal(isBlockhashExpired(new Error('insufficient funds for fee')), false)
+  assert.equal(isBlockhashExpired(null), false)
 })

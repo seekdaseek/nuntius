@@ -6,6 +6,10 @@ type MobileWallet = ReturnType<typeof useMobileWallet>
 /**
  * Hands ONE server-built transaction to Seed Vault and returns its signature.
  *
+ * The transaction may be given as a function: it is then fetched only after
+ * authorize, inside the wallet session, so its blockhash is as fresh as it can
+ * be when the sign sheet opens.
+ *
  * Authorizes fresh inside every transact session and never replays a stored
  * auth_token — the rule that fixed the MWA cancel bug (66ab4e8). The server
  * built the bytes with the user as fee payer and sole signer; the wallet shows
@@ -14,11 +18,12 @@ type MobileWallet = ReturnType<typeof useMobileWallet>
 export async function signAndSend(
   chain: MobileWallet['chain'],
   identity: MobileWallet['identity'],
-  transactionBase64: string,
+  transactionBase64: string | (() => Promise<string>),
 ): Promise<string> {
-  const transaction: Transaction = getTransactionDecoder().decode(getBase64Encoder().encode(transactionBase64))
   const signatures = await transact(async (wallet) => {
     await wallet.authorize({ chain, identity })
+    const base64 = typeof transactionBase64 === 'string' ? transactionBase64 : await transactionBase64()
+    const transaction: Transaction = getTransactionDecoder().decode(getBase64Encoder().encode(base64))
     return wallet.signAndSendTransactions({ transactions: [transaction as never] })
   })
   const first = signatures[0]

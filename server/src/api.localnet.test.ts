@@ -245,6 +245,28 @@ test('mandatum API end to end on the real program', { skip: skipLocalnet, timeou
     console.log(`    pushes: ${pushes.join(' | ')}`)
     void userAta
   })
+
+  await t.test('rebuild: a fresh blockhash for a pending grant, and it cannot grant twice', async () => {
+    const c = await call('/api/mandates/create', { ...terms, label: 'Gym' })
+    assert.equal(c.status, 200, JSON.stringify(c.json))
+    await sleep(1_000) // a new blockhash
+    const r = await call('/api/mandates/rebuild', { mandateId: c.json.mandateId })
+    assert.equal(r.status, 200, JSON.stringify(r.json))
+    assert.notEqual(r.json.transactionBase64, c.json.transactionBase64)
+    assert.equal(r.json.delegationPda, c.json.delegationPda, 'the same permission')
+    assertOk(await deviceSignAndSend(rpc, owner, r.json.transactionBase64))
+    assert.equal((await call('/api/mandates/confirm', { mandateId: c.json.mandateId })).json.mandate.status, 'active')
+    // The first copy, signed late, is refused by the program: the delegation account exists.
+    const late = await deviceSignAndSend(rpc, owner, c.json.transactionBase64).catch((e: unknown) => ({ err: e }))
+    assert.notEqual(late.err, null)
+    assert.equal((await call('/api/mandates/rebuild', { mandateId: c.json.mandateId })).json.error, 'not_pending')
+    assert.equal((await call('/api/mandates/rebuild', { mandateId: 'nope' })).json.error, 'no_mandate')
+    assert.equal(
+      (await call('/api/mandates/rebuild', { mandateId: c.json.mandateId }, basicSession)).json.error,
+      'no_mandate',
+      "someone else's permission",
+    )
+  })
 })
 
 test('digest scheduler sends once per local day, Seeker tier only', async () => {

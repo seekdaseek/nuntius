@@ -264,6 +264,11 @@ export class MandateStore {
     }
   }
 
+  /** A rebuilt grant is fresh again: the stale-pending sweep counts from now. */
+  touchPending(id: string, nowMs: number): void {
+    this.db.prepare("UPDATE mandates SET created_at = ? WHERE id = ? AND status = 'pending'").run(nowMs, id)
+  }
+
   deleteStalePending(maxAgeMs: number, nowMs: number): number {
     return this.db.prepare("DELETE FROM mandates WHERE status = 'pending' AND created_at < ?").run(nowMs - maxAgeMs)
       .changes

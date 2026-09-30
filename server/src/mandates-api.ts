@@ -244,6 +244,35 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     }
   })
 
+  /**
+   * A fresh copy of a pending grant: same permission, same nonce and delegation
+   * account, a new blockhash. For a Seed Vault sheet that stayed open past the
+   * blockhash's life (30 Sep). It cannot grant twice: if the first copy did
+   * land, this one fails on the existing delegation account.
+   */
+  route('/api/mandates/rebuild', async (body) => {
+    const a = auth(body)
+    const m = typeof body.mandateId === 'string' ? mandates.getMandate(body.mandateId) : null
+    if (!m || m.address !== a.address)
+      throw new HttpError(404, 'no_mandate', 'This permission is not waiting for approval.')
+    if (m.status !== 'pending') throw new HttpError(409, 'not_pending', 'This permission is already live or ended.')
+    if ((await readRecurring(rpc, m.delegationPda as Address)).exists)
+      throw new HttpError(409, 'already_on_chain', 'The first approval landed after all. Nothing to redo.')
+    const grant = await buildGrantTx(rpc, {
+      owner: a.address as Address,
+      mint: m.mint as Address,
+      delegatee: m.delegatee as Address,
+      nonce: BigInt(m.nonce),
+      amountPerPeriod: BigInt(m.amountPerPeriod),
+      periodLengthS: BigInt(m.periodLengthS),
+      startTs: 0n,
+      expiryTs: BigInt(m.expiryTs),
+    })
+    if (grant.delegationPda !== m.delegationPda) throw new HttpError(500, 'rebuild_mismatch')
+    mandates.touchPending(m.id, now())
+    return { mandateId: m.id, transactionBase64: grant.transactionBase64, delegationPda: grant.delegationPda }
+  })
+
   route('/api/mandates/confirm', async (body) => {
     const a = auth(body)
     const m = typeof body.mandateId === 'string' ? mandates.getMandate(body.mandateId) : null

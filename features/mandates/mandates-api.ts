@@ -154,6 +154,12 @@ export const api = {
       createsAuthority: boolean
       text: MandateText
     }>('/api/mandates/create', { session, ...t }),
+  /** The same pending permission with a fresh blockhash. */
+  rebuild: (session: string, mandateId: string) =>
+    post<{ mandateId: string; transactionBase64: string; delegationPda: string }>('/api/mandates/rebuild', {
+      session,
+      mandateId,
+    }),
   confirm: (session: string, mandateId: string) =>
     post<{ mandate: MandateView }>('/api/mandates/confirm', { session, mandateId }),
   revoke: (session: string, delegationPda: string) =>

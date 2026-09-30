@@ -1,7 +1,8 @@
+import { useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMobileWallet } from '@wallet-ui/react-native-kit'
 import type { NuntiusAuth } from '@/features/account/use-nuntius-auth'
-import { api, untilLanded, type TermsInput } from '@/features/mandates/mandates-api'
+import { api, ApiError, untilLanded, type TermsInput } from '@/features/mandates/mandates-api'
 import { signAndSend } from '@/features/wallet/sign-and-send'
 import { refreshWidget } from '@/features/widget/refresh-widget'
 import { tzOffsetMin } from '@/core/format'
@@ -48,19 +49,37 @@ export type GrantStep = 'building' | 'signing' | 'confirming'
 /**
  * The whole grant: the server builds ONE transaction (init + create), Seed Vault
  * signs it once, the server confirms the chain matches the terms exactly.
+ *
+ * The transaction is built inside the wallet session, after authorize, so its
+ * blockhash is fresh when the sheet opens. If it still dies in Seed Vault,
+ * mutate({ terms, rebuild: true }) asks the server for the same permission with
+ * a new blockhash and reopens Seed Vault; if the first copy landed after all,
+ * it just confirms.
  */
 export function useGrantMandate(auth: NuntiusAuth | null, onStep?: (s: GrantStep) => void) {
   const { chain, identity } = useMobileWallet()
   const after = useAfterChange(auth)
+  const pending = useRef<string | null>(null)
   return useMutation({
-    mutationFn: async (terms: TermsInput) => {
+    mutationFn: async ({ terms, rebuild = false }: { terms: TermsInput; rebuild?: boolean }) => {
       if (!auth) throw new Error('not signed in')
       onStep?.('building')
-      const created = await api.create(auth.session, terms)
-      onStep?.('signing')
-      const signature = await signAndSend(chain, identity, created.transactionBase64)
+      let mandateId = rebuild ? pending.current : null
+      let signature: string | null = null
+      try {
+        onStep?.('signing')
+        signature = await signAndSend(chain, identity, async () => {
+          if (mandateId) return (await api.rebuild(auth.session, mandateId)).transactionBase64
+          const created = await api.create(auth.session, terms)
+          mandateId = pending.current = created.mandateId
+          return created.transactionBase64
+        })
+      } catch (e) {
+        if (!(e instanceof ApiError && e.code === 'already_on_chain')) throw e
+      }
       onStep?.('confirming')
-      const confirmed = await untilLanded(() => api.confirm(auth.session, created.mandateId), ['not_on_chain_yet'])
+      const confirmed = await untilLanded(() => api.confirm(auth.session, mandateId!), ['not_on_chain_yet'])
+      pending.current = null
       return { signature, mandate: confirmed.mandate }
     },
     onSuccess: after,

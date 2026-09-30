@@ -6,6 +6,7 @@ import { Button, Label, Muted, Note, Screen, Segments, Title, color, font } from
 import { radius } from '@/constants/app-styles'
 import { isUserCancellation, useNuntiusAuth } from '@/features/account/use-nuntius-auth'
 import { useGrantMandate, type GrantStep } from '@/features/mandates/use-mandates'
+import { isBlockhashExpired } from '@/core/grant-errors'
 import { api, type MandateText } from '@/features/mandates/mandates-api'
 import {
   applyStarter,
@@ -49,7 +50,11 @@ export default function NewPermissionScreen() {
   const [step, setStep] = useState<GrantStep | null>(null)
   const grant = useGrantMandate(auth, setStep)
   const check = checkForm(form, auth?.address ?? null)
-  const set = <K extends keyof MandateForm>(k: K, v: MandateForm[K]) => setForm((f) => ({ ...f, [k]: v }))
+  const set = <K extends keyof MandateForm>(k: K, v: MandateForm[K]) => {
+    // Edited terms are a new permission: a rebuild would sign the old ones.
+    if (grant.isError) grant.reset()
+    setForm((f) => ({ ...f, [k]: v }))
+  }
   const amountRef = useRef<TextInput>(null)
   // One-tap SKR starters; empty unless the server offers SKR.
   const starters = startersFor(mints)
@@ -83,7 +88,8 @@ export default function NewPermissionScreen() {
   }
 
   const cycle = <T,>(list: readonly T[], v: T) => list[(list.indexOf(v) + 1) % list.length]!
-  const cancelled = grant.isError && isUserCancellation(grant.error)
+  const expired = grant.isError && isBlockhashExpired(grant.error)
+  const cancelled = grant.isError && !expired && isUserCancellation(grant.error)
   const busy = grant.isPending
   const name = form.label.trim()
 
@@ -100,9 +106,11 @@ export default function NewPermissionScreen() {
             ? 'Waiting for Seed Vault'
             : step === 'confirming' && busy
               ? 'Confirming on chain'
-              : 'Approve in Seed Vault'
+              : expired
+                ? 'Rebuild and approve again'
+                : 'Approve in Seed Vault'
         }
-        onPress={() => grant.mutate({ ...form, label: name, symbol })}
+        onPress={() => grant.mutate({ terms: { ...form, label: name, symbol }, rebuild: expired })}
         disabled={!check.ok || !preview || !preview.allowed}
         busy={busy}
       />
@@ -124,6 +132,7 @@ export default function NewPermissionScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ selected: on }}
                 onPress={() => {
+                  grant.reset()
                   setForm((f) => applyStarter(f, starter))
                   setSymbol(sym)
                 }}
@@ -252,7 +261,12 @@ export default function NewPermissionScreen() {
           pull sends a receipt to this phone.
         </Note>
       ) : null}
-      {grant.isError ? (
+      {expired ? (
+        <Note tone="foreign">
+          Seed Vault held the approval longer than a Solana transaction lives, so nothing was signed or sent. One tap
+          builds the same permission again and reopens Seed Vault.
+        </Note>
+      ) : grant.isError ? (
         <Note tone={cancelled ? 'foreign' : 'refused'}>
           {cancelled ? 'Approval dismissed. Nothing was granted.' : `Not granted: ${grant.error.message}`}
         </Note>
