@@ -71,7 +71,7 @@ State these plainly to any user:
 ## 5. Dependencies
 
 - **Server**: `npm audit` → **0 vulnerabilities** (measured 2026-09-27). Versions are pinned exactly.
-- **App**: `npm audit --omit=dev` → **15 moderate**, all transitive through the Expo SDK 55 toolchain (`@expo/config-plugins` → `xcode` → `uuid`) and routing (`expo-router` → `query-string` → `decode-uri-component`). The baseline at `f25a9e9` had 14. The one added is `react-native-android-widget`, flagged only because it depends on `expo`. None is fixable without leaving Expo SDK 55.
+- **App**: `npm audit --omit=dev` → **14 moderate** (30 Sep, after `npm audit fix`), all transitive through the Expo SDK 55 toolchain (`@expo/config-plugins` → `xcode` → `uuid`) and routing (`expo-router` → `query-string` → `decode-uri-component`). On 30 Sep a new **high** advisory in `brace-expansion` (build tooling: `glob`, `@expo/fingerprint`) appeared. `npm audit fix` cleared it without touching `package.json`; the lockfile also took `@react-navigation/core` 7.21.13 → 7.23.0, a minor release within the existing range. The app was re-checked after it: typecheck, lint, core tests and a full web render with 0 page errors. `react-native-android-widget` is flagged only because it depends on `expo`. None is fixable without leaving Expo SDK 55.
 - The Subscriptions program is used as deployed; nothing of it is vendored. `@solana/subscriptions` 0.5.0 is pinned.
 
 ## 6. Not built, and not claimed

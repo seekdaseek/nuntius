@@ -96,7 +96,7 @@ Cap was 10,000 base units (0.01 USDC) per 60-second period. 17,000 base units mo
 
 **On localnet — the real program, built from source (2026-09-27)**
 
-The build environment cannot reach devnet or mainnet. Instead, `scripts/localnet.sh` builds `solana-foundation/subscriptions` at **`364a419`**, the commit the program's CHANGELOG names as the mainnet release, and loads it at its canonical address in `solana-test-validator` (Agave 3.1.10). Binary sha256: `31309d4202746b1af2040b792c127cde51cd549b5738096603e4504a30974648`. Whether this binary is byte-identical to mainnet is **not measured** yet (see MAC-HANDOFF.md).
+The build environment cannot reach devnet or mainnet. Instead, `scripts/localnet.sh` builds `solana-foundation/subscriptions` at **`364a419`**, the commit the program's CHANGELOG names as the mainnet release, and loads it at its canonical address in `solana-test-validator` (Agave 3.1.10). Binary sha256: `31309d4202746b1af2040b792c127cde51cd549b5738096603e4504a30974648`. Whether this binary is byte-identical to mainnet is **not measured** yet (see MAC-HANDOFF.md §1).
 
 ```
 $ LOCALNET_RPC=http://127.0.0.1:8899 npm --prefix server test
@@ -181,7 +181,7 @@ Listens on `127.0.0.1:8787`, loopback only. Configuration comes from `server/.en
 
 ### App
 
-The app needs a real Android device. Mobile Wallet Adapter uses Kotlin native modules, so **Expo Go will not work**. See [MAC-HANDOFF.md](MAC-HANDOFF.md) for the exact build.
+The app needs a real Android device. Mobile Wallet Adapter uses Kotlin native modules, so **Expo Go will not work**. See [MAC-RUN.md](MAC-RUN.md) and `tools/mac/03-apk.sh` for the exact build.
 
 ```bash
 npm ci
@@ -209,7 +209,7 @@ The full threat model is in [SECURITY.md](SECURITY.md). In short:
 - The legacy spike routes exist only with `SPIKE_ROUTES=1`.
 - `/api/rpc`, the SIWS routes and the demo route are rate-limited per client IP (429 with JSON).
 - The MWA app identity is `https://nuntius.ochinimus.app`. That host serves its own `/.well-known/assetlinks.json` and icon.
-- Server `npm audit`: 0 vulnerabilities. App: 15 moderate, all transitive through the Expo SDK 55 toolchain (SECURITY.md §5).
+- Server `npm audit`: 0 vulnerabilities. App: 14 moderate, all transitive through the Expo SDK 55 toolchain (SECURITY.md §5).
 
 ---
 
