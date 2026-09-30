@@ -38,8 +38,10 @@ const ana = await funded(rpc)
 const gym = await funded(rpc)
 const merchant = await funded(rpc)
 const { mint } = await mintTo(rpc, owner, owner.address, 250_000_000n) // 250 tUSDC
+const { mint: skrMint } = await mintTo(rpc, owner, owner.address, 5_000_000_000n) // 5000 tSKR
 await ataFor(rpc, ana, mint, ana.address)
 await ataFor(rpc, gym, mint, gym.address)
+await ataFor(rpc, gym, skrMint, gym.address)
 const merchantAta = await ataFor(rpc, merchant, mint, merchant.address)
 
 const db = openDb(':memory:')
@@ -55,12 +57,15 @@ const guard = new Guard({
   receipts,
   log,
   addresses: () => [owner.address],
-  mintInfo: () => ({ symbol: 'tUSDC', decimals: 6 }),
+  mintInfo: (m) => (m === skrMint ? { symbol: 'tSKR', decimals: 6 } : { symbol: 'tUSDC', decimals: 6 }),
 })
 const cfg = {
   cluster: 'localnet' as const,
   rpcUrl: LOCALNET_RPC,
-  mints: [{ symbol: 'tUSDC', mint, decimals: 6 }],
+  mints: [
+    { symbol: 'tUSDC', mint, decimals: 6, maxPerPeriodUi: '1' },
+    { symbol: 'tSKR', mint: skrMint, decimals: 6, maxPerPeriodUi: '100' },
+  ],
   maxPerPeriodUi: '100',
   delegateePath: null,
   executorIntervalMs: 30_000,
@@ -107,10 +112,11 @@ await new Promise<void>((r) => web.listen(PORT, '127.0.0.1', () => r()))
 // Seed: two nuntius mandates, one foreign delegation, real pulls, a real refusal.
 await guard.tick() // silent baseline (nothing yet)
 for (const t of [
-  { label: 'Rent to Ana', payee: ana.address, amount: '25', period: 'week', untilDays: 90 },
-  { label: 'Gym', payee: gym.address, amount: '10', period: '30days', untilDays: 365 },
+  { label: 'Rent to Ana', payee: ana.address, amount: '0.05', period: 'day', untilDays: 30, symbol: 'tUSDC' },
+  { label: 'Gym', payee: gym.address, amount: '0.01', period: 'hour', untilDays: 30, symbol: 'tUSDC' },
+  { label: 'Club', payee: gym.address, amount: '25', period: 'week', untilDays: 90, symbol: 'tSKR' },
 ]) {
-  const c = await call('/api/mandates/create', { ...t, symbol: 'tUSDC' })
+  const c = await call('/api/mandates/create', t)
   assertOk(await deviceSignAndSend(rpc, owner, c.transactionBase64))
   await call('/api/mandates/confirm', { mandateId: c.mandateId })
 }
@@ -119,7 +125,7 @@ const foreign = await buildGrantTx(rpc, {
   mint,
   delegatee: merchant.address,
   nonce: 0n,
-  amountPerPeriod: 5_000_000n,
+  amountPerPeriod: 500_000n,
   periodLengthS: 86_400n,
   startTs: 0n,
   expiryTs: BigInt(Math.floor(Date.now() / 1000) + 20 * 86_400),
@@ -136,11 +142,11 @@ assertOk(
       delegatorAta: (await import('../mandate-chain.js').then((m) => m.userAtaOf(owner.address, mint))) as never,
       receiverAta: merchantAta,
       mint,
-      amount: 1_200_000n,
+      amount: 120_000n,
     }),
   ]),
 )
-const gymMandate = mandates.listMandates(owner.address).find((m) => m.label === 'Gym')!
+const gymMandate = mandates.listMandates(owner.address).find((m) => m.label === 'Rent to Ana')!
 await executor.demoOverCap(gymMandate)
 await guard.tick()
 const today = new Date()

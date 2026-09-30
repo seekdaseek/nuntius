@@ -3,6 +3,20 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { ago, explorerTx, remainingShare, resetsIn, shortAddr, tzOffsetMin } from './format.ts'
 import { widgetView, type WidgetSnapshot } from './widget-model.ts'
+import {
+  initial,
+  lineTone,
+  longDate,
+  meter,
+  nextMovement,
+  perWords,
+  span,
+  summaryLine,
+  untilWords,
+  weekSlots,
+  whenWords,
+  windowWords,
+} from './home-model.ts'
 import { checkForm, sanitizeAmount } from './mandate-form.ts'
 
 const NOW = Date.UTC(2026, 9, 1, 12)
@@ -40,34 +54,79 @@ const snap = (p: Partial<WidgetSnapshot> = {}): WidgetSnapshot => ({
   ...p,
 })
 
-test('widget: signed out, not loaded, live, stale', () => {
+test('widget: signed out, not loaded, live, stale; no middle dots anywhere', () => {
   assert.equal(widgetView(null, false, NOW).footer, 'Sign in to see your permissions')
   assert.equal(widgetView(null, true, NOW).footer, 'Open nuntius to load')
   const v = widgetView(snap(), true, NOW)
-  assert.equal(v.title, '1 live permission')
-  assert.deepEqual(v.rows, [{ left: 'Rent', right: '2.5/10 USDC · 1h 30m' }])
-  assert.equal(v.footer, 'Clock in · streak 4')
+  assert.equal(v.title, 'nuntius')
+  assert.equal(v.badge, 'Clock in, day 5')
+  assert.deepEqual(v.rows, [{ left: 'Rent', right: '2.5 of 10 USDC', takenShare: 0.75 }])
+  assert.equal(v.footer, '')
   assert.equal(v.url, '/digest', 'tap goes to clock-in when not done today')
-  assert.equal(widgetView(snap({ clockedInToday: true }), true, NOW).footer, 'Clocked in · streak 4')
-  assert.equal(widgetView(snap({ clockedInToday: true }), true, NOW).url, '/')
+  const done = widgetView(snap({ clockedInToday: true }), true, NOW)
+  assert.equal(done.badge, 'Clocked in, day 4')
+  assert.equal(done.url, '/')
   const s = widgetView(snap({ fetchedAt: NOW - 3 * 3_600_000 }), true, NOW)
   assert.equal(s.stale, true)
-  assert.match(s.footer, /not refreshed$/)
+  assert.equal(s.footer, 'Not refreshed in 2 hours')
+  for (const w of [v, done, s]) assert.doesNotMatch(JSON.stringify(w), /·/)
 })
 
-test('widget: a refusal outranks everything else', () => {
+test('widget: a refusal is the footer, in the refused tone', () => {
   const v = widgetView(
     snap({ lastReceipt: { kind: 'refused', at: NOW, label: 'Gym', amount: null, symbol: 'USDC' } }),
     true,
     NOW,
   )
   assert.equal(v.footer, 'Refused by the chain: Gym')
+  assert.equal(v.footerTone, 'refused')
 })
 
-test('widget: basic tier (no streak) shows the last pull', () => {
-  const v = widgetView(snap({ streak: null, clockedInToday: null, liveCount: 2 }), true, NOW)
-  assert.equal(v.title, '2 live permissions')
-  assert.equal(v.footer, 'Last: Rent 7.5 USDC')
+test('widget: basic tier has no badge; extra permissions are counted', () => {
+  const v = widgetView(snap({ streak: null, clockedInToday: null, liveCount: 3 }), true, NOW)
+  assert.equal(v.badge, '')
+  assert.equal(v.footer, '2 more in the app')
+})
+
+test('home model: meter, rate words, hero sentence, summary', () => {
+  assert.deepEqual(meter('0.05', '0', 6), { takenShare: 1, taken: '0.05', left: '0' })
+  assert.deepEqual(meter('0.01', '0.006', 6), { takenShare: 0.4, taken: '0.004', left: '0.006' })
+  assert.deepEqual(meter('10', null, 6), { takenShare: 0, taken: '0', left: '10' })
+  assert.equal(perWords(86_400), 'a day')
+  assert.equal(perWords(3_600), 'an hour')
+  assert.equal(perWords(2_592_000), 'every 30 days')
+  assert.equal(windowWords(86_400), 'today')
+  const live = [
+    { label: 'Ana', cap: '0.05', remaining: '0', symbol: 'USDC', decimals: 6, nextResetTs: nowS + 6 * 3600 + 12 * 60 },
+    { label: 'Gym', cap: '0.01', remaining: '0.006', symbol: 'USDC', decimals: 6, nextResetTs: nowS + 41 * 60 },
+  ]
+  assert.equal(nextMovement(live, NOW), 'Gym gets 0.01 USDC in 41m.')
+  assert.equal(nextMovement([live[0]!], NOW), 'Ana gets 0.05 USDC in 6h 12m.')
+  assert.equal(nextMovement([{ ...live[0]!, remaining: '0.05' }], NOW), 'Ana gets 0.05 USDC now.')
+  assert.match(nextMovement([], NOW), /^Grant your first permission/)
+  assert.equal(summaryLine(2, 0, 0), 'Two permissions live. Nothing refused today.')
+  assert.equal(
+    summaryLine(1, 1, 1),
+    'One permission live. One held by other apps. One pull refused by the chain today.',
+  )
+  assert.equal(span(nowS + 90, NOW), '1m')
+})
+
+test('home model: punch slots, digest dots, dates', () => {
+  const slots = weekSlots(['2026-09-26', '2026-09-27', '2026-09-29'], '2026-09-30')
+  assert.deepEqual(
+    slots.map((x) => `${x.label}:${x.state}`),
+    ['Sat:punched', 'Sun:punched', 'Mon:missed', 'Tue:punched', 'Wed:today', 'Thu:future', 'Fri:future'],
+  )
+  assert.equal(weekSlots(['2026-09-30'], '2026-09-30')[4]!.state, 'todayPunched')
+  assert.equal(lineTone('Refused by the chain: Gym asked above its cap.'), 'refused')
+  assert.equal(lineTone('Rent received 1 USDC.'), 'moved')
+  assert.equal(lineTone('New permission: X (granted outside nuntius — check it).'), 'foreign')
+  assert.equal(lineTone('Rent: 1 of 2 USDC left this period.'), 'neutral')
+  assert.equal(longDate(Date.UTC(2026, 8, 30, 9), 180), 'Wednesday 30 September')
+  assert.equal(whenWords(Date.UTC(2026, 8, 29, 23), 180), '30 Sep at 02:00')
+  assert.equal(untilWords(Date.UTC(2026, 8, 30, 9), 30, 180), '30 Oct')
+  assert.equal(initial(' ana'), 'A')
 })
 
 test('mandate form checks', () => {

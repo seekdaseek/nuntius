@@ -6,13 +6,14 @@
 export type PeriodKey = 'hour' | 'day' | 'week' | '30days'
 
 export const PERIOD_OPTIONS: { key: PeriodKey; label: string }[] = [
+  { key: 'hour', label: 'hour' },
   { key: 'day', label: 'day' },
   { key: 'week', label: 'week' },
+  // The program counts fixed seconds, so this is "30 days", never "month".
   { key: '30days', label: '30 days' },
-  { key: 'hour', label: 'hour' },
 ]
 
-export const UNTIL_OPTIONS = [30, 90, 365] as const
+export const UNTIL_OPTIONS = [7, 30, 90] as const
 
 export interface MandateForm {
   label: string

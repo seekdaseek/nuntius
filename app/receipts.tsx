@@ -1,5 +1,5 @@
 import React from 'react'
-import { H1, Muted, Screen } from '@/components/ui'
+import { Muted, Screen, Title } from '@/components/ui'
 import { useNuntiusAuth } from '@/features/account/use-nuntius-auth'
 import { useReceipts } from '@/features/mandates/use-mandates'
 import { ReceiptRow } from '@/components/receipt-row'
@@ -9,9 +9,9 @@ export default function ReceiptsScreen() {
   const auth = useNuntiusAuth()
   const r = useReceipts(auth)
   return (
-    <Screen>
-      <H1>Receipts</H1>
-      <Muted>Each one is a transaction you can open on an explorer, or a change the chain made visible.</Muted>
+    <Screen back>
+      <Title style={{ marginTop: 6 }}>Receipts</Title>
+      <Muted>Each one opens the transaction on the chain, or the change the chain made visible.</Muted>
       {r.isLoading ? <Muted>Loading…</Muted> : null}
       {(r.data?.receipts ?? []).map((x) => (
         <ReceiptRow key={x.id} r={x} cluster={r.data?.cluster} />

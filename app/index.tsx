@@ -1,49 +1,66 @@
 import React, { useEffect } from 'react'
-import { Linking, Pressable, Text, View } from 'react-native'
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
-import { Body, Button, Card, CapBar, H1, H2, Muted, Pill, Row, Screen, theme } from '@/components/ui'
+import {
+  Body,
+  Button,
+  CapMeter,
+  Card,
+  Chip,
+  color,
+  font,
+  Hero,
+  Muted,
+  Note,
+  Row,
+  Section,
+  Wordmark,
+} from '@/components/ui'
+import { space, tabular } from '@/constants/app-styles'
 import { useNuntiusAuth, useSignOut, useVerifySeekerMutation } from '@/features/account/use-nuntius-auth'
 import { AccountFeatureSignIn } from '@/features/account/account-feature-sign-in'
 import { usePushRegistration } from '@/features/push/use-push-registration'
 import { useDemoOverCap, useMandateList, useReceipts, useRevoke } from '@/features/mandates/use-mandates'
 import { ApiError, type MandateView, type OtherDelegation } from '@/features/mandates/mandates-api'
+import { shortAddr } from '@/core/format'
+import { initial, meter, nextMovement, perWords, span, summaryLine, windowWords } from '@/core/home-model'
 import { ReceiptRow } from '@/components/receipt-row'
-import { remainingShare, resetsIn, shortAddr } from '@/core/format'
 import { refreshWidget } from '@/features/widget/refresh-widget'
 
 /**
  * Home is the permission list: every delegation this wallet has granted, to
- * nuntius or to anyone else, with the cap left and a one-approval revoke.
+ * nuntius or to anyone else, with the cap meter and a one-approval revoke.
  */
 export default function HomeScreen() {
   const auth = useNuntiusAuth()
   usePushRegistration(auth)
-  return <Screen>{auth ? <SignedIn /> : <Welcome />}</Screen>
+  return <View style={s.root}>{auth ? <SignedIn /> : <Welcome />}</View>
 }
 
 function Welcome() {
   return (
-    <View style={{ gap: 14 }}>
-      <View style={{ gap: 6, marginTop: 24 }}>
-        <Muted>nuntius · mandatum</Muted>
-        <H1>Grant it once. The chain holds the line.</H1>
+    <ScrollView contentContainerStyle={s.scroll}>
+      <Hero>
+        <Wordmark light />
+        <Text style={s.heroSentence}>Grant a payment once. The chain holds the line.</Text>
+        <Text style={s.heroSub}>Recurring payments you approve once in Seed Vault, capped by Solana itself.</Text>
+      </Hero>
+      <View style={s.body}>
+        <Card>
+          <Body style={s.cardTitle}>One approval</Body>
+          <Muted>Let someone take up to a fixed amount each day, week or 30 days. Nothing more, ever.</Muted>
+        </Card>
+        <Card>
+          <Body style={s.cardTitle}>Refused by the chain, not by us</Body>
+          <Muted>Anything above your cap fails in the Subscriptions program. You get a receipt either way.</Muted>
+        </Card>
+        <Card>
+          <Body style={s.cardTitle}>Every permission in one place</Body>
+          <Muted>See what any app can pull from this wallet, and end it with one approval.</Muted>
+        </Card>
+        <AccountFeatureSignIn />
       </View>
-      <Card>
-        <Body strong>One approval in Seed Vault</Body>
-        <Muted>Let someone take up to a fixed amount each day, week or 30 days. Nothing more, ever.</Muted>
-      </Card>
-      <Card tone="chain">
-        <Body strong>Enforced by Solana, not by us</Body>
-        <Muted>
-          Anything above your cap is rejected by the Subscriptions program itself. You get a receipt either way.
-        </Muted>
-      </Card>
-      <Card>
-        <Body strong>Every permission, one place</Body>
-        <Muted>See and revoke what any app can pull from this wallet, with one approval.</Muted>
-      </Card>
-      <AccountFeatureSignIn />
-    </View>
+    </ScrollView>
   )
 }
 
@@ -51,9 +68,10 @@ function SignedIn() {
   const auth = useNuntiusAuth()!
   const list = useMandateList(auth)
   const receipts = useReceipts(auth)
-  const data = list.data
-
   const signOut = useSignOut()
+  const data = list.data
+  const now = Date.now()
+
   useEffect(() => {
     if (data) void refreshWidget(auth.session)
   }, [data, auth.session])
@@ -63,119 +81,157 @@ function SignedIn() {
     if (expired) void signOut()
   }, [expired, signOut])
 
+  const refusedToday = (receipts.data?.receipts ?? []).filter(
+    (r) => r.kind === 'refused' && now - r.at < 24 * 3600_000,
+  ).length
+  const live = (data?.mine ?? []).map((m) => ({
+    label: m.label || shortAddr(m.payee),
+    cap: m.cap,
+    remaining: m.remaining,
+    symbol: m.symbol,
+    decimals: m.decimals,
+    nextResetTs: m.nextResetTs,
+  }))
+  const atLimit = data ? data.mine.length >= data.limits.maxActiveMandates : false
+
   return (
-    <View style={{ gap: 14 }}>
-      <Row>
-        <View style={{ flex: 1 }}>
-          <H1>Permissions</H1>
-          <Muted>{shortAddr(auth.address)}</Muted>
-        </View>
-        <Pill label={auth.sgtMint ? 'Seeker verified' : 'Basic'} tone={auth.sgtMint ? 'chain' : 'plain'} />
-      </Row>
-
-      {auth.sgtMint ? (
-        <Pressable onPress={() => router.push('/digest')}>
-          <Card tone="amber">
-            <Body strong>Clock in</Body>
-            <Muted>Today’s digest: what moved, what was refused, what is left.</Muted>
-          </Card>
-        </Pressable>
-      ) : null}
-
-      {list.isLoading ? <Muted>Reading the chain…</Muted> : null}
-      {list.isError ? <Text style={{ color: theme.refused }}>Could not load: {list.error.message}</Text> : null}
-
-      {data ? (
-        <>
-          <Row>
-            <View style={{ flex: 1 }}>
-              <H2>Your mandates</H2>
-            </View>
-            <Button
-              title="New mandate"
-              kind="secondary"
-              onPress={() => router.push({ pathname: '/new', params: { symbol: data.mints[0] ?? 'USDC' } })}
-              disabled={data.mine.length >= data.limits.maxActiveMandates}
-              testID="new-mandate"
-            />
+    <>
+      <ScrollView contentContainerStyle={[s.scroll, { paddingBottom: 130 }]}>
+        <Hero>
+          <Row style={{ justifyContent: 'space-between' }}>
+            <Wordmark light />
+            {auth.sgtMint ? <Chip label="✓ Seeker verified" tone="glass" /> : null}
           </Row>
-          {data.mine.length === 0 ? (
-            <Card>
-              <Muted>
-                No mandates yet. Create one: a payee, an amount, a period. One approval, and it runs while the phone
-                stays in your pocket.
-              </Muted>
-            </Card>
-          ) : (
-            data.mine.map((m) => <MandateCard key={m.id} m={m} demo={data.demo} />)
-          )}
-          {data.mine.length >= data.limits.maxActiveMandates && data.tier === 'basic' ? (
-            <Muted>Basic tier holds one mandate. Verify Seeker ownership below to hold up to 10.</Muted>
+          <Text style={s.heroSentence} testID="hero-sentence">
+            {data ? nextMovement(live, now) : 'Reading the chain…'}
+          </Text>
+          {data ? (
+            <Text style={s.heroSub}>{summaryLine(data.mine.length, refusedToday, data.others.length)}</Text>
+          ) : null}
+        </Hero>
+
+        <View style={s.body}>
+          {list.isError && !expired ? <Note tone="refused">Could not load: {list.error.message}</Note> : null}
+
+          {auth.sgtMint ? (
+            <Pressable onPress={() => router.push('/digest')} accessibilityRole="button">
+              <View style={s.clockIn}>
+                <Text style={s.clockInText}>Clock in</Text>
+                <Text style={s.clockInSub}>What moved, what was refused, what is left</Text>
+              </View>
+            </Pressable>
           ) : null}
 
-          <H2>Other apps with access</H2>
-          {data.others.length === 0 ? (
-            <Card tone="chain">
-              <Body>No other app can pull from this wallet through the Subscriptions program.</Body>
-            </Card>
-          ) : (
-            data.others.map((o) => <OtherCard key={o.delegationPda} o={o} />)
-          )}
+          {data ? (
+            <>
+              <Section>Your permissions</Section>
+              {data.mine.length === 0 ? (
+                <Card>
+                  <Muted>
+                    None yet. A payee, an amount, a period: one approval, and it runs while the phone stays in your
+                    pocket.
+                  </Muted>
+                </Card>
+              ) : (
+                data.mine.map((m) => <PermissionCard key={m.id} m={m} demo={data.demo} now={now} />)
+              )}
+              {atLimit && data.tier === 'basic' ? (
+                <Muted>Basic tier holds one permission. Verify Seeker ownership below to hold up to 10.</Muted>
+              ) : null}
 
-          <Card>
-            <Muted>
-              Token account delegate:{' '}
-              {data.tokenAccount.delegate
-                ? `${shortAddr(data.tokenAccount.delegate)} (Subscription Authority, program-controlled)`
-                : 'none'}
-            </Muted>
-          </Card>
-        </>
-      ) : null}
+              <Section>Other apps with access</Section>
+              {data.others.length === 0 ? (
+                <Note tone="moved">No other app can pull from this wallet.</Note>
+              ) : (
+                data.others.map((o) => <OtherCard key={o.delegationPda} o={o} now={now} />)
+              )}
+              <Muted style={{ fontSize: 13 }}>
+                Token account delegate:{' '}
+                {data.tokenAccount.delegate
+                  ? `${shortAddr(data.tokenAccount.delegate)}, the Subscriptions program's authority`
+                  : 'none'}
+              </Muted>
+            </>
+          ) : null}
 
-      <Row>
-        <View style={{ flex: 1 }}>
-          <H2>Receipts</H2>
+          <Row style={{ justifyContent: 'space-between', marginTop: 6 }}>
+            <Section style={{ marginTop: 0 }}>Receipts</Section>
+            <Pressable onPress={() => router.push('/receipts')} hitSlop={10}>
+              <Text style={s.link}>See all</Text>
+            </Pressable>
+          </Row>
+          {(receipts.data?.receipts ?? []).slice(0, 3).map((r) => (
+            <ReceiptRow key={r.id} r={r} cluster={receipts.data?.cluster} />
+          ))}
+          {receipts.data && receipts.data.receipts.length === 0 ? (
+            <Muted>Nothing yet. Every pull will land here.</Muted>
+          ) : null}
+
+          <AccountFooter />
         </View>
-        <Button title="All" kind="ghost" onPress={() => router.push('/receipts')} />
-      </Row>
-      {(receipts.data?.receipts ?? []).slice(0, 3).map((r) => (
-        <ReceiptRow key={r.id} r={r} cluster={receipts.data?.cluster} />
-      ))}
-      {receipts.data && receipts.data.receipts.length === 0 ? (
-        <Muted>Nothing yet. Every pull will land here.</Muted>
-      ) : null}
+      </ScrollView>
+      <View style={s.footer}>
+        <Button
+          big
+          kind="ink"
+          title="New permission"
+          testID="new-mandate"
+          disabled={!data || atLimit}
+          onPress={() => router.push({ pathname: '/new', params: { mints: (data?.mints ?? ['USDC']).join(',') } })}
+        />
+      </View>
+    </>
+  )
+}
 
-      <AccountFooter />
+function Tile({ label, tone }: { label: string; tone: 'signal' | 'foreign' }) {
+  return (
+    <View style={[s.tile, { backgroundColor: tone === 'signal' ? color.signal50 : color.foreign50 }]}>
+      <Text style={[s.tileText, { color: tone === 'signal' ? color.signal : color.foreignInk }]}>{initial(label)}</Text>
     </View>
   )
 }
 
-function MandateCard({ m, demo }: { m: MandateView; demo: boolean }) {
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const shortDate = (ts: number) => {
+  const d = new Date(ts * 1000)
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}`
+}
+const everyWords = (p: number) =>
+  p === 86_400 ? 'every day' : p === 3_600 ? 'every hour' : p === 604_800 ? 'every week' : 'every 30 days'
+
+function PermissionCard({ m, demo, now }: { m: MandateView; demo: boolean; now: number }) {
   const auth = useNuntiusAuth()
   const revoke = useRevoke(auth)
   const overCap = useDemoOverCap(auth)
-  const now = Date.now()
+  const name = m.label || shortAddr(m.payee)
+  const mt = meter(m.cap, m.remaining, m.decimals)
   return (
     <Card>
       <Row>
-        <View style={{ flex: 1 }}>
-          <Body strong>{m.label || shortAddr(m.payee)}</Body>
-        </View>
-        <Pill label="enforced on chain" tone="chain" />
+        <Tile label={name} tone="signal" />
+        <Text style={s.name} numberOfLines={1}>
+          {name}
+        </Text>
+        <Text style={s.rate}>
+          {m.cap} {m.symbol} {perWords(m.periodLengthS)}
+        </Text>
       </Row>
-      <Body>{m.text.headline}</Body>
-      <CapBar share={remainingShare(m.remaining, m.cap)} />
       <Muted>
-        {m.remaining ?? '—'} of {m.cap} {m.symbol} left · {resetsIn(m.nextResetTs, now)}
+        {name} can take up to {m.cap} {m.symbol} {everyWords(m.periodLengthS)} until {shortDate(m.expiryTs)}. Anything
+        more is refused by the chain.
       </Muted>
-      <Muted>{m.text.guarantee}</Muted>
-      <Row>
-        <Button title="Revoke" kind="danger" busy={revoke.isPending} onPress={() => revoke.mutate(m.delegationPda)} />
+      <CapMeter
+        takenShare={mt.takenShare}
+        left={`${mt.taken} taken ${windowWords(m.periodLengthS)}`}
+        right={`${mt.left} left${m.nextResetTs ? `, resets in ${span(m.nextResetTs, now)}` : ''}`}
+      />
+      <Row gap={8} style={{ marginTop: 4 }}>
+        <Button title="Revoke" kind="revoke" busy={revoke.isPending} onPress={() => revoke.mutate(m.delegationPda)} />
         {demo ? (
           <Button
             title="Try to take more"
-            kind="secondary"
+            kind="ghost"
             busy={overCap.isPending}
             onPress={() => overCap.mutate(m.id)}
             testID="demo-overcap"
@@ -183,56 +239,60 @@ function MandateCard({ m, demo }: { m: MandateView; demo: boolean }) {
         ) : null}
       </Row>
       {overCap.data?.refusedByChain ? (
-        <Text style={{ color: theme.refused, fontWeight: '700' }}>Refused by the chain (0x190). Nothing moved.</Text>
+        <Note tone="refused">Refused by the chain, error 0x190. Nothing moved.</Note>
       ) : null}
-      {revoke.isError ? <Text style={{ color: theme.refused }}>Revoke failed: {revoke.error.message}</Text> : null}
+      {overCap.isError ? <Note tone="refused">{overCap.error.message}</Note> : null}
+      {revoke.isError ? <Note tone="refused">Revoke failed: {revoke.error.message}</Note> : null}
     </Card>
   )
 }
 
-function OtherCard({ o }: { o: OtherDelegation }) {
+function OtherCard({ o, now }: { o: OtherDelegation; now: number }) {
   const auth = useNuntiusAuth()
   const revoke = useRevoke(auth)
-  const every = o.periodLengthS ? periodWords(o.periodLengthS) : ''
+  const name = shortAddr(o.delegatee)
+  const mt = meter(o.cap, o.remaining, o.decimals)
   return (
-    <Card>
+    <Card style={{ borderWidth: 1.5, borderColor: color.foreign50 }}>
       <Row>
-        <View style={{ flex: 1 }}>
-          <Body strong>{shortAddr(o.delegatee)}</Body>
-        </View>
-        <Pill label={o.kind} tone="amber" />
+        <Tile label={name} tone="foreign" />
+        <Text style={s.name} numberOfLines={1}>
+          {name}
+        </Text>
+        {o.kind === 'recurring' ? (
+          <Text style={s.rate}>
+            {o.cap} {o.symbol} {perWords(o.periodLengthS)}
+          </Text>
+        ) : (
+          <Chip label={o.kind} tone="foreign" />
+        )}
       </Row>
       {o.kind === 'recurring' ? (
         <>
-          <Body>
-            Can pull up to {o.cap} {o.symbol} {every}.
-          </Body>
-          <CapBar share={remainingShare(o.remaining, o.cap)} />
           <Muted>
-            {o.remaining} of {o.cap} {o.symbol} left · {resetsIn(o.nextResetTs, Date.now())}
+            Another app can take up to {o.cap} {o.symbol} from this wallet, outside nuntius.
           </Muted>
+          <CapMeter
+            takenShare={mt.takenShare}
+            left={`${mt.taken} taken ${windowWords(o.periodLengthS)}`}
+            right={`${mt.left} left${o.nextResetTs ? `, resets in ${span(o.nextResetTs, now)}` : ''}`}
+          />
         </>
       ) : o.kind === 'fixed' ? (
-        <Body>
-          Can still pull {o.remaining} {o.symbol} in total.
-        </Body>
+        <Muted>
+          It can still take {o.remaining} {o.symbol} in total.
+        </Muted>
       ) : (
-        <Body>A subscription plan. Cancel it in the merchant’s app.</Body>
+        <Muted>A subscription plan. Cancel it in the merchant’s app.</Muted>
       )}
       {o.revocable ? (
-        <Button title="Revoke" kind="danger" busy={revoke.isPending} onPress={() => revoke.mutate(o.delegationPda)} />
+        <Row>
+          <Button title="Revoke" kind="revoke" busy={revoke.isPending} onPress={() => revoke.mutate(o.delegationPda)} />
+        </Row>
       ) : null}
-      {revoke.isError ? <Text style={{ color: theme.refused }}>Revoke failed: {revoke.error.message}</Text> : null}
+      {revoke.isError ? <Note tone="refused">Revoke failed: {revoke.error.message}</Note> : null}
     </Card>
   )
-}
-
-function periodWords(s: number): string {
-  if (s === 86_400) return 'every day'
-  if (s === 604_800) return 'every week'
-  if (s === 2_592_000) return 'every 30 days'
-  if (s === 3_600) return 'every hour'
-  return `every ${s} seconds`
 }
 
 function AccountFooter() {
@@ -240,12 +300,13 @@ function AccountFooter() {
   const verify = useVerifySeekerMutation()
   const signOut = useSignOut()
   return (
-    <View style={{ gap: 8, marginTop: 12 }}>
+    <View style={{ gap: 10, marginTop: 18 }}>
+      <Muted style={{ fontSize: 13 }}>Signed in as {shortAddr(auth.address)}</Muted>
       {!auth.sgtMint ? (
         <>
           <Button
             title={verify.isPending ? 'Verifying…' : 'Verify Seeker ownership'}
-            kind="secondary"
+            kind="outline"
             onPress={() => verify.mutate(auth)}
             busy={verify.isPending}
           />
@@ -254,12 +315,57 @@ function AccountFooter() {
           ) : null}
         </>
       ) : (
-        <Muted>Genesis Token {shortAddr(auth.sgtMint)}</Muted>
+        <Muted style={{ fontSize: 13 }}>Genesis Token {shortAddr(auth.sgtMint)}</Muted>
       )}
-      <Button title="Sign out" kind="ghost" onPress={() => void signOut()} />
-      <Pressable onPress={() => void Linking.openURL('https://github.com/seekdaseek/nuntius')}>
-        <Muted>Open source · github.com/seekdaseek/nuntius</Muted>
-      </Pressable>
+      <Row gap={16}>
+        <Pressable onPress={() => void signOut()} hitSlop={8}>
+          <Text style={s.link}>Sign out</Text>
+        </Pressable>
+        <Pressable onPress={() => void Linking.openURL('https://github.com/seekdaseek/nuntius')} hitSlop={8}>
+          <Text style={s.link}>Source code</Text>
+        </Pressable>
+      </Row>
     </View>
   )
 }
+
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: color.paper },
+  scroll: { paddingBottom: 40 },
+  body: { paddingHorizontal: space.side, paddingTop: 8, gap: space.cardGap },
+  heroSentence: {
+    fontFamily: font.display,
+    fontSize: 31,
+    lineHeight: 35,
+    letterSpacing: -0.6,
+    color: color.white,
+    marginTop: 18,
+  },
+  heroSub: { fontFamily: font.regular, fontSize: 15, lineHeight: 21, color: color.onSignalMuted },
+  cardTitle: { fontFamily: font.semibold, fontSize: 17 },
+  clockIn: {
+    backgroundColor: color.signal50,
+    borderRadius: 22,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 2,
+    marginTop: 8,
+  },
+  clockInText: { fontFamily: font.bold, fontSize: 16, color: color.signal },
+  clockInSub: { fontFamily: font.medium, fontSize: 13, color: color.ink2 },
+  tile: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  tileText: { fontFamily: font.display, fontSize: 17 },
+  name: { fontFamily: font.semibold, fontSize: 17, color: color.ink, flex: 1 },
+  rate: { fontFamily: font.semibold, fontSize: 15, color: color.ink, ...tabular },
+  link: { fontFamily: font.semibold, fontSize: 14, color: color.signal },
+  footer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: space.side,
+    paddingTop: 12,
+    paddingBottom: 28,
+    backgroundColor: color.paper,
+  },
+})

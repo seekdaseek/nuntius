@@ -1,7 +1,7 @@
 /**
  * What the home-screen widget says, computed from the /api/widget snapshot.
  * Self-contained so it is testable without Android: the widget component only
- * lays these strings out.
+ * lays these strings and shares out.
  */
 export interface WidgetSnapshot {
   rows: { label: string; remaining: string; cap: string; symbol: string; nextResetTs: number }[]
@@ -13,10 +13,21 @@ export interface WidgetSnapshot {
   fetchedAt: number
 }
 
+export interface WidgetRow {
+  left: string
+  right: string
+  /** 0..1 of the cap taken this period: the meter's green fill. */
+  takenShare: number
+}
+
 export interface WidgetView {
   title: string
-  rows: { left: string; right: string }[]
+  /** Top-right line, in signal colour: the clock-in state. */
+  badge: string
+  rows: WidgetRow[]
+  /** Shown only when something needs saying; empty otherwise. */
   footer: string
+  footerTone: 'refused' | 'muted'
   /** Where a tap goes. */
   url: string
   stale: boolean
@@ -24,37 +35,36 @@ export interface WidgetView {
 
 const STALE_MS = 2 * 3_600_000
 
-function countdown(nextResetTs: number, nowMs: number): string {
-  const s = Math.floor(nextResetTs - nowMs / 1000)
-  if (s <= 0) return 'resets now'
-  const h = Math.floor(s / 3_600)
-  const m = Math.floor((s % 3_600) / 60)
-  if (h >= 24) return `${Math.floor(h / 24)}d`
-  return h > 0 ? `${h}h ${m}m` : `${Math.max(m, 1)}m`
+function share(remaining: string, cap: string): number {
+  const c = Number(cap)
+  const r = Number(remaining)
+  if (!Number.isFinite(c) || !Number.isFinite(r) || c <= 0) return 0
+  return Math.min(1, Math.max(0, (c - r) / c))
 }
 
 export function widgetView(snap: WidgetSnapshot | null, signedIn: boolean, nowMs: number): WidgetView {
-  if (!signedIn) {
-    return { title: 'nuntius', rows: [], footer: 'Sign in to see your permissions', url: '/', stale: false }
-  }
-  if (!snap) {
-    return { title: 'nuntius', rows: [], footer: 'Open nuntius to load', url: '/', stale: true }
-  }
+  const base = { title: 'nuntius', badge: '', rows: [], footerTone: 'muted' as const, url: '/', stale: false }
+  if (!signedIn) return { ...base, footer: 'Sign in to see your permissions' }
+  if (!snap) return { ...base, footer: 'Open nuntius to load', stale: true }
+
   const stale = nowMs - snap.fetchedAt > STALE_MS
-  const title =
-    snap.liveCount === 0 ? 'No live permissions' : `${snap.liveCount} live permission${snap.liveCount > 1 ? 's' : ''}`
   const rows = snap.rows.map((r) => ({
     left: r.label,
-    right: `${r.remaining}/${r.cap} ${r.symbol} · ${countdown(r.nextResetTs, nowMs)}`,
+    right: `${r.remaining} of ${r.cap} ${r.symbol}`,
+    takenShare: share(r.remaining, r.cap),
   }))
-  let footer: string
-  if (snap.lastReceipt?.kind === 'refused') footer = `Refused by the chain: ${snap.lastReceipt.label ?? 'a pull'}`
-  else if (snap.streak !== null && snap.clockedInToday === false) footer = `Clock in · streak ${snap.streak}`
-  else if (snap.streak !== null) footer = `Clocked in · streak ${snap.streak}`
-  else if (snap.lastReceipt?.kind === 'pull' && snap.lastReceipt.amount)
-    footer = `Last: ${snap.lastReceipt.label ?? 'pull'} ${snap.lastReceipt.amount} ${snap.lastReceipt.symbol}`
-  else footer = 'Every pull sends a receipt'
-  if (stale) footer = `${footer} · not refreshed`
+  let badge = ''
+  if (snap.streak !== null) {
+    badge = snap.clockedInToday ? `Clocked in, day ${snap.streak}` : `Clock in, day ${snap.streak + 1}`
+  }
+  let footer = ''
+  let footerTone: 'refused' | 'muted' = 'muted'
+  if (snap.lastReceipt?.kind === 'refused') {
+    footer = `Refused by the chain: ${snap.lastReceipt.label ?? 'a pull'}`
+    footerTone = 'refused'
+  } else if (snap.liveCount === 0) footer = 'No live permissions'
+  else if (snap.liveCount > rows.length) footer = `${snap.liveCount - rows.length} more in the app`
+  if (stale) footer = footer ? `${footer}, not refreshed` : 'Not refreshed in 2 hours'
   const url = snap.streak !== null && snap.clockedInToday === false ? '/digest' : '/'
-  return { title, rows, footer, url, stale }
+  return { title: 'nuntius', badge, rows, footer, footerTone, url, stale }
 }

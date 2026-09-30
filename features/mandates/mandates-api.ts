@@ -34,6 +34,7 @@ export interface MandateText {
   headline: string
   schedule: string
   guarantee: string
+  enforce: string
   exit: string
 }
 
@@ -89,6 +90,8 @@ export interface Receipt {
   symbol: string
   signature: string | null
   actor: 'nuntius' | 'other'
+  /** The mandate's cap when nuntius knows it. */
+  cap: string | null
 }
 
 export interface Streak {
@@ -98,6 +101,8 @@ export interface Streak {
 }
 
 export interface DigestResponse {
+  days: string[]
+  today: string
   digest: { title: string; body: string; lines: string[]; expiringSoon: string[] }
   streak: Streak
   tier: 'basic' | 'seeker'
@@ -147,7 +152,10 @@ export const api = {
   digestPrefs: (session: string, hour: number, tzOffsetMin: number, enabled: boolean) =>
     post<{ prefs: DigestResponse['prefs'] }>('/api/digest/prefs', { session, hour, tzOffsetMin, enabled }),
   clockIn: (session: string, tzOffsetMin: number) =>
-    post<{ day: string; firstToday: boolean; streak: Streak }>('/api/clock-in', { session, tzOffsetMin }),
+    post<{ day: string; firstToday: boolean; streak: Streak; days: string[] }>('/api/clock-in', {
+      session,
+      tzOffsetMin,
+    }),
   widget: (session: string, tzOffsetMin: number) =>
     post<Record<string, unknown>>('/api/widget', { session, tzOffsetMin }),
 }

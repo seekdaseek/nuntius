@@ -1,20 +1,23 @@
 import React from 'react'
-import { Pressable, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
-import { Body, Card, Mono, Muted, Row } from '@/components/ui'
+import { color, font } from '@/components/ui'
+import { tabular } from '@/constants/app-styles'
 import type { Receipt } from '@/features/mandates/mandates-api'
 import { ago, shortAddr } from '@/core/format'
 
-const KIND_TITLE: Record<Receipt['kind'], string> = {
-  pull: 'Received',
-  refused: 'Refused by the chain',
-  granted: 'Permission granted',
-  revoked: 'Revoked',
-  expired: 'Expired',
+const KIND: Record<Receipt['kind'], { title: string; dot: string }> = {
+  pull: { title: 'Moved', dot: color.moved },
+  refused: { title: 'Refused by the chain', dot: color.refused },
+  granted: { title: 'Permission granted', dot: color.signal },
+  revoked: { title: 'Revoked', dot: color.ink2 },
+  expired: { title: 'Expired', dot: color.ink2 },
 }
 
 export function ReceiptRow({ r, cluster }: { r: Receipt; cluster?: string }) {
   const who = r.label ?? shortAddr(r.delegatee)
+  const k = KIND[r.kind]
+  const foreign = r.actor === 'other'
   const open = () =>
     router.push({
       pathname: '/alert',
@@ -26,29 +29,46 @@ export function ReceiptRow({ r, cluster }: { r: Receipt; cluster?: string }) {
         sig: r.signature ?? '',
         amount: r.amount ?? '',
         symbol: r.symbol,
+        cap: r.cap ?? '',
         cluster: cluster ?? '',
         actor: r.actor,
+        at: String(r.at),
       },
     })
   return (
-    <Pressable onPress={open}>
-      <Card tone={r.kind === 'refused' ? 'refused' : 'plain'}>
-        <Row>
-          <View style={{ flex: 1 }}>
-            <Body strong>
-              {KIND_TITLE[r.kind]}: {who}
-            </Body>
-          </View>
-          <Muted>{ago(r.at, Date.now())}</Muted>
-        </Row>
-        {r.amount ? (
-          <Muted>
-            {r.kind === 'refused' ? 'asked for' : 'moved'} {r.amount} {r.symbol}
-            {r.actor === 'other' ? ' · outside nuntius' : ''}
-          </Muted>
-        ) : null}
-        {r.signature ? <Mono>{shortAddr(r.signature)}</Mono> : null}
-      </Card>
+    <Pressable onPress={open} accessibilityRole="button">
+      <View style={[s.row, r.kind === 'refused' ? s.rowRefused : null]}>
+        <View style={[s.dot, { backgroundColor: foreign && r.kind === 'granted' ? color.foreign : k.dot }]} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={s.title} numberOfLines={1}>
+            {k.title}: {who}
+          </Text>
+          <Text style={s.sub} numberOfLines={1}>
+            {[
+              r.amount ? `${r.kind === 'refused' ? 'asked for' : ''} ${r.amount} ${r.symbol}`.trim() : null,
+              foreign ? 'outside nuntius' : null,
+              ago(r.at, Date.now()),
+            ]
+              .filter(Boolean)
+              .join(', ')}
+          </Text>
+        </View>
+      </View>
     </Pressable>
   )
 }
+
+const s = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+    backgroundColor: color.card,
+    borderRadius: 18,
+    padding: 14,
+  },
+  rowRefused: { backgroundColor: color.refused50 },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  title: { fontFamily: font.semibold, fontSize: 15, color: color.ink },
+  sub: { fontFamily: font.medium, fontSize: 13, color: color.ink2, ...tabular },
+})
