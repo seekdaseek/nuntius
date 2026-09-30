@@ -59,7 +59,8 @@
             }
           ]
         }
-      ]
+      ],
+      "./plugins/with-release-signing.js"
     ],
     "experiments": {
       "reactCompiler": true,
