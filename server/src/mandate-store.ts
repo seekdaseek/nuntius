@@ -253,14 +253,6 @@ export class MandateStore {
     return r.n
   }
 
-  /** Nonces are never reused by nuntius, even after a revoke frees the PDA. */
-  nextNonce(address: string, delegatee: string): number {
-    const r = this.db
-      .prepare('SELECT MAX(nonce) AS n FROM mandates WHERE address = ? AND delegatee = ?')
-      .get(address, delegatee) as { n: number | null }
-    return r.n === null ? 0 : r.n + 1
-  }
-
   setStatus(id: string, status: MandateStatus, nowMs: number): void {
     if (status === 'active') {
       this.db.prepare("UPDATE mandates SET status = 'active', activated_at = ? WHERE id = ?").run(nowMs, id)

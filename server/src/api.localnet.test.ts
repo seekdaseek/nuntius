@@ -137,6 +137,20 @@ test('mandatum API end to end on the real program', { skip: skipLocalnet, timeou
     assert.equal(f.json.mandate.remaining, '2.5')
     mandateId = c.json.mandateId
     pda = c.json.delegationPda
+    // A random seed: not the address the old counter gave the first grant.
+    const counterPda = (
+      await buildGrantTx(rpc, {
+        owner: owner.address,
+        mint,
+        delegatee: delegatee.address,
+        nonce: 0n,
+        amountPerPeriod: 1n,
+        periodLengthS: 3600n,
+        startTs: 0n,
+        expiryTs: BigInt(Math.floor(Date.now() / 1000) + 3600),
+      })
+    ).delegationPda
+    assert.notEqual(pda, counterPda)
     assert.ok(pushes.includes('Permission live: Rent to Ana'))
   })
 

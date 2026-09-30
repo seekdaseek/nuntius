@@ -39,6 +39,7 @@ import { canCreateMandate, LIMITS, tierOf } from './tier.js'
 import { buildDigest, computeStreak, localDay, type LiveMandate } from './digest.js'
 import { safeError } from './log.js'
 import { allowanceFor, newGrantLifetime } from './allowance.js'
+import { randomInt } from 'node:crypto'
 import { clientIp, tooMany, type Limits } from './rate-limit.js'
 import type { Rpc } from './tx.js'
 
@@ -70,6 +71,11 @@ class HttpError extends Error {
 }
 
 type Body = Record<string, unknown>
+
+/** A random delegation seed: 48 bits, so a repeat is out of reach, and exact as a JS number. */
+export function freshNonce(): number {
+  return randomInt(0, 2 ** 48 - 1)
+}
 
 export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps): void {
   const now = deps.now ?? Date.now
@@ -201,17 +207,26 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     if (!r.exists || r.owner !== t.payee || r.mint !== t.mint.mint) {
       throw new HttpError(400, 'payee_has_no_account', `the payee has no ${t.mint.symbol} account yet`)
     }
-    const nonce = mandates.nextNonce(a.address, deps.delegatee)
-    const grant = await buildGrantTx(rpc, {
-      owner: a.address as Address,
-      mint: t.mint.mint as Address,
-      delegatee: deps.delegatee,
-      nonce: BigInt(nonce),
-      amountPerPeriod: t.amount,
-      periodLengthS: BigInt(t.periodLengthS),
-      startTs: 0n,
-      expiryTs: BigInt(t.expiryTs),
-    })
+    // A fresh random seed for every grant, and never one whose address has an
+    // account: a new permission must not land on an old PDA and inherit its
+    // history (30 Sep: a counter-based seed repeated a 22 Sep address).
+    let nonce = 0
+    let grant: Awaited<ReturnType<typeof buildGrantTx>> | null = null
+    for (let attempt = 0; attempt < 3 && !grant; attempt++) {
+      nonce = freshNonce()
+      const g = await buildGrantTx(rpc, {
+        owner: a.address as Address,
+        mint: t.mint.mint as Address,
+        delegatee: deps.delegatee,
+        nonce: BigInt(nonce),
+        amountPerPeriod: t.amount,
+        periodLengthS: BigInt(t.periodLengthS),
+        startTs: 0n,
+        expiryTs: BigInt(t.expiryTs),
+      })
+      if (!(await readRecurring(rpc, g.delegationPda)).exists && !mandates.getMandateByPda(g.delegationPda)) grant = g
+    }
+    if (!grant) throw new HttpError(503, 'no_fresh_seed', 'Could not pick a fresh permission address. Try again.')
     mandates.deleteStalePending(PENDING_TTL_MS, now())
     const m = mandates.insertMandate(
       {

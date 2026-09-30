@@ -108,4 +108,36 @@ test('guard: receipts for delegations nuntius did not create', { skip: skipLocal
     assert.equal(again[0]!.events, 0, 'no duplicate receipts')
     console.log(`    receipts: ${pushes.map((p) => p.split(' — ')[0]).join(' | ')}`)
   })
+
+  await t.test('a new permission at an old address gets only its own history', async () => {
+    // 30 Sep: a new permission's PDA had existed on 22 Sep (same delegator,
+    // delegatee and seed), and the old pulls and refusals went out as new.
+    // g1 has a pull and a refusal behind it; end it, then grant the same seed.
+    const r = await buildRevokeTx(rpc, owner.address, g1.delegationPda, mint)
+    assertOk(await deviceSignAndSend(rpc, owner, r.transactionBase64))
+    // A server that never saw that history (as the live one had not).
+    const store2 = new MandateStore(new Database(':memory:'))
+    const pushes2: string[] = []
+    const guard2 = new Guard({
+      store: store2,
+      chain: rpcGuardChain(rpc),
+      receipts: new Receipts(store2, { toAddress: async (_a, m) => (pushes2.push(m.title), [200]) }, log, 'localnet'),
+      log,
+      addresses: () => [owner.address],
+      mintInfo: () => ({ symbol: 'USDC', decimals: 6 }),
+    })
+    await guard2.tick() // baseline: the old account is closed, nothing live
+    const again = await grant(merchant.address, 7n)
+    assert.equal(again.delegationPda, g1.delegationPda, 'the same address as before')
+    assertOk(await deviceSignAndSend(rpc, owner, again.transactionBase64))
+    const fresh = await merchantPull(again.delegationPda, 1_000n)
+    assertOk(fresh)
+    await guard2.tick()
+    const events = store2.events(owner.address)
+    const kinds = events.map((e) => `${e.kind}:${e.amountBaseUnits ?? ''}`).sort()
+    assert.deepEqual(kinds, ['granted:3000', 'pull:1000'], 'the new grant and its one pull, nothing from before')
+    assert.equal(events.find((e) => e.kind === 'pull')!.signature, fresh.signature)
+    assert.equal(pushes2.length, 2)
+    assert.equal((await guard2.tick())[0]!.events, 0, 'and nothing twice')
+  })
 })

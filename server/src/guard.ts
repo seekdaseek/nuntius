@@ -31,13 +31,15 @@ export interface TxEffect {
   customCode: number | null
   failed: boolean
   blockTimeMs: number | null
+  /** This transaction opened the delegation account (its lamports went from 0 to more). */
+  opened: boolean
 }
 
 export interface GuardChain {
   list(owner: string): Promise<DelegationView[]>
   /** Newest first, strictly after `until` when given. */
   signatures(pda: string, until: string | null): Promise<string[]>
-  effect(signature: string, owner: string, mint: string): Promise<TxEffect>
+  effect(signature: string, owner: string, mint: string, pda: string): Promise<TxEffect>
 }
 
 export function rpcGuardChain(rpc: Rpc): GuardChain {
@@ -53,7 +55,7 @@ export function rpcGuardChain(rpc: Rpc): GuardChain {
         .send()
       return r.map((s) => s.signature as string)
     },
-    async effect(signature, owner, mint) {
+    async effect(signature, owner, mint, pda) {
       const tx = await rpc
         .getTransaction(signature as never, {
           maxSupportedTransactionVersion: 0,
@@ -72,8 +74,21 @@ export function rpcGuardChain(rpc: Rpc): GuardChain {
         err: unknown
         preTokenBalances?: { owner?: string; mint: string; uiTokenAmount: { amount: string } }[]
         postTokenBalances?: { owner?: string; mint: string; uiTokenAmount: { amount: string } }[]
+        preBalances?: (number | bigint)[]
+        postBalances?: (number | bigint)[]
+        loadedAddresses?: { writable?: string[]; readonly?: string[] }
       } | null
+      // Balances line up with the static keys, then the looked-up writable and readonly ones.
+      const keys = [
+        ...((tx.transaction as unknown as { message: { accountKeys: string[] } }).message.accountKeys ?? []),
+        ...(meta?.loadedAddresses?.writable ?? []),
+        ...(meta?.loadedAddresses?.readonly ?? []),
+      ]
+      const i = keys.indexOf(pda)
+      const opened =
+        i >= 0 && !meta?.err && BigInt(meta?.preBalances?.[i] ?? 0) === 0n && BigInt(meta?.postBalances?.[i] ?? 0) > 0n
       return {
+        opened,
         signature,
         delta: bal(meta?.postTokenBalances) - bal(meta?.preTokenBalances),
         customCode: customCodeOf(meta?.err),
@@ -194,21 +209,42 @@ export class Guard {
         }
         this.o.store.setGuardCursor(d.address, address, null, this.now(), d)
       }
-      emitted += await this.activity(address, d, b)
+      emitted += await this.activity(address, d, b, !known)
     }
     if (firstScan) this.o.store.setGuardCursor(baselineKey, address, null, this.now())
     return emitted
   }
 
-  private async activity(address: string, d: DelegationView, b: ReturnType<Guard['base']>): Promise<number> {
+  /**
+   * Receipts for what happened on a delegation since the cursor. For one seen
+   * for the first time there is no cursor, and the address's history may hold
+   * an earlier account at the same address: the same delegator, delegatee and
+   * seed give the same PDA. 30 Sep: a new permission's PDA had existed on 22
+   * Sep, and its old pulls and refusals went out as six new pushes. So history
+   * starts at the transaction that opened the current account; everything
+   * before it belongs to the old one.
+   */
+  private async activity(
+    address: string,
+    d: DelegationView,
+    b: ReturnType<Guard['base']>,
+    firstSeen: boolean,
+  ): Promise<number> {
     if (!d.mint) return 0
+    const mint = d.mint
     const cursor = this.o.store.guardCursor(d.address)
     const sigs = await this.o.chain.signatures(d.address, cursor)
     if (sigs.length === 0) return 0
+    // Newest first from the chain; for a first sighting, stop at the opening.
+    const fresh: { sig: string; fx: TxEffect }[] = []
+    for (const sig of sigs) {
+      const fx = await this.o.chain.effect(sig, address, mint, d.address)
+      fresh.push({ sig, fx })
+      if (firstSeen && fx.opened) break
+    }
     let emitted = 0
     // Oldest first, so receipts arrive in the order things happened.
-    for (const sig of [...sigs].reverse()) {
-      const fx = await this.o.chain.effect(sig, address, d.mint)
+    for (const { sig, fx } of fresh.reverse()) {
       let kind: 'pull' | 'refused' | null = null
       if (fx.failed && fx.customCode === ERR.AmountExceedsPeriodLimit) kind = 'refused'
       else if (!fx.failed && fx.delta < 0n) kind = 'pull'

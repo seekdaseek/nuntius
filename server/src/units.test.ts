@@ -5,6 +5,7 @@ import { canCreateMandate, LIMITS, tierOf } from './tier.js'
 import { createLogger, redact, safeError } from './log.js'
 import { buildDigest, computeStreak, digestDue, localDay, type LedgerEvent } from './digest.js'
 import { effectiveWindow } from './mandate-chain.js'
+import { freshNonce } from './mandates-api.js'
 
 test('parseUnits / formatUnits are exact inverses and refuse extra precision', () => {
   assert.equal(parseUnits('10', 6), 10_000_000n)
@@ -384,4 +385,18 @@ test('receipts record the window after the pull; old databases gain the columns 
   assert.equal(newest!.periodLengthS, 86_400)
   assert.equal(oldest!.signature, 'old', 'existing receipts survive the migration')
   assert.equal(oldest!.remainingBaseUnits, undefined, 'and have no window')
+})
+
+test('grant seeds are random, never a counter that restarts with the database', () => {
+  const seen = new Set<number>()
+  for (let i = 0; i < 2000; i++) {
+    const n = freshNonce()
+    assert.ok(Number.isSafeInteger(n) && n >= 0 && n < 2 ** 48)
+    seen.add(n)
+  }
+  assert.equal(seen.size, 2000, 'no repeats')
+  assert.ok(
+    [...seen].every((n) => n > 1_000),
+    'not the 0, 1, 2… a counter hands out',
+  )
 })
