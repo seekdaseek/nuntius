@@ -26,7 +26,16 @@ import { useDemoOverCap, useMandateList, useReceipts, useRevoke } from '@/featur
 import { ApiError, type MandateView, type OtherDelegation } from '@/features/mandates/mandates-api'
 import { shortAddr } from '@/core/format'
 import { delegateLine } from '@/core/allowance-copy'
-import { initial, meter, nextMovement, perWords, span, summaryLine, windowWords } from '@/core/home-model'
+import {
+  basicTierLine,
+  initial,
+  meter,
+  nextMovement,
+  perWords,
+  span,
+  summaryLine,
+  windowWords,
+} from '@/core/home-model'
 import { ReceiptRow } from '@/components/receipt-row'
 import { refreshWidget } from '@/features/widget/refresh-widget'
 
@@ -116,7 +125,11 @@ function SignedIn() {
         <Hero>
           <Row style={{ justifyContent: 'space-between' }}>
             <Wordmark light />
-            {auth.sgtMint ? <Chip label="✓ Seeker verified" tone="glass" /> : null}
+            {auth.sgtMint ? (
+              <Chip label="✓ Seeker verified" tone="glass" />
+            ) : data?.tier === 'basic' ? (
+              <Chip label="Basic tier" tone="glass" />
+            ) : null}
           </Row>
           <Text style={s.heroSentence} testID="hero-sentence">
             {data ? nextMovement(live, now) : 'Reading the chain…'}
@@ -151,9 +164,7 @@ function SignedIn() {
               ) : (
                 data.mine.map((m) => <PermissionCard key={m.id} m={m} demo={data.demo} now={now} />)
               )}
-              {atLimit && data.tier === 'basic' ? (
-                <Muted>Basic tier holds one permission. Verify Seeker ownership below to hold up to 10.</Muted>
-              ) : null}
+              {data.tier === 'basic' ? <Muted>{basicTierLine(atLimit, data.limits.maxActiveMandates)}</Muted> : null}
 
               <Section>Other apps with access</Section>
               {data.others.length === 0 ? (

@@ -48,3 +48,8 @@ export function explorerTx(signature: string, cluster: string | undefined): stri
   if (cluster === 'localnet') return null
   return `https://explorer.solana.com/tx/${signature}${cluster === 'devnet' ? '?cluster=devnet' : ''}`
 }
+
+/** "1 day", "2 days": a count with its noun. */
+export function count(n: number, noun: string): string {
+  return `${n} ${n === 1 ? noun : `${noun}s`}`
+}

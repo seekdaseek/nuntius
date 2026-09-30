@@ -193,3 +193,14 @@ export function slipMeter(
   const right = r.reset && r.reset * 1000 > nowMs ? `resets in ${span(r.reset, nowMs)}` : undefined
   return { takenShare: m.takenShare, left: `${m.left} of ${r.cap} left ${windowWords(r.per ?? null)}`, right }
 }
+
+/**
+ * What a basic-tier home says under its permissions, before the first one as
+ * well as at the limit (device check 2: it said "basic" only once full).
+ */
+export function basicTierLine(atLimit: boolean, max: number): string {
+  const holds = max === 1 ? 'one permission' : `${max} permissions`
+  return atLimit
+    ? `Basic tier holds ${holds}. Verify Seeker ownership below to hold up to 10.`
+    : `Basic tier: you can hold ${holds}. Verify Seeker ownership below to hold up to 10.`
+}

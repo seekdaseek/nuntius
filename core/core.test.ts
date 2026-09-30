@@ -1,9 +1,10 @@
 // Run: npm run test:core   (node --test with native type stripping; no bundler, no Android)
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ago, explorerTx, remainingShare, resetsIn, shortAddr, tzOffsetMin } from './format.ts'
+import { ago, count, explorerTx, remainingShare, resetsIn, shortAddr, tzOffsetMin } from './format.ts'
 import { widgetView, type WidgetSnapshot } from './widget-model.ts'
 import {
+  basicTierLine,
   initial,
   lineTone,
   longDate,
@@ -273,4 +274,12 @@ test('grant: a blockhash that died in Seed Vault is told apart from a dismissal 
   assert.equal(isBlockhashExpired(new Error('User declined the request')), false)
   assert.equal(isBlockhashExpired(new Error('insufficient funds for fee')), false)
   assert.equal(isBlockhashExpired(null), false)
+})
+
+test('copy: counts agree with their nouns, and a basic home says basic from the start', () => {
+  assert.equal(count(1, 'day'), '1 day')
+  assert.equal(count(0, 'day'), '0 days')
+  assert.equal(count(7, 'day'), '7 days')
+  assert.match(basicTierLine(false, 1), /^Basic tier: you can hold one permission\./)
+  assert.match(basicTierLine(true, 1), /^Basic tier holds one permission\./)
 })

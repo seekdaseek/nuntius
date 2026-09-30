@@ -168,9 +168,10 @@ export default function NewPermissionScreen() {
         <TextInput
           ref={amountRef}
           testID="amount"
-          style={[s.slot, s.slotInput, { width: slotWidth(form.amount || '0.05') }]}
+          style={[s.slot, s.slotInput, { width: slotWidth(form.amount || 'amount') }]}
           value={form.amount}
-          placeholder="0.05"
+          // A word, not a number: "0.05" here read as a value already filled in (device check 4).
+          placeholder="amount"
           placeholderTextColor={color.slotPlaceholder}
           keyboardType="decimal-pad"
           onChangeText={(v) => set('amount', sanitizeAmount(v))}
@@ -291,10 +292,10 @@ function SlotButton({ label, onPress, testID }: { label: string; onPress: () => 
 
 /**
  * Inline inputs cannot size to their text on every platform, so the slot is
- * sized from the text: Bricolage 800 at 30 averages about 17.5px a character.
+ * sized from the text: Bricolage 800 at 30 averages about 17.5px a character; lowercase words run wider, so 19.
  */
 function slotWidth(text: string): number {
-  return Math.min(300, Math.max(56, Math.ceil(text.length * 17.5) + 20))
+  return Math.min(300, Math.max(56, Math.ceil(text.length * 19) + 24))
 }
 
 const SENT = { fontFamily: font.display, fontSize: 30, lineHeight: 40, letterSpacing: -0.5 }

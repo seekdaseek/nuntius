@@ -4,7 +4,7 @@ import { Button, Muted, Note, Screen, Section, Title, color, font } from '@/comp
 import { radius } from '@/constants/app-styles'
 import { useNuntiusAuth } from '@/features/account/use-nuntius-auth'
 import { useClockIn, useDigest, useDigestPrefs } from '@/features/mandates/use-mandates'
-import { tzOffsetMin } from '@/core/format'
+import { count, tzOffsetMin } from '@/core/format'
 import { lineTone, longDate, weekSlots, type SlotState } from '@/core/home-model'
 
 /**
@@ -63,7 +63,7 @@ export default function ClockInScreen() {
       {seeker ? (
         <View style={s.punch}>
           <Text style={s.streak}>Day {streak?.current ?? 0} in a row</Text>
-          <Text style={s.best}>Best run: {streak?.best ?? 0} days</Text>
+          <Text style={s.best}>Best run: {count(streak?.best ?? 0, 'day')}</Text>
           <View style={s.days}>
             {slots.map((x) => (
               <View key={x.day} style={s.dayCol}>
