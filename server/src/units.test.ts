@@ -244,3 +244,53 @@ test('MANDATE_MINTS: optional per-mint ceiling; mainnet offers USDC and SKR by d
   assert.equal(SKR_MAINNET.maxPerPeriodUi, '55', 'about 1 USD of SKR')
   assert.equal(SKR_MAINNET.decimals, 6)
 })
+
+test('allowance: lifetime totals follow the program period rules', async () => {
+  const { recurringLifetime, newGrantLifetime, allowanceFor } = await import('./allowance.js')
+  const d = (o: Partial<Parameters<typeof recurringLifetime>[0]> = {}) => ({
+    amountPerPeriod: 100n,
+    amountPulledInPeriod: 0n,
+    currentPeriodStartTs: 1000n,
+    periodLengthS: 10n,
+    expiryTs: 1035n, // billable starts 1000, 1010, 1020, 1030
+    ...o,
+  })
+  assert.equal(recurringLifetime(d(), 1000n), 400n)
+  assert.equal(recurringLifetime(d({ amountPulledInPeriod: 30n }), 1005n), 370n, 'pulled counts in its own period')
+  assert.equal(recurringLifetime(d({ amountPulledInPeriod: 30n }), 1012n), 300n, 'a rolled period drops the old pulled')
+  assert.equal(recurringLifetime(d(), 1034n), 100n, 'the last billable period')
+  assert.equal(recurringLifetime(d(), 1035n), 100n, 'at expiry the last period still bills (current_ts > expiry fails)')
+  assert.equal(recurringLifetime(d(), 1036n), 0n)
+  assert.equal(recurringLifetime(d({ expiryTs: 1030n }), 1000n), 300n, 'a start exactly at expiry is not billable')
+  assert.equal(recurringLifetime(d({ expiryTs: 0n }), 1000n), null, 'no expiry: unbounded')
+  assert.equal(recurringLifetime(d(), 900n), 400n, 'not started yet')
+  assert.equal(newGrantLifetime(50_000n, 86_400n, 0n, 7n * 86_400n, 0n), 350_000n, '0.05 a day for 7 days')
+  assert.equal(newGrantLifetime(1n, 10n, 0n, 0n, 0n), null)
+  const view = (o: Record<string, unknown>) =>
+    ({
+      address: 'A',
+      kind: 'recurring',
+      delegator: 'U',
+      delegatee: 'X',
+      mint: 'M',
+      amountPerPeriod: '100',
+      amountPulledInPeriod: '0',
+      currentPeriodStartTs: 1000,
+      periodLengthS: 10,
+      expiryTs: 1035,
+      amount: null,
+      ...o,
+    }) as never
+  const list = [
+    view({ address: 'A' }),
+    view({ address: 'B', mint: 'OTHER' }),
+    view({ address: 'F', kind: 'fixed', amount: '7' }),
+  ]
+  assert.equal(allowanceFor(list, 'M', 1000n, 5n), 412n, 'this mint only: 400 + fixed 7 + new 5')
+  assert.equal(allowanceFor(list, 'M', 1000n, 0n, 'A'), 7n, 'excluding the one being revoked')
+  assert.equal(
+    allowanceFor([...list, view({ address: 'S', kind: 'subscription', mint: null })], 'M', 1000n),
+    null,
+    'a plan subscription: no cap',
+  )
+})

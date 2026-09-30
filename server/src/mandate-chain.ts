@@ -11,6 +11,12 @@
  * and re-applies the SPL approve if the user cleared it elsewhere) and the
  * delegation pins the real `init_id` read off the chain.
  *
+ * CAPPED at the token level. `init` approves the authority PDA for u64::MAX,
+ * which wallets show as "Unlimited". The same transaction then runs an SPL
+ * `approveChecked` that lowers the allowance to the most every live delegation
+ * on that mint can still take over its whole life, plus the new one (see
+ * allowance.ts). A revoke that leaves other delegations lowers it again.
+ *
  * ONE signature to revoke. `revokeDelegation` closes the delegation PDA;
  * `revokeSubscriptionAuthority` clears the SPL delegate. Both are signed by the
  * owner alone, so they go in one transaction. The authority is only revoked
@@ -18,7 +24,7 @@
  * would silently break every other mandate on that token.
  */
 import { createNoopSigner, type Address, type Instruction } from '@solana/kit'
-import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from '@solana-program/token'
+import { findAssociatedTokenPda, getApproveCheckedInstruction, TOKEN_PROGRAM_ADDRESS } from '@solana-program/token'
 import {
   fetchDelegationsByDelegator,
   fetchMaybeRecurringDelegation,
@@ -32,6 +38,7 @@ import {
   getTransferRecurringOverlayInstructionAsync,
   UNKNOWN_INIT_ID,
 } from '@solana/subscriptions'
+import { allowanceFor, newGrantLifetime } from './allowance.js'
 import { compileUnsigned, type Rpc } from './tx.js'
 
 export const PROGRAM_ID = 'De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44'
@@ -62,6 +69,8 @@ export interface GrantTx {
   userAta: Address
   /** true when the authority is created in this same transaction. */
   createsAuthority: boolean
+  /** The token allowance the transaction leaves, in base units; null = left unlimited by init. */
+  allowance: bigint | null
 }
 
 export async function userAtaOf(owner: Address, mint: Address): Promise<Address> {
@@ -93,6 +102,7 @@ export async function grantInstructions(
   authorityPda: Address
   userAta: Address
   createsAuthority: boolean
+  allowance: bigint | null
 }> {
   if (t.amountPerPeriod <= 0n) throw new Error('amountPerPeriod must be > 0')
   if (t.periodLengthS <= 0n || t.periodLengthS > 31_536_000n) throw new Error('periodLengthS out of program bounds')
@@ -101,10 +111,15 @@ export async function grantInstructions(
   const userAta = await userAtaOf(t.owner, t.mint)
   const ata = await rpc.getAccountInfo(userAta, { encoding: 'jsonParsed' }).send()
   if (!ata.value) throw new Error(`token account ${userAta} does not exist — the wallet holds none of ${t.mint}`)
-  const parsed = (ata.value.data as unknown as { parsed?: { info?: { mint?: string; owner?: string } } }).parsed
+  const parsed = (
+    ata.value.data as unknown as {
+      parsed?: { info?: { mint?: string; owner?: string; tokenAmount?: { decimals?: number } } }
+    }
+  ).parsed
   if (parsed?.info?.mint !== t.mint || parsed?.info?.owner !== t.owner) {
     throw new Error(`token account ${userAta} is not the ${t.mint} account of ${t.owner}`)
   }
+  const decimals = parsed.info.tokenAmount?.decimals ?? 0
 
   const { authorityPda, delegationPda } = await delegationPdaOf(t.owner, t.mint, t.delegatee, t.nonce)
   const existing = await fetchMaybeSubscriptionAuthority(rpc, authorityPda)
@@ -129,7 +144,30 @@ export async function grantInstructions(
     expiryTs: t.expiryTs,
     expectedSubscriptionAuthorityInitId: initId,
   })
-  return { instructions: [init, create], delegationPda, authorityPda, userAta, createsAuthority }
+  // Every live delegation on this mint, of any app, plus this one: the most the
+  // authority can ever move. Unbounded (no expiry, or a plan subscription) = no cap.
+  const nowS = BigInt(Math.floor(Date.now() / 1000))
+  const allowance = allowanceFor(
+    await listDelegations(rpc, t.owner),
+    t.mint,
+    nowS,
+    newGrantLifetime(t.amountPerPeriod, t.periodLengthS, t.startTs, t.expiryTs, nowS),
+  )
+  const instructions: Instruction[] = [init, create]
+  if (allowance !== null) instructions.push(capInstruction(userAta, t.mint, authorityPda, owner, allowance, decimals))
+  return { instructions, delegationPda, authorityPda, userAta, createsAuthority, allowance }
+}
+
+/** SPL approveChecked: the authority PDA may move at most `amount` from the user's account, in total. */
+function capInstruction(
+  userAta: Address,
+  mint: Address,
+  authorityPda: Address,
+  owner: ReturnType<typeof createNoopSigner>,
+  amount: bigint,
+  decimals: number,
+): Instruction {
+  return getApproveCheckedInstruction({ source: userAta, mint, delegate: authorityPda, owner, amount, decimals })
 }
 
 /** The single transaction the device signs to grant a mandate. */
@@ -141,6 +179,7 @@ export async function buildGrantTx(rpc: Rpc, t: MandateTerms): Promise<GrantTx> 
     authorityPda: g.authorityPda,
     userAta: g.userAta,
     createsAuthority: g.createsAuthority,
+    allowance: g.allowance,
   }
 }
 
@@ -149,6 +188,8 @@ export async function revokeInstructions(
   delegationPda: Address,
   mint: Address,
   alsoRevokeAuthority: boolean,
+  /** When other delegations stay: lower the allowance to what they can still take. */
+  lowerTo?: { userAta: Address; authorityPda: Address; amount: bigint; decimals: number },
 ): Promise<Instruction[]> {
   const signer = createNoopSigner(owner)
   const ixs: Instruction[] = [
@@ -163,6 +204,9 @@ export async function revokeInstructions(
       }),
     )
   }
+  if (!alsoRevokeAuthority && lowerTo) {
+    ixs.push(capInstruction(lowerTo.userAta, mint, lowerTo.authorityPda, signer, lowerTo.amount, lowerTo.decimals))
+  }
   return ixs
 }
 
@@ -176,9 +220,26 @@ export async function buildRevokeTx(
   delegationPda: Address,
   mint: Address,
 ): Promise<{ transactionBase64: string; revokesAuthority: boolean }> {
-  const others = (await listDelegations(rpc, owner)).filter((d) => d.mint === mint && d.address !== delegationPda)
+  const all = await listDelegations(rpc, owner)
+  const others = all.filter((d) => d.mint === mint && d.address !== delegationPda)
   const revokesAuthority = others.length === 0
-  const ixs = await revokeInstructions(owner, delegationPda, mint, revokesAuthority)
+  let lowerTo: Parameters<typeof revokeInstructions>[4]
+  if (!revokesAuthority) {
+    const amount = allowanceFor(all, mint, BigInt(Math.floor(Date.now() / 1000)), 0n, delegationPda)
+    const userAta = await userAtaOf(owner, mint)
+    const ata = await readAta(rpc, userAta)
+    const [authorityPda] = await findSubscriptionAuthorityPda({ user: owner, tokenMint: mint })
+    // Only lower an allowance nuntius can see is on this authority, and never raise it here.
+    if (
+      amount !== null &&
+      ata.delegate === authorityPda &&
+      ata.delegatedAmount !== null &&
+      amount < BigInt(ata.delegatedAmount)
+    ) {
+      lowerTo = { userAta, authorityPda, amount, decimals: ata.decimals ?? 0 }
+    }
+  }
+  const ixs = await revokeInstructions(owner, delegationPda, mint, revokesAuthority, lowerTo)
   return { transactionBase64: await compileUnsigned(rpc, owner, ixs), revokesAuthority }
 }
 
@@ -323,19 +384,28 @@ export async function readAta(
   delegate: string | null
   delegatedAmount: string | null
   amount: string | null
+  decimals: number | null
   mint: string | null
   owner: string | null
 }> {
   const info = await rpc.getAccountInfo(ata, { encoding: 'jsonParsed' }).send()
   if (!info.value)
-    return { exists: false, delegate: null, delegatedAmount: null, amount: null, mint: null, owner: null }
+    return {
+      exists: false,
+      delegate: null,
+      delegatedAmount: null,
+      amount: null,
+      decimals: null,
+      mint: null,
+      owner: null,
+    }
   const i = (
     info.value.data as unknown as {
       parsed?: {
         info?: {
           delegate?: string
           delegatedAmount?: { amount?: string }
-          tokenAmount?: { amount?: string }
+          tokenAmount?: { amount?: string; decimals?: number }
           mint?: string
           owner?: string
         }
@@ -347,6 +417,7 @@ export async function readAta(
     delegate: i?.delegate ?? null,
     delegatedAmount: i?.delegatedAmount?.amount ?? null,
     amount: i?.tokenAmount?.amount ?? null,
+    decimals: i?.tokenAmount?.decimals ?? null,
     mint: i?.mint ?? null,
     owner: i?.owner ?? null,
   }

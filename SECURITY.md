@@ -8,15 +8,17 @@ Report a vulnerability to the repository owner through GitHub (`seekdaseek`). Pl
 
 ## 1. What the user grants
 
-One transaction, one Seed Vault signature, two instructions of the Solana Foundation's Subscriptions program (`De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44`):
+One transaction, one Seed Vault signature, three instructions: two of the Solana Foundation's Subscriptions program (`De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44`) and one of SPL Token:
 
 1. `initSubscriptionAuthority` — creates a program-owned **Subscription Authority** PDA for `(user, mint)` and makes it the SPL delegate of the user's token account **for `u64::MAX`**.
 2. `createRecurringDelegation` — a delegation record: this delegatee may pull up to `amountPerPeriod` every `periodLengthS`, until `expiryTs`.
+3. SPL `approveChecked` — lowers the delegate's allowance to the **lifetime total**: what every live delegation on that mint, of any app, can still take before it expires, plus this one (`server/src/allowance.ts`, which mirrors the program's period rules). If any of them has no end, this instruction is left out and the approval stays as init set it.
 
 Measured on a local validator running the program built from release commit `364a419` (`server/src/mandate-chain.localnet.test.ts`):
 
 - The grant transaction has exactly one required signer, the owner (`requiredSigners(...) == [owner]`).
-- After the grant, the token account reads `delegate = <authority PDA>` and `delegatedAmount = 18446744073709551615`. The test asserts both.
+- After the grant, the token account reads `delegate = <authority PDA>` and `delegatedAmount = ` the lifetime total (240000 for 10000 an hour for a day), not `18446744073709551615`. The test asserts both.
+- `server/src/allowance.localnet.test.ts`: pulls succeed up to the total and the delegate clears itself at zero; once the allowance is short, SPL Token refuses a pull the program allows (error 1); a second permission raises the allowance by exactly its total; revoking one of two lowers it; every revoke path ends `delegate: none`.
 
 ## 2. What the cap bounds, and who enforces it
 
@@ -35,8 +37,11 @@ Measured on a local validator running the program built from release commit `364
 
 State these plainly to any user:
 
-1. **The SPL approval is `u64::MAX`.** The per-period cap lives in the delegation record that the program checks, not in the token approval. While an authority is live, what stands between the delegatee and the **whole** balance of that token account is the Subscriptions program behaving correctly. Operational rule: keep a delegated account's balance near what its mandates need, and revoke when done.
-2. **The program is upgradeable.** The upgrade authority was measured at `DXtFpbPjcn2hxPnw79x1Pfoj35vXh5AsWBkS37YnXMVv` on 2026-09-22 (README). The program's own `docs/004-program-upgrade-mechanism.md` (read in this session) says upgrades go through a Squads multisig. An upgrade could change every rule in section 2. That is a dependency risk, and it is disclosed here rather than glossed over.
+1. **The token allowance bounds the total, not more.** The grant caps the SPL approval at the lifetime total of the live delegations on that mint, and the token program enforces it on every pull. Where it does not hold:
+   - **Another app's grant runs init again**, which re-approves `u64::MAX`. Unless that app caps it the same way, the allowance is unlimited again until the next nuntius grant or revoke re-caps it. The home screen shows the live allowance per token.
+   - **A delegation with no end** (a plan subscription, or a recurring delegation without expiry) makes any finite allowance unsafe. nuntius then leaves init's approval in place and says so on the approve screen before Seed Vault opens.
+   - **The Seed Vault sheet was seen showing "Unlimited USDC"** on the uncapped grant (device check 4). What it shows for the capped transaction is **UNTESTED** until a new APK runs the grant.
+2. **The program is upgradeable.** The upgrade authority was measured at `DXtFpbPjcn2hxPnw79x1Pfoj35vXh5AsWBkS37YnXMVv` on 2026-09-22 (README). The program's own `docs/004-program-upgrade-mechanism.md` says upgrades go through a Squads multisig. An upgrade could change every rule in section 2. With the token-level cap it can reach at most what the user approved in total, not the whole balance. That is still a dependency risk, and it is disclosed here rather than glossed over.
 3. **The destination is not bound by the program.** `transferRecurring` lets the delegatee name any token account of the right mint as the receiver. nuntius binds the destination **off chain**:
    - `receiver_ata` = the payee's associated token account, stored at creation.
    - The executor re-checks before every pull that it exists, holds the mandate's mint and is owned by the payee (`rpcChain.receiverOk`; unit test `an invalid receiver sends nothing`).

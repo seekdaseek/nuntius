@@ -231,7 +231,7 @@
           <h3>u64::MAX at the token level</h3>
           <p>
             Every grant makes a program PDA the token account's delegate for the maximum amount. The per-period cap
-            lives inside the program.
+            lives inside the program. nuntius caps the token approval at the lifetime total in the same transaction.
           </p>
         </div>
         <div class="card" style="flex: 1">
@@ -510,17 +510,18 @@
       <h2>What the cap bounds, and what it does not</h2>
       <div class="row">
         <div class="card chain" style="flex: 1">
-          <h3>Bounded by the program</h3>
+          <h3>Bounded by the chain</h3>
           <p>
-            Amount per period (0x190); the delegatee is the only signer; whole-period resets; hard expiry; revoke closes
-            it. Our server cannot raise any of it.
+            Amount per period (0x190, the program) and the lifetime total (SPL Token allowance); the delegatee is the
+            only signer; whole-period resets; hard expiry; revoke closes it. Our server cannot raise any of it.
           </p>
         </div>
         <div class="card refused" style="flex: 1">
           <h3>Not bounded by the cap</h3>
           <p>
-            The token approval is <b>u64::MAX</b>. The program is <b>upgradeable</b> (Squads multisig, per its ADR-004).
-            The <b>destination</b> is bound by nuntius, not by the chain.
+            The token approval is capped at the <b>lifetime total</b>, so an <b>upgrade</b> of the program reaches at
+            most what you approved in total. Another app's grant can lift the cap. The <b>destination</b> is bound by
+            nuntius, not by the chain.
           </p>
         </div>
       </div>

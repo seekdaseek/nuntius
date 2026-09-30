@@ -93,6 +93,8 @@ test('mandatum API end to end on the real program', { skip: skipLocalnet, timeou
     period: 'week',
     untilDays: 30,
   }
+  // Weekly period starts before a 30-day expiry: days 0, 7, 14, 21, 28.
+  const lifetimePeriods = 5
 
   await t.test('unauthenticated and malformed requests are refused', async () => {
     assert.equal((await call('/api/mandates/list', {}, 'x'.repeat(43))).status, 401)
@@ -113,6 +115,9 @@ test('mandatum API end to end on the real program', { skip: skipLocalnet, timeou
     assert.equal(r.status, 200)
     assert.match(r.json.text.headline, /^Rent to Ana \(.{4}….{4}\) can receive up to 2\.5 TUSD every week, until /)
     assert.equal(r.json.amountBaseUnits, '2500000')
+    // The approve screen quotes what the token allowance will be, before Seed Vault opens.
+    assert.equal(r.json.lifetimeTotal, String(2.5 * lifetimePeriods))
+    assert.equal(r.json.allowanceTotal, r.json.lifetimeTotal, 'no other delegation yet: the allowance is this one')
   })
 
   let mandateId = ''
@@ -121,6 +126,7 @@ test('mandatum API end to end on the real program', { skip: skipLocalnet, timeou
     const c = await call('/api/mandates/create', terms)
     assert.equal(c.status, 200, JSON.stringify(c.json))
     assert.equal(c.json.createsAuthority, true)
+    assert.equal(c.json.allowanceTotal, String(2.5 * lifetimePeriods))
     // Confirming before it lands is refused.
     assert.equal((await call('/api/mandates/confirm', { mandateId: c.json.mandateId })).json.error, 'not_on_chain_yet')
     assertOk(await deviceSignAndSend(rpc, owner, c.json.transactionBase64))

@@ -46,9 +46,23 @@ The same canonical address is deployed on devnet and mainnet, so there is no per
 
 **Why the cap is the product.** The exposure is bounded by the chain, not by this codebase. An over-cap pull is rejected by the program with `custom program error: 0x190` (`amountExceedsPeriodLimit`). That is the load-bearing guarantee, and it is enforced whether or not our server behaves.
 
-**What the cap does not bound, stated plainly.** `initSubscriptionAuthority` approves the Subscription Authority PDA for **`u64::MAX`** at the SPL level — the Foundation's own architecture diagram labels it exactly that. The per-period cap lives in the delegation record the program checks, not in the token account's approval. So while an authority is live, what stands between a delegatee and the _whole_ token-account balance is the program behaving correctly. Keep the balance of a delegated account near what the delegation actually needs, and revoke when done.
+**The token approval is capped too.** `initSubscriptionAuthority` approves the Subscription Authority PDA for **`u64::MAX`** at the SPL level, and Seed Vault shows that as "Unlimited". nuntius adds an SPL `approveChecked` to the same grant transaction, after the init, that lowers the allowance to the **lifetime total**: what every live permission on that token can still take (this one included) until it expires. Every pull through the program spends from that allowance, so the **token program itself** refuses anything beyond it; when it reaches zero, SPL Token clears the delegate. A revoke that leaves other permissions lowers the allowance again. So the chain bounds two things: the program bounds each period, and the token program bounds the total.
 
-The program account is **upgradeable** (upgrade authority `DXtFpbPjcn2hxPnw79x1Pfoj35vXh5AsWBkS37YnXMVv`, measured 2026-09-22). That is a real dependency risk, disclosed rather than glossed, and it is exactly why the per-period cap rather than trust is what bounds a user's exposure.
+Proven on the local validator against the real program (`server/src/allowance.localnet.test.ts`):
+
+- the allowance is exactly the lifetime total, not `u64::MAX`;
+- pulls succeed up to it, and the delegate clears itself at zero;
+- a pull the program allows is refused by SPL Token (error 1) once the allowance is short;
+- a second permission on the same token raises the allowance by exactly its total;
+- revoking one of two lowers it to what the other can still take, and revoking the last one (even after the allowance is spent) ends with `delegate: none`.
+
+What the cap still does not bound:
+
+- **A later grant through another app.** Any app on this program runs init again, which resets the approval to `u64::MAX` unless that app caps it the same way. nuntius shows the live allowance on the home screen.
+- **A permission with no end date on the same token** (for example a plan subscription). No finite allowance is safe for it, so nuntius leaves the approval as init set it and says so on the approve screen.
+- **The destination.** The program lets the delegatee name the receiving account, and nuntius binds it off chain (SECURITY.md).
+
+The program account is **upgradeable** (upgrade authority `DXtFpbPjcn2hxPnw79x1Pfoj35vXh5AsWBkS37YnXMVv`, measured 2026-09-22). With the token-level cap, an upgrade can no longer reach the whole balance of a delegated account. At most it can reach what you approved in total, and that total is on the approve screen before Seed Vault opens.
 
 ---
 
@@ -106,7 +120,7 @@ $ LOCALNET_RPC=http://127.0.0.1:8899 npm --prefix server test
 
 These tests cover:
 
-- **One-signature grant**: exactly one required signer, and the token account delegate is the authority PDA at `u64::MAX`.
+- **One-signature grant**: exactly one required signer, and the token account delegate is the authority PDA, capped at the lifetime total (not `u64::MAX`).
 - **Pulls**: signed by the delegatee alone.
 - **Refusals**: an over-cap pull and a pull of one base unit over are both refused with `{"Custom":400}` and move nothing.
 - **Second mandate on the same authority**: uses the real `init_id`.
@@ -201,7 +215,7 @@ The screens can also be rendered in a browser for review: `npx expo export -p we
 The full threat model is in [SECURITY.md](SECURITY.md). In short:
 
 - The per-period cap is enforced by the program, not by this code.
-- The SPL approval behind it is `u64::MAX`, and the program is upgradeable. Both are stated plainly.
+- The SPL approval behind it is capped at the lifetime total of the live permissions, so even a program upgrade reaches at most what you approved in total.
 - The destination of a pull is bound by nuntius, not by the chain.
 - There are no secrets in the repository. `.env`, keystores, the Firebase service account, `google-services.json` and the delegatee key are gitignored.
 - Logs are JSON with API keys, keypairs and session and FCM tokens redacted.

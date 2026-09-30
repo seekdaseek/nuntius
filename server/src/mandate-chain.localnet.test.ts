@@ -72,7 +72,10 @@ test('mandate life cycle on the real program', { skip: skipLocalnet, timeout: 12
 
     const ata = await readAta(rpc, userAta)
     assert.equal(ata.delegate, authorityPda, 'token account delegate is the Subscription Authority PDA')
-    assert.equal(ata.delegatedAmount, U64_MAX, 'the SPL approval is u64::MAX — the cap is NOT in the token approval')
+    // init approves u64::MAX; the grant's approveChecked lowers it to the lifetime total.
+    assert.equal(grant.allowance, 240_000n, '24 hourly periods of 10_000 before the one-day expiry')
+    assert.equal(ata.delegatedAmount, '240000', 'the token allowance is the lifetime total, not u64::MAX')
+    assert.notEqual(ata.delegatedAmount, U64_MAX)
   })
 
   const pull = async (amount: bigint, signer = delegatee, pda = () => delegationPda) =>

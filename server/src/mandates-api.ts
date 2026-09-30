@@ -38,6 +38,7 @@ import { cleanLabel, describeMandate, formatUnits, parseUnits, PERIODS, type Per
 import { canCreateMandate, LIMITS, tierOf } from './tier.js'
 import { buildDigest, computeStreak, localDay, type LiveMandate } from './digest.js'
 import { safeError } from './log.js'
+import { allowanceFor, newGrantLifetime } from './allowance.js'
 import { clientIp, tooMany, type Limits } from './rate-limit.js'
 import type { Rpc } from './tx.js'
 
@@ -161,8 +162,23 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     const a = auth(body)
     const t = parseTerms(body, a.address)
     const g = canCreateMandate(a.tier, mandates.openCount(a.address, PENDING_TTL_MS, now()))
+    // What the grant's approveChecked will allow the program to move, in total:
+    // every live delegation on this mint plus this one. Read from the chain; if
+    // that read fails, only this permission's own total is known.
+    const nowS = BigInt(Math.floor(now() / 1000))
+    const own = newGrantLifetime(t.amount, BigInt(t.periodLengthS), 0n, BigInt(t.expiryTs), nowS)
+    let allowance: bigint | null | undefined
+    try {
+      allowance = allowanceFor(await listDelegations(rpc, a.address as Address), t.mint.mint, nowS, own)
+    } catch {
+      allowance = undefined
+    }
     return {
       text: t.text,
+      lifetimeTotal: own === null ? null : formatUnits(own, t.mint.decimals),
+      // null: another delegation on this token has no end, so the allowance stays unlimited.
+      allowanceTotal:
+        allowance === undefined ? undefined : allowance === null ? null : formatUnits(allowance, t.mint.decimals),
       amountBaseUnits: t.amount.toString(),
       symbol: t.mint.symbol,
       periodLengthS: t.periodLengthS,
@@ -223,6 +239,7 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       transactionBase64: grant.transactionBase64,
       delegationPda: grant.delegationPda,
       createsAuthority: grant.createsAuthority,
+      allowanceTotal: grant.allowance === null ? null : formatUnits(grant.allowance, t.mint.decimals),
       text: t.text,
     }
   })
@@ -379,7 +396,17 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     const tokenAccounts = await Promise.all(
       cfg.mints.map(async (m) => {
         const ata = await readAta(rpc, await userAtaOf(a.address as Address, m.mint as Address))
-        return { symbol: m.symbol, exists: ata.exists, delegate: ata.delegate, balance: ata.amount }
+        return {
+          symbol: m.symbol,
+          exists: ata.exists,
+          delegate: ata.delegate,
+          balance: ata.amount,
+          // The token-level cap left on the delegate; u64::MAX reads as unlimited.
+          allowance:
+            ata.delegatedAmount === null || ata.delegatedAmount === '18446744073709551615'
+              ? null
+              : formatUnits(BigInt(ata.delegatedAmount), m.decimals),
+        }
       }),
     )
     const ata = tokenAccounts[0]!
