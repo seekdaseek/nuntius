@@ -213,6 +213,12 @@ test('digestDue fires once per local day at or after the chosen hour', () => {
   assert.equal(digestDue(at(5), { ...pref, lastSentDay: '2026-10-01' }), false, 'already sent today')
   assert.equal(digestDue(at(22), { ...pref, lastSentDay: '2026-10-01' }), false, '01:00 next local day is before 08:00')
   assert.equal(digestDue(at(29), { ...pref, lastSentDay: '2026-10-01' }), true, '08:00 next local day')
+  assert.equal(
+    digestDue(at(10), { ...pref, savedAtMs: at(9) }),
+    false,
+    'chosen at 12:00 EEST: 08:00 today is not overdue',
+  )
+  assert.equal(digestDue(at(29), { ...pref, savedAtMs: at(9) }), true, 'it starts tomorrow at 08:00')
 })
 
 test('sessions expire 30 days after sign-in', async () => {

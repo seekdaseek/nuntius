@@ -285,12 +285,59 @@ test('digest scheduler sends once per local day, Seeker tier only', async () => 
   store.createSession('A'.repeat(43), 'Seeker1111111111111111111111111111111111111', 0)
   store.claimSgtMint('A'.repeat(43), 'SgtMint')
   store.createSession('B'.repeat(43), 'Basic11111111111111111111111111111111111111', 0)
-  mandates.setDigestPrefs('Seeker1111111111111111111111111111111111111', 8, 180, true)
-  mandates.setDigestPrefs('Basic11111111111111111111111111111111111111', 8, 180, true)
+  mandates.setDigestPrefs('Seeker1111111111111111111111111111111111111', 8, 180, true, 0)
+  mandates.setDigestPrefs('Basic11111111111111111111111111111111111111', 8, 180, true, 0)
   const at8 = Date.UTC(2026, 9, 1, 5) // 08:00 EEST
   assert.deepEqual(await runDigests(deps, at8 - 3600_000), [], 'before the hour')
   assert.deepEqual(await runDigests(deps, at8), ['Seeker1111111111111111111111111111111111111'])
   assert.deepEqual(await runDigests(deps, at8 + 60_000), [], 'once per day')
   assert.equal(sent[0], 'Seeker1111111111111111111111111111111111111:Quiet night, nothing moved')
   assert.deepEqual(await runDigests(deps, at8 + 24 * 3600_000), ['Seeker1111111111111111111111111111111111111'])
+})
+
+test('digest: a UTC+3 user who sets 19:00 at 18:39 gets one digest at 19:00, none before', async () => {
+  const { runDigests } = await import('./digest-scheduler.js')
+  const db = openDb(':memory:')
+  const store = new Store(db)
+  const mandates = new MandateStore(db)
+  const sent: number[] = []
+  let clock = 0
+  const deps = {
+    store,
+    mandates,
+    push: { toAddress: async () => (sent.push(clock), [200]) },
+    log: createLogger(() => {}),
+    live: async () => [],
+  }
+  const who = 'Seeker1111111111111111111111111111111111111'
+  store.createSession('A'.repeat(43), who, 0)
+  store.claimSgtMint('A'.repeat(43), 'SgtMint')
+  const local = (h: number, m: number) => Date.UTC(2026, 8, 30, h - 3, m) // UTC+3
+  // As on 30 Sep: the picker saved every hour it passed on the way to 19, and
+  // the scheduler's minute tick fell between two presses (15:39:31Z).
+  mandates.setDigestPrefs(who, 8, 180, true, local(18, 39))
+  clock = local(18, 39) + 5_000
+  await runDigests(deps, clock)
+  mandates.setDigestPrefs(who, 18, 180, true, local(18, 39) + 10_000)
+  clock = local(18, 39) + 15_000
+  await runDigests(deps, clock)
+  mandates.setDigestPrefs(who, 19, 180, true, local(18, 39) + 20_000)
+  // Then every minute to 19:30 local.
+  for (let t = local(18, 39) + 30_000; t <= local(19, 30); t += 60_000) {
+    clock = t
+    await runDigests(deps, t)
+  }
+  assert.deepEqual(
+    sent.map((t) => new Date(t).toISOString()),
+    ['2026-09-30T16:00:30.000Z'],
+    'one digest, in the first minute of 19:00 local (16:00Z)',
+  )
+  // Tomorrow it comes at 19:00 again.
+  sent.length = 0
+  for (let t = local(18, 30) + 86_400_000; t <= local(19, 5) + 86_400_000; t += 60_000) {
+    clock = t
+    await runDigests(deps, t)
+  }
+  assert.equal(sent.length, 1)
+  assert.equal(new Date(sent[0]!).getUTCHours(), 16)
 })

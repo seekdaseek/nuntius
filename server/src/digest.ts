@@ -160,9 +160,16 @@ export function computeStreak(
 /** Is it time to send today's digest? Fires once per local day at or after the chosen hour. */
 export function digestDue(
   nowMs: number,
-  pref: { hour: number; tzOffsetMin: number; lastSentDay: string | null },
+  pref: { hour: number; tzOffsetMin: number; lastSentDay: string | null; savedAtMs?: number | null },
 ): boolean {
-  const local = new Date(nowMs + pref.tzOffsetMin * 60_000)
-  const today = local.toISOString().slice(0, 10)
-  return local.getUTCHours() >= pref.hour && pref.lastSentDay !== today
+  const offsetMs = pref.tzOffsetMin * 60_000
+  const localMs = nowMs + offsetMs
+  const today = new Date(localMs).toISOString().slice(0, 10)
+  // Today's send time, at the chosen local hour, in UTC.
+  const slot = Math.floor(localMs / 86_400_000) * 86_400_000 + pref.hour * 3_600_000 - offsetMs
+  // Only a slot that comes after the hour was chosen. Saving 19:00 at 18:39
+  // sends at 19:00; it never counts as "08:00 today, overdue" (device check 10,
+  // 30 Sep: an hour saved on the way to 19:00 sent the digest at 18:39, and
+  // with today marked sent, 19:00 stayed silent).
+  return nowMs >= slot && slot >= (pref.savedAtMs ?? 0) && pref.lastSentDay !== today
 }

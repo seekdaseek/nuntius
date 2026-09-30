@@ -157,6 +157,11 @@ export function migrateMandates(db: Database.Database): void {
   ] as const) {
     if (!cols.has(name)) db.exec(`ALTER TABLE events ADD COLUMN ${name} ${type}`)
   }
+  // When the digest hour was last chosen: a send time before it is not due.
+  const prefCols = new Set(
+    (db.prepare('PRAGMA table_info(digest_prefs)').all() as { name: string }[]).map((c) => c.name),
+  )
+  if (!prefCols.has('saved_at')) db.exec('ALTER TABLE digest_prefs ADD COLUMN saved_at INTEGER')
 }
 
 type Row = Record<string, unknown>
@@ -394,13 +399,14 @@ export class MandateStore {
     ).map((r) => r.day)
   }
 
-  setDigestPrefs(address: string, hour: number, tzOffsetMin: number, enabled: boolean): void {
+  setDigestPrefs(address: string, hour: number, tzOffsetMin: number, enabled: boolean, nowMs: number): void {
     this.db
       .prepare(
-        `INSERT INTO digest_prefs (address, hour, tz_offset_min, enabled) VALUES (?, ?, ?, ?)
-         ON CONFLICT (address) DO UPDATE SET hour = excluded.hour, tz_offset_min = excluded.tz_offset_min, enabled = excluded.enabled`,
+        `INSERT INTO digest_prefs (address, hour, tz_offset_min, enabled, saved_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (address) DO UPDATE SET hour = excluded.hour, tz_offset_min = excluded.tz_offset_min,
+           enabled = excluded.enabled, saved_at = excluded.saved_at`,
       )
-      .run(address, hour, tzOffsetMin, enabled ? 1 : 0)
+      .run(address, hour, tzOffsetMin, enabled ? 1 : 0, nowMs)
   }
 
   digestPrefs(
@@ -417,12 +423,19 @@ export class MandateStore {
       : null
   }
 
-  allDigestPrefs(): { address: string; hour: number; tzOffsetMin: number; lastSentDay: string | null }[] {
+  allDigestPrefs(): {
+    address: string
+    hour: number
+    tzOffsetMin: number
+    lastSentDay: string | null
+    savedAtMs: number | null
+  }[] {
     return (this.db.prepare('SELECT * FROM digest_prefs WHERE enabled = 1').all() as Row[]).map((r) => ({
       address: String(r.address),
       hour: Number(r.hour),
       tzOffsetMin: Number(r.tz_offset_min),
       lastSentDay: r.last_sent_day === null ? null : String(r.last_sent_day),
+      savedAtMs: r.saved_at === null || r.saved_at === undefined ? null : Number(r.saved_at),
     }))
   }
 

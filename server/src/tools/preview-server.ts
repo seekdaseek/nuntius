@@ -154,7 +154,7 @@ for (let i = 1; i <= 3; i++) {
   const d = new Date(today.getTime() - i * 86_400_000).toISOString().slice(0, 10)
   mandates.clockIn(owner.address, d, today.getTime() - i * 86_400_000)
 }
-mandates.setDigestPrefs(owner.address, 8, 180, true)
+mandates.setDigestPrefs(owner.address, 8, 180, true, 0)
 
 const auth = { address: owner.address, session, sgtMint: 'LocalnetSimulatedSgtMint11111111111111111111' }
 writeFileSync(process.env.AUTH_OUT ?? '/tmp/nuntius-preview-auth.json', JSON.stringify(auth))

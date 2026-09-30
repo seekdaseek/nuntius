@@ -580,7 +580,7 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       throw new HttpError(403, 'tier_limit', 'Verify Seeker ownership to get the daily digest.')
     const hour = Number(body.hour)
     if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new HttpError(400, 'bad_hour')
-    mandates.setDigestPrefs(a.address, hour, tzOf(body), body.enabled !== false)
+    mandates.setDigestPrefs(a.address, hour, tzOf(body), body.enabled !== false, now())
     return { prefs: mandates.digestPrefs(a.address) }
   })
 
