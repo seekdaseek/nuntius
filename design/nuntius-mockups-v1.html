@@ -1,0 +1,220 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face { font-family: "Brico"; src: url("BricolageGrotesque_800ExtraBold.ttf"); font-weight: 800; }
+@font-face { font-family: "Brico"; src: url("BricolageGrotesque_700Bold.ttf"); font-weight: 700; }
+@font-face { font-family: "Fig"; src: url("Figtree_400Regular.ttf"); font-weight: 400; }
+@font-face { font-family: "Fig"; src: url("Figtree_500Medium.ttf"); font-weight: 500; }
+@font-face { font-family: "Fig"; src: url("Figtree_600SemiBold.ttf"); font-weight: 600; }
+@font-face { font-family: "Fig"; src: url("Figtree_700Bold.ttf"); font-weight: 700; }
+:root {
+  --paper: #F3F4FA; --card: #FFFFFF; --ink: #151A3D; --ink2: #5A6088; --line: #E3E5F3;
+  --signal: #4F3BF6; --signal50: #ECE9FF;
+  --moved: #19C37D; --movedInk: #0B7A4B; --moved50: #E2F7EC;
+  --refused: #F0325C; --refusedInk: #A3123A; --refused50: #FDE6EC;
+  --foreign: #FFA41B; --foreignInk: #8A5300; --foreign50: #FFF1DA;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #C9CCDD; padding: 28px; display: flex; gap: 28px; align-items: flex-start; font-family: "Fig"; color: var(--ink); }
+.phone { width: 390px; height: 844px; border-radius: 44px; background: var(--paper); position: relative; overflow: hidden; flex: none; }
+.status { height: 44px; display: flex; justify-content: space-between; align-items: center; padding: 0 26px; font: 600 14px "Fig"; }
+.pad { padding: 8px 20px 0; }
+.top { display: flex; justify-content: space-between; align-items: center; }
+.word { font: 800 26px/1 "Brico"; letter-spacing: -0.5px; display: flex; align-items: center; gap: 8px; }
+.word svg { width: 26px; height: 26px; }
+.chip { font: 600 13px/1 "Fig"; padding: 8px 12px; border-radius: 999px; display: inline-flex; gap: 6px; align-items: center; }
+.chip.moved { background: var(--moved50); color: var(--movedInk); }
+.chip.refused { background: var(--refused50); color: var(--refusedInk); }
+.chip.signal { background: var(--signal50); color: var(--signal); }
+.hero { font: 800 31px/1.12 "Brico"; letter-spacing: -0.6px; margin: 26px 0 8px; }
+.sub { font: 400 15px/1.4 "Fig"; color: var(--ink2); }
+.h2 { font: 600 15px "Fig"; margin: 26px 0 10px; color: var(--ink); }
+.card { background: var(--card); border-radius: 22px; padding: 16px; margin-bottom: 12px; }
+.row { display: flex; align-items: center; gap: 10px; }
+.av { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; font: 800 17px "Brico"; }
+.name { font: 600 17px "Fig"; flex: 1; }
+.rate { font: 600 15px "Fig"; font-variant-numeric: tabular-nums; }
+.sent { font: 400 14.5px/1.45 "Fig"; color: var(--ink2); margin: 10px 0 14px; }
+.meter { position: relative; height: 12px; border-radius: 6px; background: #E8EAF6; margin-right: 8px; }
+.meter .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; background: var(--moved); }
+.meter .stop { position: absolute; right: -8px; top: -7px; width: 5px; height: 26px; border-radius: 3px; background: var(--ink); }
+.mlab { display: flex; justify-content: space-between; font: 500 13px "Fig"; color: var(--ink2); margin-top: 10px; font-variant-numeric: tabular-nums; }
+.actions { display: flex; gap: 8px; margin-top: 14px; }
+.btn { font: 600 14px "Fig"; padding: 10px 14px; border-radius: 12px; }
+.btn.revoke { background: var(--refused50); color: var(--refusedInk); }
+.btn.ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+.safe { background: var(--moved50); color: var(--movedInk); border-radius: 18px; padding: 14px 16px; font: 500 14.5px/1.4 "Fig"; display: flex; gap: 10px; align-items: center; }
+.cta { position: absolute; left: 20px; right: 20px; bottom: 28px; background: var(--signal); color: #fff; font: 700 17px "Fig"; text-align: center; padding: 18px; border-radius: 20px; display: flex; justify-content: center; gap: 10px; align-items: center; }
+.back { font: 600 22px "Fig"; }
+.title { font: 800 30px/1.1 "Brico"; letter-spacing: -0.6px; margin: 14px 0 6px; }
+.sentence { font: 800 30px/1.35 "Brico"; letter-spacing: -0.5px; margin: 22px 0 10px; }
+.slot { color: var(--signal); background: var(--signal50); border-radius: 12px; padding: 0 8px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.seg { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.seg span { font: 600 14px "Fig"; padding: 9px 14px; border-radius: 999px; background: var(--card); color: var(--ink2); }
+.seg span.on { background: var(--ink); color: #fff; }
+.field { background: var(--card); border-radius: 16px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; font: 500 15px "Fig"; margin: 12px 0; }
+.field small { display: block; font: 500 12.5px "Fig"; color: var(--ink2); margin-bottom: 3px; }
+.paste { font: 600 14px "Fig"; color: var(--signal); }
+.enforce { background: var(--moved50); border-radius: 18px; padding: 14px 16px; font: 500 14.5px/1.45 "Fig"; color: var(--movedInk); margin-top: 14px; }
+.note { font: 500 13px/1.4 "Fig"; color: var(--ink2); text-align: center; position: absolute; left: 30px; right: 30px; bottom: 100px; }
+.slipwrap { padding: 18px 20px 0; }
+.slip { background: var(--card); border-radius: 6px; padding: 26px 22px 22px; position: relative;
+  -webkit-mask: radial-gradient(circle 7px at 50% 0, transparent 97%, #000) 0 0/20px 51% repeat-x, radial-gradient(circle 7px at 50% 100%, transparent 97%, #000) 0 100%/20px 51% repeat-x; }
+.amt { font: 800 44px/1.05 "Brico"; letter-spacing: -1px; margin: 14px 0 6px; font-variant-numeric: tabular-nums; }
+.kv { display: flex; justify-content: space-between; padding: 12px 0; border-top: 1.5px dashed var(--line); font: 500 14px "Fig"; }
+.kv span:first-child { color: var(--ink2); }
+.kv span:last-child { text-align: right; }
+.stamp { position: absolute; right: 18px; top: 66px; transform: rotate(-9deg); border: 3px solid var(--refused); color: var(--refused); font: 800 17px/1.1 "Brico"; padding: 8px 12px; border-radius: 10px; text-align: center; opacity: 0.92; }
+.xbtn { margin-top: 14px; border: 1.5px solid var(--line); border-radius: 14px; text-align: center; padding: 13px; font: 600 15px "Fig"; }
+.punch { background: var(--signal); border-radius: 24px; padding: 18px; color: #fff; margin-top: 16px; }
+.days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 14px; }
+.d { text-align: center; font: 600 12px "Fig"; color: rgba(255,255,255,0.75); }
+.hole { width: 34px; height: 34px; border-radius: 50%; margin: 6px auto 0; border: 2px dashed rgba(255,255,255,0.45); }
+.hole.on { background: var(--paper); border: none; box-shadow: inset 0 3px 5px rgba(21,26,61,0.35); }
+.hole.today { border: 2px solid #fff; background: rgba(255,255,255,0.18); }
+.streak { font: 800 34px/1 "Brico"; letter-spacing: -0.5px; }
+.dg { background: var(--card); border-radius: 18px; padding: 4px 16px; margin-top: 12px; }
+.dg .li { display: flex; gap: 12px; padding: 13px 0; border-bottom: 1.5px solid var(--line); font: 500 14.5px/1.35 "Fig"; }
+.dg .li:last-child { border-bottom: none; }
+.dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex: none; }
+.home-bg { background: var(--paper); }
+.herob { background: linear-gradient(160deg, #5B45FF 0%, #3A22D9 100%); color: #fff; padding: 0 20px 24px; border-radius: 0 0 32px 32px; }
+.herob .status { padding: 0 6px; }
+.herob .hero { color: #fff; }
+.herob .sub { color: rgba(255,255,255,0.82); }
+.chip.glass { background: rgba(255,255,255,0.16); color: #fff; }
+.cta.ink { background: var(--ink); }
+.tint-moved { background: linear-gradient(180deg, #CFF3E0 0%, var(--moved50) 55%, var(--paper) 100%); }
+.tint-refused { background: linear-gradient(180deg, #FAD0DB 0%, var(--refused50) 55%, var(--paper) 100%); }
+.widget { width: 340px; background: var(--card); border-radius: 28px; padding: 16px 18px; }
+.wtitle { display: flex; justify-content: space-between; font: 800 17px "Brico"; }
+.wtitle span:last-child { font: 600 13px "Fig"; color: var(--signal); }
+.wrow { margin-top: 12px; }
+.wrow .top2 { display: flex; justify-content: space-between; font: 600 13.5px "Fig"; margin-bottom: 7px; font-variant-numeric: tabular-nums; }
+.wrow .top2 span:last-child { color: var(--ink2); font-weight: 500; }
+</style></head><body>
+
+<!-- 1 Permissions -->
+<div class="phone home-bg">
+  <div class="herob">
+    <div class="status"><span>9:41</span><span>5G 82%</span></div>
+    <div class="top" style="margin-top:8px">
+      <div class="word"><svg viewBox="0 0 320 320"><rect width="320" height="320" rx="80" fill="#F3F4FA"/><rect x="72" y="56" width="176" height="26" rx="13" fill="#19C37D"/><path d="M98 250 V170 a62 62 0 0 1 124 0 V250" fill="none" stroke="#4F3BF6" stroke-width="44" stroke-linecap="round"/></svg>nuntius</div>
+      <span class="chip glass">✓ Seeker verified</span>
+    </div>
+    <div class="hero">Ana gets 0.05 USDC in 6h 12m.</div>
+    <div class="sub">Two permissions live. Nothing refused today.</div>
+  </div>
+  <div class="pad">
+    <div class="h2" style="margin-top:20px">Your permissions</div>
+    <div class="card">
+      <div class="row"><div class="av" style="background:#ECE9FF;color:#4F3BF6">A</div><div class="name">Rent to Ana</div><div class="rate">0.05 USDC a day</div></div>
+      <div class="sent">Ana can take up to 0.05 USDC every day until 30 Oct. Anything more is refused by the chain.</div>
+      <div class="meter"><div class="fill" style="width:100%"></div><div class="stop"></div></div>
+      <div class="mlab"><span>0.05 taken today</span><span>0 left, resets in 6h 12m</span></div>
+      <div class="actions"><span class="btn revoke">Revoke</span><span class="btn ghost">Try to take more</span></div>
+    </div>
+    <div class="card">
+      <div class="row"><div class="av" style="background:#FFF1DA;color:#8A5300">G</div><div class="name">Gym</div><div class="rate">0.01 USDC an hour</div></div>
+      <div class="meter" style="margin-top:14px"><div class="fill" style="width:40%"></div><div class="stop"></div></div>
+      <div class="mlab"><span>0.004 taken this hour</span><span>0.006 left, resets in 41m</span></div>
+    </div>
+    <div class="h2">Other apps with access</div>
+    <div class="safe"><span>🛡</span>No other app can pull from this wallet.</div>
+  </div>
+  <div class="cta ink">＋ New permission</div>
+</div>
+
+<!-- 2 New permission -->
+<div class="phone">
+  <div class="status"><span>9:41</span><span>5G 82%</span></div>
+  <div class="pad">
+    <div class="back">←</div>
+    <div class="title">New permission</div>
+    <div class="sentence">Let <span class="slot">Ana</span> take up to <span class="slot">0.05</span> <span class="slot">USDC</span> every <span class="slot">day</span> until <span class="slot">30 Oct</span>.</div>
+    <div class="field"><div><small>Ana's wallet</small>ASCQRp…nnatX</div><span class="paste">Paste</span></div>
+    <div class="seg"><span class="on">USDC</span><span>SKR</span></div>
+    <div class="seg"><span>hour</span><span class="on">day</span><span>week</span><span>month</span></div>
+    <div class="seg"><span>7 days</span><span class="on">30 days</span><span>90 days</span></div>
+    <div class="enforce">The chain will enforce this: at most 0.05 USDC a day to ASCQ…natX, until 30 Oct. A pull above that fails with error 0x190.</div>
+  </div>
+  <div class="note">One approval now. You never sign a payment after this, and one approval ends it.</div>
+  <div class="cta">Approve in Seed Vault</div>
+</div>
+
+<!-- 3 Receipt moved -->
+<div class="phone tint-moved">
+  <div class="status"><span>9:41</span><span>5G 82%</span></div>
+  <div class="pad"><div class="back">←</div></div>
+  <div class="slipwrap">
+    <div class="slip">
+      <span class="chip moved">✓ Moved</span>
+      <div class="amt">0.05 USDC</div>
+      <div class="sub" style="margin-bottom:16px">Rent to Ana, 30 Sep at 02:00</div>
+      <div class="meter"><div class="fill" style="width:100%"></div><div class="stop"></div></div>
+      <div class="mlab" style="margin-bottom:14px"><span>0 of 0.05 left today</span><span>resets in 23h 58m</span></div>
+      <div class="kv"><span>Signed by</span><span>nuntius executor only</span></div>
+      <div class="kv"><span>You signed</span><span>nothing</span></div>
+      <div class="kv"><span>Transaction</span><span>59Zn57…xQ2v</span></div>
+      <div class="xbtn">Open on Solana Explorer</div>
+    </div>
+  </div>
+</div>
+
+<!-- 4 Receipt refused -->
+<div class="phone tint-refused">
+  <div class="status"><span>9:41</span><span>5G 82%</span></div>
+  <div class="pad"><div class="back">←</div></div>
+  <div class="slipwrap">
+    <div class="slip">
+      <div class="stamp" style="position:static;display:inline-block;transform:rotate(-6deg);margin:4px 0 6px">Refused by the chain</div>
+      <div class="amt" style="color:#A3123A">Nothing moved</div>
+      <div class="sub" style="margin-bottom:16px">Rent to Ana asked for 0.000001 USDC more than its cap.</div>
+      <div class="kv"><span>Program answer</span><span>error 0x190<br>amount exceeds period limit</span></div>
+      <div class="kv"><span>Cap this period</span><span>0.05 USDC, all used</span></div>
+      <div class="kv"><span>Transaction</span><span>3RpcCk…pZyR7, failed</span></div>
+      <div class="xbtn">Open on Solana Explorer</div>
+    </div>
+  </div>
+</div>
+
+<!-- 5 Clock in -->
+<div class="phone">
+  <div class="status"><span>9:41</span><span>5G 82%</span></div>
+  <div class="pad">
+    <div class="back">←</div>
+    <div class="title">Clock in</div>
+    <div class="sub">Tuesday 30 September</div>
+    <div class="punch">
+      <div class="streak">Day 4 in a row</div>
+      <div class="sub" style="color:rgba(255,255,255,0.8)">Best run: 6 days</div>
+      <div class="days">
+        <div class="d">Fri<div class="hole on"></div></div>
+        <div class="d">Sat<div class="hole on"></div></div>
+        <div class="d">Sun<div class="hole on"></div></div>
+        <div class="d">Mon<div class="hole on"></div></div>
+        <div class="d">Tue<div class="hole today"></div></div>
+        <div class="d">Wed<div class="hole"></div></div>
+        <div class="d">Thu<div class="hole"></div></div>
+      </div>
+    </div>
+    <div class="h2">Since yesterday</div>
+    <div class="dg">
+      <div class="li"><span class="dot" style="background:#19C37D"></span><span>Ana received 0.05 USDC at 02:00</span></div>
+      <div class="li"><span class="dot" style="background:#19C37D"></span><span>Gym received 0.01 USDC, 9 times</span></div>
+      <div class="li"><span class="dot" style="background:#F0325C"></span><span>The chain refused one pull above the Gym cap</span></div>
+      <div class="li"><span class="dot" style="background:#5A6088"></span><span>Nothing expires this week</span></div>
+    </div>
+  </div>
+  <div class="cta">Clock in</div>
+</div>
+
+<!-- 6 Widget -->
+<div style="display:flex;flex-direction:column;gap:18px">
+  <div class="widget">
+    <div class="wtitle"><span>nuntius</span><span>Clock in, day 4</span></div>
+    <div class="wrow"><div class="top2"><span>Rent to Ana</span><span>0 of 0.05 USDC</span></div><div class="meter"><div class="fill" style="width:100%"></div><div class="stop"></div></div></div>
+    <div class="wrow"><div class="top2"><span>Gym</span><span>0.006 of 0.01 USDC</span></div><div class="meter"><div class="fill" style="width:40%"></div><div class="stop"></div></div></div>
+  </div>
+</div>
+</body></html>
