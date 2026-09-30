@@ -42,7 +42,7 @@ State these plainly to any user:
    - The executor re-checks before every pull that it exists, holds the mandate's mint and is owned by the payee (`rpcChain.receiverOk`; unit test `an invalid receiver sends nothing`).
    - A compromised nuntius server could redirect a mandate's pulls elsewhere, **up to the cap**. The cap bounds the amount, not the recipient.
 4. **Audit scope.** Cantina's latest report covers the program through commit `d6b3a5dc` (fixes verified through `debb4f75`), per the program's `audits/AUDIT_STATUS.md`. The one-transaction path used here (`UNKNOWN_INIT_ID`, #206, commit `55a3efd`) **is inside** that baseline (measured: `git merge-base --is-ancestor 55a3efd d6b3a5dc`). The release commit `364a419` is 8 commits after `debb4f75`. Those 8 commits are outside the audit.
-5. **Whether the mainnet binary equals this repository's localnet build** was **not measured**: mainnet RPC is not reachable from the build environment. Check it with `solana-verify` (see MAC-HANDOFF.md).
+5. **Whether the mainnet binary equals this repository's localnet build** was **not measured**: mainnet RPC is not reachable from the build environment. Check it with `solana-verify` (see MAC-RUN.md §7).
 
 ## 4. Threats and what stops them
 

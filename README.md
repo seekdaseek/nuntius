@@ -96,7 +96,7 @@ Cap was 10,000 base units (0.01 USDC) per 60-second period. 17,000 base units mo
 
 **On localnet — the real program, built from source (2026-09-27)**
 
-The build environment cannot reach devnet or mainnet. Instead, `scripts/localnet.sh` builds `solana-foundation/subscriptions` at **`364a419`**, the commit the program's CHANGELOG names as the mainnet release, and loads it at its canonical address in `solana-test-validator` (Agave 3.1.10). Binary sha256: `31309d4202746b1af2040b792c127cde51cd549b5738096603e4504a30974648`. Whether this binary is byte-identical to mainnet is **not measured** yet (see MAC-HANDOFF.md §1).
+The build environment cannot reach devnet or mainnet. Instead, `scripts/localnet.sh` builds `solana-foundation/subscriptions` at **`364a419`**, the commit the program's CHANGELOG names as the mainnet release, and loads it at its canonical address in `solana-test-validator` (Agave 3.1.10). Binary sha256: `31309d4202746b1af2040b792c127cde51cd549b5738096603e4504a30974648`. Whether this binary is byte-identical to mainnet is **not measured** yet (see MAC-RUN.md §7).
 
 ```
 $ LOCALNET_RPC=http://127.0.0.1:8899 npm --prefix server test

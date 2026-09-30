@@ -46,8 +46,6 @@
         font-size: 20px;
         font-weight: 700;
         color: var(--muted);
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
       }
       h1 {
         font-size: 72px;
@@ -132,8 +130,6 @@
         color: var(--muted);
         font-weight: 600;
         font-size: 18px;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
       }
       code,
       .mono {
@@ -206,7 +202,9 @@
   <body>
     <!-- 1 -->
     <section class="slide" style="justify-content: center">
-      <div class="kicker">Solana Seeker · Subscriptions standard · Clock In &amp; Crypto World's Fair</div>
+      <div class="kicker">
+        A Solana Seeker app on the Subscriptions standard, for Clock In and the Crypto World's Fair
+      </div>
       <h1 style="font-size: 120px; margin-top: 22px">nuntius</h1>
       <p style="font-size: 44px; margin: 18px 0 0; font-weight: 700">
         Grant it once in Seed Vault.<br />The chain holds the line.
@@ -215,7 +213,9 @@
         A capped, revocable, recurring payment you approve once, with a push receipt for every pull, including the ones
         the chain refused.
       </p>
-      <div class="foot"><span>github.com/seekdaseek/nuntius · MIT</span><span>Sergiu · ochinimus · Chisinau</span></div>
+      <div class="foot">
+        <span>github.com/seekdaseek/nuntius, MIT licence</span><span>Sergiu (ochinimus), Chisinau</span>
+      </div>
     </section>
 
     <!-- 2 -->
@@ -359,7 +359,7 @@
 
     <!-- 6 -->
     <section class="slide">
-      <div class="kicker">Proof · mainnet-beta · real USDC · 22 Sep 2026</div>
+      <div class="kicker">Proof on mainnet-beta with real USDC, 22 Sep 2026</div>
       <h2>It already ran on mainnet from the phone</h2>
       <table>
         <tr>
@@ -368,9 +368,9 @@
           <th>Signature</th>
         </tr>
         <tr>
-          <td>initSubscriptionAuthority · createRecurringDelegation</td>
+          <td>initSubscriptionAuthority and createRecurringDelegation</td>
           <td>signed by Seed Vault, Seeker SM02E4060327059</td>
-          <td class="mono">bBNbUgwh…qGS2Sks · 5r7YnGrb…FUGinugMw</td>
+          <td class="mono">bBNbUgwh…qGS2Sks, 5r7YnGrb…FUGinugMw</td>
         </tr>
         <tr>
           <td>transferRecurring ×4</td>
@@ -393,9 +393,9 @@
           <td class="muted">see README</td>
         </tr>
         <tr>
-          <td>revokeDelegation · revokeSubscriptionAuthority</td>
+          <td>revokeDelegation and revokeSubscriptionAuthority</td>
           <td>both PDAs closed; <code>delegate: none</code></td>
-          <td class="mono">Vh2yr9VT… · 2doDFNXU…</td>
+          <td class="mono">Vh2yr9VT…, 2doDFNXU…</td>
         </tr>
         <tr>
           <td>Pull after revocation</td>
@@ -411,16 +411,16 @@
 
     <!-- 7 -->
     <section class="slide">
-      <div class="kicker">Proof · the real program, built from its release commit</div>
+      <div class="kicker">Proof: the real program, built from its release commit</div>
       <div class="row" style="align-items: center; margin-top: 10px">
         <div style="flex: 0 0 520px">
-          <div class="big green">51 / 51</div>
+          <div class="big green">61 / 61</div>
           <p style="margin-top: 14px">
             tests pass against <b>solana-foundation/subscriptions @ 364a419</b>, the commit its CHANGELOG names as the
             mainnet release, in a local validator (Agave 3.1.10).
           </p>
           <p class="muted" style="font-size: 18px">
-            sha256 31309d42…a30974648 · <code>scripts/localnet.sh</code> reproduces it
+            sha256 31309d42…a30974648; <code>scripts/localnet.sh</code> reproduces it
           </p>
         </div>
         <div style="flex: 1">
@@ -431,10 +431,11 @@
             <li>Guard: receipts for a foreign delegatee's pulls and refusals; flags new grants</li>
             <li>HTTP API end to end, driven exactly as the app drives it</li>
             <li>Revoke of the last delegation leaves <code>delegate: none</code></li>
+            <li>Two mints side by side, the SKR path: a ceiling per mint, one authority each</li>
           </ul>
           <p class="muted" style="font-size: 18px; margin-top: 16px">
-            Also: 24 server unit tests, 6 app-logic tests, typecheck, lint and prettier clean. Whether the local binary
-            is byte-identical to mainnet has not been measured yet.
+            Also: 9 app-logic tests; 31 of the server tests run without a validator; typecheck, lint and prettier clean.
+            Whether the local binary is byte-identical to mainnet has not been measured yet.
           </p>
         </div>
       </div>
@@ -505,7 +506,7 @@
 
     <!-- 10 -->
     <section class="slide">
-      <div class="kicker">Security · stated, not glossed</div>
+      <div class="kicker">Security, stated and not glossed</div>
       <h2>What the cap bounds, and what it does not</h2>
       <div class="row">
         <div class="card chain" style="flex: 1">
@@ -610,14 +611,15 @@
 
     <!-- 12 -->
     <section class="slide">
-      <div class="kicker">Status · next</div>
+      <div class="kicker">Status and next steps</div>
       <h2>Where it stands, honestly</h2>
       <div class="row">
         <div class="card chain" style="flex: 1">
           <h3>Done</h3>
           <p>
-            Mainnet life cycle from the phone (22 Sep). One-approval grant and revoke, executor, guard, tier gate,
-            digest, streak and widget, all built and tested against the real program. Docs, threat model, judge guide.
+            Mainnet life cycle from the phone (22 Sep). One-approval grant and revoke, executor, guard, and SKR next to
+            USDC, tested against the real program. Tier gate, digest, streak and widget, unit-tested; every screen
+            rendered on web to the design. Docs, threat model, judge guide.
           </p>
         </div>
         <div class="card" style="flex: 1">
@@ -636,7 +638,7 @@
         </div>
       </div>
       <p style="margin-top: 40px; font-size: 30px; font-weight: 700">Grant once. The chain holds the line.</p>
-      <div class="foot"><span>github.com/seekdaseek/nuntius</span><span>Sergiu · solo · Chisinau</span></div>
+      <div class="foot"><span>github.com/seekdaseek/nuntius</span><span>Sergiu, solo, Chisinau</span></div>
     </section>
   </body>
 </html>
