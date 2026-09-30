@@ -14,7 +14,8 @@
     "lint:check": "expo lint",
     "start": "expo start",
     "web": "expo start --web",
-    "test:core": "node --test --test-reporter=spec core/*.test.ts"
+    "test:core": "node --test --test-reporter=spec core/*.test.ts",
+    "test:e2e": "node --test --test-reporter=spec e2e/*.mjs"
   },
   "displayName": "Minimal Mobile Kit Expo example",
   "description": "A minimal template for building a Solana mobile app with Expo, React Native, and Solana Kit.",
@@ -74,6 +75,7 @@
     "@types/react": "~19.2.14",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~55.0.0",
+    "playwright-core": "^1.56.1",
     "prettier": "^3.8.1",
     "typescript": "~5.9.2"
   },
