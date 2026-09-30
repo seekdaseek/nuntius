@@ -279,6 +279,9 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       },
       { capBaseUnits: BigInt(m.amountPerPeriod), remainingBaseUnits: BigInt(m.amountPerPeriod) },
     )
+    // The first pull goes out now, not at the next executor interval; after the
+    // "Permission live" receipt, so its push never replaces the first "received".
+    deps.executor?.kick()
     return { mandate: await view(mandates.getMandate(m.id)!) }
   })
 

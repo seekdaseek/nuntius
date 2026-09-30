@@ -21,6 +21,7 @@ import {
   mintTo,
   requireLocal,
   skipLocalnet,
+  sleep,
 } from './test/localnet.js'
 
 test(
@@ -118,8 +119,15 @@ test(
           assertOk(await deviceSignAndSend(rpc, owner, c.json.transactionBase64))
           assert.equal((await call('/api/mandates/confirm', { mandateId: c.json.mandateId })).status, 200)
         }
-        const outcomes = Object.values(await executor.tick())
-        assert.deepEqual(outcomes, ['landed', 'landed'])
+        // Confirm kicks the executor: both first pulls go out without waiting for an interval.
+        const t0 = Date.now()
+        for (;;) {
+          const r = await call('/api/receipts', {})
+          if (r.json.receipts.filter((x: { kind: string }) => x.kind === 'pull').length === 2) break
+          assert.ok(Date.now() - t0 < 15_000, 'both first pulls within 15 s of confirm')
+          await sleep(250)
+        }
+        assert.deepEqual(Object.values(await executor.tick()), ['period_done', 'period_done'], 'nothing left to pull')
         const l = await call('/api/mandates/list', {})
         assert.deepEqual(l.json.mints, ['TUSD', 'TSKR'])
         assert.deepEqual(new Set(l.json.mine.map((m: { symbol: string }) => m.symbol)), new Set(['TUSD', 'TSKR']))

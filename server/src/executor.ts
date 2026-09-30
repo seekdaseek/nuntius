@@ -76,6 +76,13 @@ export interface ExecutorOptions {
   backoffMaxMs?: number
   /** How long a tick waits for a just-sent pull to land before leaving it to the next tick. */
   settleMs?: number
+  /**
+   * While a just-sent pull is pending, the same signed bytes are sent again this
+   * often. A mainnet send can be dropped (30 Sep: the first pull's transaction
+   * never landed and was replaced only after its blockhash expired, 40 s later).
+   * Identical bytes carry the same signature, so a rebroadcast cannot pay twice.
+   */
+  rebroadcastMs?: number
   sleep?: (ms: number) => Promise<void>
   random?: () => number
 }
@@ -101,6 +108,7 @@ export class Executor {
     Pick<ExecutorOptions, 'store' | 'chain' | 'receipts' | 'log'>
   private readonly backoff = new Map<string, { failures: number; nextAt: number }>()
   private running = false
+  private again = false
 
   constructor(options: ExecutorOptions) {
     this.o = {
@@ -109,6 +117,7 @@ export class Executor {
       backoffBaseMs: 5_000,
       backoffMaxMs: 10 * 60_000,
       settleMs: 20_000,
+      rebroadcastMs: 2_000,
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       random: Math.random,
       ...options,
@@ -116,6 +125,18 @@ export class Executor {
   }
 
   /** One pass over every active mandate. Never throws; never overlaps itself. */
+  /**
+   * Runs a tick now rather than at the next interval: a permission confirmed on
+   * chain gets its first pull right away. A kick during a tick runs one more.
+   */
+  kick(): void {
+    if (this.running) {
+      this.again = true
+      return
+    }
+    void this.tick()
+  }
+
   async tick(): Promise<Record<string, Outcome>> {
     const out: Record<string, Outcome> = {}
     if (this.running) return out
@@ -132,6 +153,10 @@ export class Executor {
       }
     } finally {
       this.running = false
+      if (this.again) {
+        this.again = false
+        setTimeout(() => void this.tick(), 0)
+      }
     }
     return out
   }
@@ -218,15 +243,23 @@ export class Executor {
     })
     await this.o.chain.send(signed.wire)
     const row = this.o.store.getPull(m.delegationPda, periodStart)!
-    return this.settle(m, row)
+    return this.settle(m, row, signed.wire)
   }
 
-  /** Polls a just-sent pull for up to settleMs so the receipt arrives promptly. */
-  private async settle(m: Mandate, row: PullRow): Promise<Outcome> {
+  /**
+   * Polls a just-sent pull for up to settleMs so the receipt arrives promptly,
+   * rebroadcasting the same signed bytes while it is pending.
+   */
+  private async settle(m: Mandate, row: PullRow, wire?: string): Promise<Outcome> {
     const deadline = this.o.now() + this.o.settleMs
+    let lastSent = this.o.now()
     for (;;) {
       const outcome = await this.resolve(m, row)
       if (outcome !== 'sent_pending' || this.o.now() >= deadline) return outcome
+      if (wire && this.o.now() - lastSent >= this.o.rebroadcastMs) {
+        lastSent = this.o.now()
+        await this.o.chain.send(wire).catch(() => {}) // a failed rebroadcast is just another try later
+      }
       await this.o.sleep(500)
       row = this.o.store.getPull(m.delegationPda, row.periodStart)!
     }
@@ -252,7 +285,7 @@ export class Executor {
         attempt: row.attempts + 1,
       })
       await this.o.chain.send(signed.wire)
-      return this.settle(m, this.o.store.getPull(m.delegationPda, row.periodStart)!)
+      return this.settle(m, this.o.store.getPull(m.delegationPda, row.periodStart)!, signed.wire)
     }
 
     const landed = st.landed

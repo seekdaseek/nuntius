@@ -24,6 +24,7 @@ import {
   mintTo,
   requireLocal,
   skipLocalnet,
+  sleep,
 } from './test/localnet.js'
 
 test('mandatum API end to end on the real program', { skip: skipLocalnet, timeout: 180_000 }, async (t) => {
@@ -178,10 +179,16 @@ test('mandatum API end to end on the real program', { skip: skipLocalnet, timeou
   })
 
   await t.test('executor pulls; the list and receipts show it; the demo refusal is the chain’s', async () => {
-    const r = await executor.tick()
-    assert.equal(r[mandateId], 'landed')
-    const l = await call('/api/mandates/list', {})
-    assert.equal(l.json.mine[0].remaining, '0')
+    // Confirm kicked the executor: the first pull is already out, well inside the
+    // ~10 s the first pull should take (it took 53 s on mainnet on 30 Sep).
+    const t0 = Date.now()
+    let l = await call('/api/mandates/list', {})
+    while (l.json.mine[0].remaining !== '0') {
+      assert.ok(Date.now() - t0 < 10_000, 'the first pull follows the confirm within 10 s')
+      await sleep(250)
+      l = await call('/api/mandates/list', {})
+    }
+    assert.equal((await executor.tick())[mandateId], 'period_done', 'and is not pulled twice')
     const d = await call('/api/mandates/demo-overcap', { mandateId })
     assert.equal(d.json.refusedByChain, true)
     assert.equal(d.json.customCode, 400)

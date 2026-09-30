@@ -242,3 +242,56 @@ test('receipt for a grant made outside nuntius tells the user to check it', () =
   assert.equal(msg.title, 'New permission on your wallet')
   assert.match(msg.body, /Not created in nuntius/)
 })
+
+test('a dropped pull is rebroadcast with the same bytes and lands in seconds, not after the blockhash expires', async () => {
+  const { chain, mk, clock, pushes } = setup()
+  chain.sendDrops = 1 // the first send is accepted by the RPC and never lands (30 Sep, mainnet)
+  let slept = 0
+  const ex = mk({
+    settleMs: 20_000,
+    rebroadcastMs: 2_000,
+    sleep: async (ms: number) => {
+      slept += ms
+      if (slept % 1000 === 0) clock.advance(1) // the clocks move in whole seconds
+    },
+  })
+  const out = await ex.tick()
+  assert.deepEqual(Object.values(out), ['landed'])
+  assert.equal(new Set(chain.sends).size, 1, 'one signature: the rebroadcast is the same signed transaction')
+  assert.ok(chain.sends.length >= 2, 'it was sent again')
+  assert.equal(chain.sent.length, 1, 'and landed exactly once')
+  assert.ok(slept <= 3_000, `landed within about 2 s of the drop (waited ${slept} ms)`)
+  assert.equal(pushes.filter((p) => /received/.test(p.title)).length, 1)
+})
+
+test('kick: a confirmed permission is pulled at once, without waiting for the interval', async () => {
+  const { chain, mk } = setup()
+  mk().kick()
+  await new Promise((r) => setTimeout(r, 20))
+  assert.equal(chain.sent.length, 1)
+})
+
+test('kick: a kick that arrives during a tick runs one more tick after it', async () => {
+  const { chain, mk, clock } = setup()
+  chain.sendDrops = 1 // keeps the first tick busy settling
+  let release!: () => void
+  const gate = new Promise<void>((r) => (release = r))
+  const ex = mk({
+    settleMs: 5_000,
+    rebroadcastMs: 2_000,
+    sleep: async () => {
+      await gate
+      clock.advance(1)
+    },
+  })
+  let ticks = 0
+  const tick = ex.tick.bind(ex)
+  ex.tick = () => (ticks++, tick())
+  const first = ex.tick()
+  ex.kick() // the tick is running: this must not be lost
+  assert.equal(ticks, 1, 'no second tick while the first runs')
+  release()
+  await first
+  await new Promise((r) => setTimeout(r, 20))
+  assert.equal(ticks, 2, 'the queued kick ran one more tick')
+})

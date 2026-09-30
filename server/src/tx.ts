@@ -94,9 +94,13 @@ export interface Landed {
   logs: string[]
 }
 
-/** Sends pre-signed wire bytes with preflight off, so a refusal lands and has a signature. */
+/**
+ * Sends pre-signed wire bytes with preflight off, so a refusal lands and has a
+ * signature. The RPC node keeps forwarding it until its blockhash expires (no
+ * maxRetries: 0, which let a dropped pull sit for 40 s on 30 Sep).
+ */
 export async function sendWire(rpc: Rpc, wire: string): Promise<void> {
-  await rpc.sendTransaction(wire as never, { encoding: 'base64', skipPreflight: true, maxRetries: 0n }).send()
+  await rpc.sendTransaction(wire as never, { encoding: 'base64', skipPreflight: true }).send()
 }
 
 export type TxStatus = { state: 'landed'; landed: Landed } | { state: 'pending' } | { state: 'expired' }

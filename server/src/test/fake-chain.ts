@@ -29,6 +29,8 @@ export class FakeChain implements ChainPort {
   delegations = new Map<string, Deleg>()
   landed = new Map<string, Landed>()
   sent: { sig: string; pda: string; amount: bigint }[] = []
+  /** Every send() call, rebroadcasts included. */
+  sends: string[] = []
   receiverValid = true
   /** Transport faults, consumed one per call. */
   readFailures = 0
@@ -77,6 +79,9 @@ export class FakeChain implements ChainPort {
 
   async send(wire: string): Promise<void> {
     const { signature, pda, amount } = JSON.parse(wire) as { signature: string; pda: string; amount: string }
+    this.sends.push(signature)
+    // Like the real chain: the same signed bytes land at most once.
+    if (this.landed.has(signature)) return
     if (this.sendDrops > 0) {
       this.sendDrops--
       return // accepted by the RPC, never lands
