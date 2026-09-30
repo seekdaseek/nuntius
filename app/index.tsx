@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import {
@@ -9,11 +9,13 @@ import {
   Chip,
   color,
   font,
+  Footer,
   Hero,
   Muted,
   Note,
   Row,
   Section,
+  StatusBarScrim,
   Wordmark,
 } from '@/components/ui'
 import { radius, space, tabular } from '@/constants/app-styles'
@@ -39,29 +41,37 @@ export default function HomeScreen() {
 }
 
 function Welcome() {
+  const [scrolled, setScrolled] = useState(false)
   return (
-    <ScrollView contentContainerStyle={s.scroll}>
-      <Hero>
-        <Wordmark light />
-        <Text style={s.heroSentence}>Grant a payment once. The chain holds the line.</Text>
-        <Text style={s.heroSub}>Recurring payments you approve once in Seed Vault, capped by Solana itself.</Text>
-      </Hero>
-      <View style={s.body}>
-        <Card>
-          <Body style={s.cardTitle}>One approval</Body>
-          <Muted>Let someone take up to a fixed amount each day, week or 30 days. Nothing more, ever.</Muted>
-        </Card>
-        <Card>
-          <Body style={s.cardTitle}>Refused by the chain, not by us</Body>
-          <Muted>Anything above your cap fails in the Subscriptions program. You get a receipt either way.</Muted>
-        </Card>
-        <Card>
-          <Body style={s.cardTitle}>Every permission in one place</Body>
-          <Muted>See what any app can pull from this wallet, and end it with one approval.</Muted>
-        </Card>
-        <AccountFeatureSignIn />
-      </View>
-    </ScrollView>
+    <>
+      <ScrollView
+        contentContainerStyle={s.scroll}
+        scrollEventThrottle={32}
+        onScroll={(e) => setScrolled(e.nativeEvent.contentOffset.y > 4)}
+      >
+        <Hero>
+          <Wordmark light />
+          <Text style={s.heroSentence}>Grant a payment once. The chain holds the line.</Text>
+          <Text style={s.heroSub}>Recurring payments you approve once in Seed Vault, capped by Solana itself.</Text>
+        </Hero>
+        <View style={s.body}>
+          <Card>
+            <Body style={s.cardTitle}>One approval</Body>
+            <Muted>Let someone take up to a fixed amount each day, week or 30 days. Nothing more, ever.</Muted>
+          </Card>
+          <Card>
+            <Body style={s.cardTitle}>Refused by the chain, not by us</Body>
+            <Muted>Anything above your cap fails in the Subscriptions program. You get a receipt either way.</Muted>
+          </Card>
+          <Card>
+            <Body style={s.cardTitle}>Every permission in one place</Body>
+            <Muted>See what any app can pull from this wallet, and end it with one approval.</Muted>
+          </Card>
+          <AccountFeatureSignIn />
+        </View>
+      </ScrollView>
+      <StatusBarScrim visible={scrolled} />
+    </>
   )
 }
 
@@ -72,6 +82,7 @@ function SignedIn() {
   const signOut = useSignOut()
   const data = list.data
   const now = Date.now()
+  const [scrolled, setScrolled] = useState(false)
 
   useEffect(() => {
     if (data) void refreshWidget(auth.session)
@@ -97,7 +108,11 @@ function SignedIn() {
 
   return (
     <>
-      <ScrollView contentContainerStyle={[s.scroll, { paddingBottom: 130 }]}>
+      <ScrollView
+        contentContainerStyle={s.scroll}
+        scrollEventThrottle={32}
+        onScroll={(e) => setScrolled(e.nativeEvent.contentOffset.y > 4)}
+      >
         <Hero>
           <Row style={{ justifyContent: 'space-between' }}>
             <Wordmark light />
@@ -171,7 +186,8 @@ function SignedIn() {
           <AccountFooter />
         </View>
       </ScrollView>
-      <View style={s.footer}>
+      <StatusBarScrim visible={scrolled} />
+      <Footer>
         <Button
           big
           kind="ink"
@@ -180,7 +196,7 @@ function SignedIn() {
           disabled={!data || atLimit}
           onPress={() => router.push({ pathname: '/new', params: { mints: (data?.mints ?? ['USDC']).join(',') } })}
         />
-      </View>
+      </Footer>
     </>
   )
 }
@@ -359,14 +375,4 @@ const s = StyleSheet.create({
   name: { fontFamily: font.semibold, fontSize: 17, color: color.ink, flex: 1 },
   rate: { fontFamily: font.semibold, fontSize: 15, color: color.ink, ...tabular },
   link: { fontFamily: font.semibold, fontSize: 14, color: color.signal },
-  footer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: space.side,
-    paddingTop: 12,
-    paddingBottom: 28,
-    backgroundColor: color.paper,
-  },
 })

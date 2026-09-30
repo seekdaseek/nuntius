@@ -93,8 +93,15 @@ export default function NewPermissionScreen() {
   const busy = grant.isPending
   const name = form.label.trim()
 
+  // The confirmation sits with Done, so it can never be behind it (device check 4, 30 Sep).
   const footer = grant.isSuccess ? (
-    <Button big title="Done" onPress={() => router.back()} />
+    <>
+      <Note tone="moved">
+        Live. The chain now enforces it. The first payment to {shortAddr(form.payee)} goes out in a moment, and every
+        pull sends a receipt to this phone.
+      </Note>
+      <Button big title="Done" onPress={() => router.back()} />
+    </>
   ) : (
     <>
       <Muted style={s.note}>One approval now. You never sign a payment after this, and one approval ends it.</Muted>
@@ -147,7 +154,7 @@ export default function NewPermissionScreen() {
       ) : null}
 
       <View style={s.sentence} accessibilityLabel="Permission sentence">
-        <Text style={s.word}>Let </Text>
+        <Text style={s.word}>Let</Text>
         <TextInput
           testID="label"
           style={[s.slot, s.slotInput, { width: slotWidth(form.label || 'name') }]}
@@ -157,7 +164,7 @@ export default function NewPermissionScreen() {
           onChangeText={(v) => set('label', v)}
           maxLength={40}
         />
-        <Text style={s.word}> take up to </Text>
+        <Text style={s.word}>take up to</Text>
         <TextInput
           ref={amountRef}
           testID="amount"
@@ -168,9 +175,8 @@ export default function NewPermissionScreen() {
           keyboardType="decimal-pad"
           onChangeText={(v) => set('amount', sanitizeAmount(v))}
         />
-        <Text style={s.word}> </Text>
         <SlotButton label={symbol} onPress={() => setSymbol(cycle(mints, symbol))} testID="slot-symbol" />
-        <Text style={s.word}> every </Text>
+        <Text style={s.word}>every</Text>
         <SlotButton
           label={PERIOD_WORD[form.period]}
           onPress={() =>
@@ -184,13 +190,16 @@ export default function NewPermissionScreen() {
           }
           testID="slot-period"
         />
-        <Text style={s.word}> until </Text>
-        <SlotButton
-          label={untilWords(Date.now(), form.untilDays, tzOffsetMin())}
-          onPress={() => set('untilDays', cycle(UNTIL_OPTIONS, form.untilDays as (typeof UNTIL_OPTIONS)[number]))}
-          testID="slot-until"
-        />
-        <Text style={s.word}>.</Text>
+        <Text style={s.word}>until</Text>
+        {/* The date and its full stop wrap as one piece: never "." alone on a line. */}
+        <View style={s.keep}>
+          <SlotButton
+            label={untilWords(Date.now(), form.untilDays, tzOffsetMin())}
+            onPress={() => set('untilDays', cycle(UNTIL_OPTIONS, form.untilDays as (typeof UNTIL_OPTIONS)[number]))}
+            testID="slot-until"
+          />
+          <Text style={s.word}>.</Text>
+        </View>
       </View>
 
       <View style={[s.field, check.field === 'payee' && form.payee ? s.fieldError : null]}>
@@ -255,12 +264,6 @@ export default function NewPermissionScreen() {
       ) : null}
       {preview && !preview.allowed ? <Note tone="foreign">{preview.upgrade ?? 'Limit reached.'}</Note> : null}
 
-      {grant.isSuccess ? (
-        <Note tone="moved">
-          Live. The chain now enforces it. The first payment to {shortAddr(form.payee)} goes out in a moment, and every
-          pull sends a receipt to this phone.
-        </Note>
-      ) : null}
       {expired ? (
         <Note tone="foreign">
           Seed Vault held the approval longer than a Solana transaction lives, so nothing was signed or sent. One tap
@@ -277,8 +280,11 @@ export default function NewPermissionScreen() {
 
 function SlotButton({ label, onPress, testID }: { label: string; onPress: () => void; testID?: string }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" testID={testID} style={s.slot}>
-      <Text style={s.slotText}>{label}</Text>
+    <Pressable onPress={onPress} accessibilityRole="button" testID={testID} style={[s.slot, s.keep]}>
+      {/* One line inside the chip: "7 Oct" must not break between day and month. */}
+      <Text style={s.slotText} numberOfLines={1}>
+        {label.replace(/ /g, '\u00a0')}
+      </Text>
     </Pressable>
   )
 }
@@ -308,8 +314,18 @@ const s = StyleSheet.create({
   starterOn: { borderColor: color.signal, backgroundColor: color.signal50 },
   starterTitle: { fontFamily: font.semibold, fontSize: 14, color: color.ink },
   starterLine: { fontFamily: font.medium, fontSize: 12.5, color: color.ink2 },
-  sentence: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', rowGap: 6, marginTop: 10, marginBottom: 4 },
+  // Words are spaced by the gap, not by spaces in the text, so a wrapped line starts flush left.
+  sentence: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    rowGap: 6,
+    columnGap: 8,
+    marginTop: 10,
+    marginBottom: 4,
+  },
   word: { ...SENT, color: color.ink },
+  keep: { flexDirection: 'row', alignItems: 'center', flexShrink: 0 },
   slot: { backgroundColor: color.signal50, borderRadius: radius.slot, paddingHorizontal: 8 },
   slotText: { ...SENT, color: color.signal },
   slotInput: {

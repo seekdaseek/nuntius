@@ -11,7 +11,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg'
 import { color, font, radius, space, tabular } from '@/constants/app-styles'
@@ -59,15 +59,32 @@ export function Screen({
     <View style={l.root}>
       {tint ? <TintBackground tint={tint} /> : null}
       <SafeAreaView style={l.flex} edges={['top', 'left', 'right']}>
-        {scroll ? (
-          <ScrollView contentContainerStyle={[l.pad, footer ? l.padForFooter : null]}>{body}</ScrollView>
-        ) : (
-          <View style={l.pad}>{body}</View>
-        )}
+        {scroll ? <ScrollView contentContainerStyle={l.pad}>{body}</ScrollView> : <View style={l.pad}>{body}</View>}
       </SafeAreaView>
-      {footer ? <View style={l.footer}>{footer}</View> : null}
+      {footer ? <Footer>{footer}</Footer> : null}
     </View>
   )
+}
+
+/**
+ * The call to action under a screen's scroll area, never over it: the list ends
+ * above it, so no row, account line or confirmation hides behind the button
+ * (device check 2, 30 Sep). Clears the system navigation bar.
+ */
+export function Footer({ children }: PropsWithChildren) {
+  const insets = useSafeAreaInsets()
+  return <View style={[l.footer, { paddingBottom: Math.max(16, insets.bottom + 8) }]}>{children}</View>
+}
+
+/**
+ * An opaque band behind the status bar, for screens whose content scrolls up
+ * into it (Home under its hero). Shown only once the content has moved, so the
+ * hero's colour still runs to the top edge at rest.
+ */
+export function StatusBarScrim({ visible }: { visible: boolean }) {
+  const insets = useSafeAreaInsets()
+  if (!visible || insets.top === 0) return null
+  return <View pointerEvents="none" style={[l.scrim, { height: insets.top }]} />
 }
 
 /**
@@ -381,18 +398,8 @@ const l = StyleSheet.create({
   root: { flex: 1, backgroundColor: color.paper },
   flex: { flex: 1 },
   pad: { paddingHorizontal: space.side, paddingTop: 8, paddingBottom: 32, gap: space.cardGap },
-  padForFooter: { paddingBottom: 200 },
-  footer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: space.side,
-    paddingTop: 12,
-    paddingBottom: 28,
-    gap: 12,
-    backgroundColor: color.paper,
-  },
+  footer: { paddingHorizontal: space.side, paddingTop: 12, gap: 12, backgroundColor: color.paper },
+  scrim: { position: 'absolute', left: 0, right: 0, top: 0, backgroundColor: color.paper },
   hero: {
     borderBottomLeftRadius: radius.hero,
     borderBottomRightRadius: radius.hero,
