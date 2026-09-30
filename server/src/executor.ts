@@ -28,7 +28,18 @@ import type { Mandate, MandateStore, PullRow } from './mandate-store.js'
 import type { Receipts } from './receipts.js'
 import type { Logger } from './log.js'
 import { safeError } from './log.js'
-import { latestBlockhash, sendWire, signOnly, statusOf, type Rpc, type SignedTx, type TxStatus } from './tx.js'
+import {
+  computeBudgetInstructions,
+  latestBlockhash,
+  PULL_BUDGET,
+  sendWire,
+  signOnly,
+  statusOf,
+  type ComputeBudget,
+  type Rpc,
+  type SignedTx,
+  type TxStatus,
+} from './tx.js'
 
 /** What the executor needs from the chain. The real one is `rpcChain`; tests use a simulated program. */
 export interface ChainPort {
@@ -40,7 +51,7 @@ export interface ChainPort {
   status(signature: string, lastValidBlockHeight: bigint): Promise<TxStatus>
 }
 
-export function rpcChain(rpc: Rpc, delegatee: TransactionSigner): ChainPort {
+export function rpcChain(rpc: Rpc, delegatee: TransactionSigner, budget: ComputeBudget = PULL_BUDGET): ChainPort {
   return {
     read: (pda) => readRecurring(rpc, pda as Address),
     async receiverOk(m) {
@@ -57,7 +68,7 @@ export function rpcChain(rpc: Rpc, delegatee: TransactionSigner): ChainPort {
         mint: m.mint as Address,
         amount,
       })
-      return signOnly(delegatee, [ix], await latestBlockhash(rpc))
+      return signOnly(delegatee, [...computeBudgetInstructions(budget), ix], await latestBlockhash(rpc))
     },
     send: (wire) => sendWire(rpc, wire),
     status: (sig, lvbh) => statusOf(rpc, sig, lvbh),

@@ -34,6 +34,44 @@ export interface Blockhash {
   lastValidBlockHeight: bigint
 }
 
+const COMPUTE_BUDGET = 'ComputeBudget111111111111111111111111111111' as Address
+
+/**
+ * Compute budget for a transaction the delegatee pays for: a unit limit near
+ * what it needs, and a small price per unit so validators under load still
+ * schedule it (30 Sep: 3 of 5 first sends were dropped). The priority fee is
+ * limit × price, charged on the limit, not on what was used.
+ */
+export interface ComputeBudget {
+  unitLimit: number
+  microLamportsPerUnit: number
+}
+
+/**
+ * A pull measured 14,831 units on localnet (SPL Token; a refused one, 970).
+ * 40,000 leaves room for Token-2022 mints such as SKR. At 50,000 micro-lamports
+ * a unit the priority fee is 2,000 lamports a pull (0.000002 SOL), on top of
+ * the 5,000-lamport base fee.
+ */
+export const PULL_BUDGET: ComputeBudget = { unitLimit: 40_000, microLamportsPerUnit: 50_000 }
+
+export function priorityFeeLamports(b: ComputeBudget): bigint {
+  return (BigInt(b.unitLimit) * BigInt(b.microLamportsPerUnit) + 999_999n) / 1_000_000n
+}
+
+export function computeBudgetInstructions(b: ComputeBudget): Instruction[] {
+  const limit = new Uint8Array(5)
+  limit[0] = 2 // SetComputeUnitLimit(u32)
+  new DataView(limit.buffer).setUint32(1, b.unitLimit, true)
+  const price = new Uint8Array(9)
+  price[0] = 3 // SetComputeUnitPrice(u64, micro-lamports)
+  new DataView(price.buffer).setBigUint64(1, BigInt(b.microLamportsPerUnit), true)
+  return [
+    { programAddress: COMPUTE_BUDGET, data: limit },
+    { programAddress: COMPUTE_BUDGET, data: price },
+  ]
+}
+
 export async function latestBlockhash(rpc: Rpc): Promise<Blockhash> {
   const { value } = await rpc.getLatestBlockhash({ commitment: 'confirmed' }).send()
   return { blockhash: value.blockhash, lastValidBlockHeight: value.lastValidBlockHeight }

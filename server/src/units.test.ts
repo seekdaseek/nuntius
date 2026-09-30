@@ -6,6 +6,7 @@ import { createLogger, redact, safeError } from './log.js'
 import { buildDigest, computeStreak, digestDue, localDay, type LedgerEvent } from './digest.js'
 import { effectiveWindow } from './mandate-chain.js'
 import { freshNonce } from './mandates-api.js'
+import { computeBudgetInstructions, PULL_BUDGET, priorityFeeLamports } from './tx.js'
 
 test('parseUnits / formatUnits are exact inverses and refuse extra precision', () => {
   assert.equal(parseUnits('10', 6), 10_000_000n)
@@ -399,4 +400,12 @@ test('grant seeds are random, never a counter that restarts with the database', 
     [...seen].every((n) => n > 1_000),
     'not the 0, 1, 2… a counter hands out',
   )
+})
+
+test('pull compute budget: unit limit and price, as the Compute Budget program reads them', () => {
+  const [limit, price] = computeBudgetInstructions({ unitLimit: 40_000, microLamportsPerUnit: 50_000 })
+  assert.equal(limit!.programAddress, 'ComputeBudget111111111111111111111111111111')
+  assert.deepEqual([...limit!.data!], [2, 0x40, 0x9c, 0, 0]) // 40,000 LE
+  assert.deepEqual([...price!.data!], [3, 0x50, 0xc3, 0, 0, 0, 0, 0, 0]) // 50,000 LE
+  assert.equal(priorityFeeLamports(PULL_BUDGET), 2_000n, '0.000002 SOL a pull')
 })

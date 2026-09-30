@@ -6,6 +6,7 @@ import { MandateStore } from './mandate-store.js'
 import { Receipts, type PushPort } from './receipts.js'
 import { createLogger } from './log.js'
 import { buildGrantTx, buildRevokeTx } from './mandate-chain.js'
+import { PULL_BUDGET, priorityFeeLamports } from './tx.js'
 import {
   assertOk,
   ataFor,
@@ -80,6 +81,18 @@ test('executor against the real program', { skip: skipLocalnet, timeout: 120_000
     assert.equal(await tokenBalance(rpc, userAta), 997_500n)
     assert.deepEqual(await ex.tick(), { [m.id]: 'period_done' })
     assert.equal(await tokenBalance(rpc, receiverAta), 2_500n, 'no double pull')
+  })
+
+  await t.test('the pull carries a compute budget; the delegatee pays the small priority fee', async () => {
+    const sig = store.pullsFor(grant.delegationPda).find((p) => p.state === 'landed')!.signature!
+    const tx = await rpc
+      .getTransaction(sig as never, { maxSupportedTransactionVersion: 0, encoding: 'json', commitment: 'confirmed' })
+      .send()
+    const used = Number(tx!.meta!.computeUnitsConsumed)
+    assert.ok(used < PULL_BUDGET.unitLimit, `${used} units fit the ${PULL_BUDGET.unitLimit} limit`)
+    assert.equal(priorityFeeLamports(PULL_BUDGET), 2_000n)
+    assert.equal(BigInt(tx!.meta!.fee), 5_000n + 2_000n, 'base fee plus 2,000 lamports')
+    console.log(`    pull: ${used} units, fee ${tx!.meta!.fee} lamports`)
   })
 
   await t.test('after the period rolls, it pulls again with no new user signature', async () => {
