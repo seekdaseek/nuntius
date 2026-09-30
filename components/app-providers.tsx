@@ -5,8 +5,8 @@ import { NetworkProvider } from '@/features/network/network-provider'
 import { MobileWalletProvider } from '@wallet-ui/react-native-kit'
 import { AppConfig } from '@/constants/app-config'
 
-// Module scope so it is set before anything renders. Messages are sent
-// data-only, so presentation is decided here, not by the sender.
+// Module scope so it is set before anything renders. How a push shows while the
+// app is open (the system draws it when the app is in the background or killed).
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,

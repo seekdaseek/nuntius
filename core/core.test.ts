@@ -213,3 +213,35 @@ test('approve note: the token approval in plain words, with the exact total', as
   )
   assert.match(delegateLine([{ symbol: 'SKR', delegate: 'Abcdefg', allowance: null }], short), /with no cap$/)
 })
+
+test('push tap: the receipt url is found for every app state and push type', async () => {
+  const { tapTarget, tapUrl } = await import('./notification-tap.ts')
+  const received = '/alert?source=receipt&kind=pull&who=natXcheck&amount=0.05&symbol=USDC&remaining=0&cap=0.05'
+  const refused = '/alert?source=receipt&kind=refused&who=natXcheck&amount=0.000001&symbol=USDC'
+  const res = (id: string, data: Record<string, unknown> | null, remote?: Record<string, unknown>) => ({
+    notification: {
+      request: {
+        identifier: id,
+        content: { data },
+        trigger: remote ? { type: 'push', remoteMessage: { data: remote } } : { type: 'push' },
+      },
+    },
+  })
+  // Open: expo shows it and hands over the FCM data as content.data.
+  assert.deepEqual(tapTarget(res('a', { url: received, channelId: 'alerts' }), null), { id: 'a', url: received })
+  assert.deepEqual(tapTarget(res('b', { url: refused, channelId: 'alerts' }), null), { id: 'b', url: refused })
+  // Background and killed: the tray tap's extras (plus FCM's own keys) become content.data.
+  const extras = { url: received, channelId: 'alerts', 'google.message_id': '0:1', from: '123' }
+  assert.equal(tapUrl(res('c', extras)), received)
+  // Only the raw remote message carries it.
+  assert.equal(tapUrl(res('d', null, { url: refused })), refused)
+  // The digest and the widget targets.
+  assert.equal(tapUrl(res('e', { url: '/digest?source=digest' })), '/digest?source=digest')
+  // Already routed, no url, or not an app screen: nothing to open.
+  assert.equal(tapTarget(res('a', { url: received }), 'a'), null)
+  assert.equal(tapTarget(res('f', {}), null), null)
+  assert.equal(tapTarget(null, null), null)
+  for (const bad of ['https://evil.example/x', '//evil.example', '/somewhere-else', 'alert']) {
+    assert.equal(tapUrl(res('g', { url: bad })), null, bad)
+  }
+})

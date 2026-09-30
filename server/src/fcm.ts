@@ -7,6 +7,24 @@ import { JWT } from 'google-auth-library'
  * internally until near expiry — no token is minted per send. The key never
  * leaves this process and is never logged.
  */
+/** The FCM v1 request body. Pure, so the payload shape is tested without a network. */
+export function fcmMessage(
+  token: string,
+  notification: { title: string; body: string },
+  channelId: string,
+  data: Record<string, string>,
+  tag?: string,
+) {
+  return {
+    message: {
+      token,
+      notification,
+      data,
+      android: { priority: 'HIGH', notification: { channel_id: channelId, ...(tag ? { tag } : {}) } },
+    },
+  }
+}
+
 export class FcmSender {
   private readonly jwt: JWT
   private readonly endpoint: string
@@ -41,6 +59,7 @@ export class FcmSender {
     notification: { title: string; body: string },
     channelId: string,
     data: Record<string, string>,
+    tag?: string,
   ): Promise<{ ok: boolean; status: number; body: string }> {
     const { token: bearer } = await this.jwt.getAccessToken()
     if (!bearer) throw new Error('could not obtain FCM access token')
@@ -48,14 +67,7 @@ export class FcmSender {
     const response = await fetch(this.endpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${bearer}` },
-      body: JSON.stringify({
-        message: {
-          token,
-          notification,
-          data,
-          android: { priority: 'HIGH', notification: { channel_id: channelId } },
-        },
-      }),
+      body: JSON.stringify(fcmMessage(token, notification, channelId, data, tag)),
     })
     const body = await response.text()
     return { ok: response.ok, status: response.status, body }

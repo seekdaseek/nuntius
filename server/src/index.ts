@@ -8,7 +8,7 @@ import { generateKeyPairSync } from 'node:crypto'
 import { createKeyPairSignerFromBytes, createSolanaRpc, type TransactionSigner } from '@solana/kit'
 import { loadMandateConfig } from './mandate-config.js'
 import { MandateStore } from './mandate-store.js'
-import { Receipts, type PushPort } from './receipts.js'
+import { fcmParts, Receipts, type PushPort } from './receipts.js'
 import { Executor, rpcChain, startExecutor } from './executor.js'
 import { Guard, rpcGuardChain, startGuard } from './guard.js'
 import { runDigests } from './digest-scheduler.js'
@@ -105,9 +105,10 @@ if (mandateConfig) {
         async toAddress(address, msg) {
           const tokens = store.getPushTokens(address)
           const results = await Promise.all(
-            tokens.map((t) =>
-              fcm.send(t, { title: msg.title, body: msg.body }, 'alerts', { url: msg.url, channelId: 'alerts' }),
-            ),
+            tokens.map((t) => {
+              const p = fcmParts(msg)
+              return fcm.send(t, p.notification, p.channelId, p.data, p.tag)
+            }),
           )
           return results.map((r) => r.status)
         },

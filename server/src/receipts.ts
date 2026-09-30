@@ -12,10 +12,38 @@ import type { Logger } from './log.js'
 
 export interface PushPort {
   /** Sends to every device registered for the address; resolves with per-token status. */
-  toAddress(
-    address: string,
-    msg: { title: string; body: string; url: string; channel?: 'alerts' | 'digest' },
-  ): Promise<number[]>
+  toAddress(address: string, msg: PushMessage): Promise<number[]>
+}
+
+export interface PushMessage {
+  title: string
+  body: string
+  url: string
+  channel?: 'alerts' | 'digest'
+  /** Android tray tag: a newer push with the same tag replaces the older one. */
+  tag?: string
+}
+
+/**
+ * The FCM parts of a push. One tag per permission (and one for the digest)
+ * keeps the tray to one notification per permission: when an app has several
+ * notifications showing, Android folds them into a collapsed group, and a tap
+ * on that group opens the app without any notification's data, so it cannot
+ * land on the receipt (device check 5, 30 Sep).
+ */
+export function fcmParts(msg: PushMessage): {
+  notification: { title: string; body: string }
+  channelId: 'alerts' | 'digest'
+  data: Record<string, string>
+  tag: string | undefined
+} {
+  const channelId = msg.channel ?? 'alerts'
+  return {
+    notification: { title: msg.title, body: msg.body },
+    channelId,
+    data: { url: msg.url, channelId },
+    tag: msg.tag ?? (channelId === 'digest' ? 'digest' : undefined),
+  }
 }
 
 export interface ReceiptExtra {
@@ -26,7 +54,11 @@ export interface ReceiptExtra {
 }
 
 /** Pure: the push a receipt becomes. Tested directly. */
-export function receiptMessage(e: LedgerEvent, x: ReceiptExtra): { title: string; body: string; url: string } {
+export function receiptMessage(e: LedgerEvent, x: ReceiptExtra): PushMessage & { tag: string } {
+  return { ...receiptBody(e, x), tag: `permission:${e.delegationPda}` }
+}
+
+function receiptBody(e: LedgerEvent, x: ReceiptExtra): { title: string; body: string; url: string } {
   const who = e.label ?? shortAddress(e.delegatee)
   const amt = e.amountBaseUnits ? `${formatUnits(BigInt(e.amountBaseUnits), e.decimals)} ${e.symbol}` : ''
   const left =

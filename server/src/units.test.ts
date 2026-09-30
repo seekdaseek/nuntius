@@ -294,3 +294,43 @@ test('allowance: lifetime totals follow the program period rules', async () => {
     'a plan subscription: no cap',
   )
 })
+
+test('push: one tray tag per permission, the digest on its own channel, the url always in data', async () => {
+  const { receiptMessage, fcmParts } = await import('./receipts.js')
+  const { fcmMessage } = await import('./fcm.js')
+  const ev = {
+    kind: 'pull',
+    at: Date.UTC(2026, 8, 30, 15, 31),
+    delegationPda: 'Pda1111111111111111111111111111111111111111',
+    delegatee: 'DeLegatee111111111111111111111111111111111',
+    label: 'natXcheck',
+    amountBaseUnits: '50000',
+    decimals: 6,
+    symbol: 'USDC',
+    signature: 'sig',
+    actor: 'nuntius',
+  } as const
+  const pulled = receiptMessage(ev as never, { cluster: 'mainnet', remainingBaseUnits: 0n, capBaseUnits: 50000n })
+  const refused = receiptMessage({ ...ev, kind: 'refused', amountBaseUnits: '1' } as never, { cluster: 'mainnet' })
+  const granted = receiptMessage({ ...ev, kind: 'granted' } as never, { cluster: 'mainnet' })
+  assert.equal(pulled.tag, `permission:${ev.delegationPda}`)
+  assert.equal(refused.tag, pulled.tag, 'every push about one permission shares its tag')
+  assert.equal(granted.tag, pulled.tag, '"Permission live" is replaced by the first "received"')
+  for (const m of [pulled, refused, granted]) assert.match(m.url, /^\/alert\?/)
+  const p = fcmParts(pulled)
+  assert.deepEqual(p.data, { url: pulled.url, channelId: 'alerts' })
+  const body = fcmMessage('tok', p.notification, p.channelId, p.data, p.tag)
+  assert.deepEqual(body.message.android, {
+    priority: 'HIGH',
+    notification: { channel_id: 'alerts', tag: `permission:${ev.delegationPda}` },
+  })
+  assert.equal(body.message.data.url, pulled.url, 'the tap target rides in data for every app state')
+  const digest = fcmParts({
+    title: 'Quiet night, nothing moved',
+    body: 'x',
+    url: '/digest?source=digest',
+    channel: 'digest',
+  })
+  assert.equal(digest.channelId, 'digest', 'the digest goes to its own quiet channel')
+  assert.equal(digest.tag, 'digest')
+})
