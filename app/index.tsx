@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useIsMutating } from '@tanstack/react-query'
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import {
@@ -26,6 +27,7 @@ import { useDemoOverCap, useMandateList, useReceipts, useRevoke } from '@/featur
 import { ApiError, type MandateView, type OtherDelegation } from '@/features/mandates/mandates-api'
 import { shortAddr } from '@/core/format'
 import { delegateLine } from '@/core/allowance-copy'
+import { revokeFailureText } from '@/core/wallet-session'
 import {
   basicTierLine,
   initial,
@@ -92,6 +94,20 @@ function SignedIn() {
   const data = list.data
   const now = Date.now()
   const [scrolled, setScrolled] = useState(false)
+  // While Seed Vault is up, and for a second after it closes, the bottom button
+  // takes no taps: a tap that dismissed a sheet must not open New permission
+  // (device check 11, after two timed-out revokes).
+  const walletBusy = useIsMutating() > 0
+  const [settling, setSettling] = useState(false)
+  const wasBusy = useRef(false)
+  useEffect(() => {
+    const ended = wasBusy.current && !walletBusy
+    wasBusy.current = walletBusy
+    if (!ended) return
+    setSettling(true)
+    const t = setTimeout(() => setSettling(false), 1000)
+    return () => clearTimeout(t)
+  }, [walletBusy])
 
   useEffect(() => {
     if (data) void refreshWidget(auth.session)
@@ -206,7 +222,7 @@ function SignedIn() {
           kind="ink"
           title="+ New permission"
           testID="new-mandate"
-          disabled={!data || atLimit}
+          disabled={!data || atLimit || walletBusy || settling}
           onPress={() => router.push({ pathname: '/new', params: { mints: (data?.mints ?? ['USDC']).join(',') } })}
         />
       </Footer>
@@ -272,8 +288,23 @@ function PermissionCard({ m, demo, now }: { m: MandateView; demo: boolean; now: 
         <Note tone="refused">Refused by the chain, error 0x190. Nothing moved.</Note>
       ) : null}
       {overCap.isError ? <Note tone="refused">{overCap.error.message}</Note> : null}
-      {revoke.isError ? <Note tone="refused">Revoke failed: {revoke.error.message}</Note> : null}
+      {revoke.isError ? <RevokeFailed error={revoke.error} onRetry={() => revoke.mutate(m.delegationPda)} /> : null}
     </Card>
+  )
+}
+
+/**
+ * A revoke that did not finish: in words, with one tap to try again (device
+ * check 11: the card showed a raw java.util.concurrent.TimeoutException).
+ */
+function RevokeFailed({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  return (
+    <>
+      <Note tone="refused">{revokeFailureText(error)}</Note>
+      <Row>
+        <Button title="Retry" kind="outline" onPress={onRetry} />
+      </Row>
+    </>
   )
 }
 
@@ -320,7 +351,7 @@ function OtherCard({ o, now }: { o: OtherDelegation; now: number }) {
           <Button title="Revoke" kind="revoke" busy={revoke.isPending} onPress={() => revoke.mutate(o.delegationPda)} />
         </Row>
       ) : null}
-      {revoke.isError ? <Note tone="refused">Revoke failed: {revoke.error.message}</Note> : null}
+      {revoke.isError ? <RevokeFailed error={revoke.error} onRetry={() => revoke.mutate(o.delegationPda)} /> : null}
     </Card>
   )
 }

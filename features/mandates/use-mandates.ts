@@ -6,6 +6,7 @@ import { api, ApiError, untilLanded, type TermsInput } from '@/features/mandates
 import { signAndSend } from '@/features/wallet/sign-and-send'
 import { refreshWidget } from '@/features/widget/refresh-widget'
 import { tzOffsetMin } from '@/core/format'
+import { WalletStepError } from '@/core/wallet-session'
 
 const KEY = ['mandates']
 
@@ -68,7 +69,7 @@ export function useGrantMandate(auth: NuntiusAuth | null, onStep?: (s: GrantStep
       let signature: string | null = null
       try {
         onStep?.('signing')
-        signature = await signAndSend(chain, identity, async () => {
+        signature = await signAndSend(chain, identity, auth.address, async () => {
           if (mandateId) return (await api.rebuild(auth.session, mandateId)).transactionBase64
           const created = await api.create(auth.session, terms)
           mandateId = pending.current = created.mandateId
@@ -94,7 +95,9 @@ export function useRevoke(auth: NuntiusAuth | null) {
     mutationFn: async (delegationPda: string) => {
       if (!auth) throw new Error('not signed in')
       const tx = await api.revoke(auth.session, delegationPda)
-      const signature = await signAndSend(chain, identity, tx.transactionBase64)
+      const signature = await signAndSend(chain, identity, auth.address, tx.transactionBase64).catch((e: unknown) => {
+        throw new WalletStepError(e)
+      })
       const done = await untilLanded(() => api.revokeConfirm(auth.session, delegationPda), ['still_live'])
       return { signature, ...done, revokesAuthority: tx.revokesAuthority }
     },

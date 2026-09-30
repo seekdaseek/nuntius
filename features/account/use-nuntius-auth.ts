@@ -3,6 +3,7 @@ import { getBase64Encoder } from '@solana/kit'
 import { transact, useMobileWallet } from '@wallet-ui/react-native-kit'
 import { getSiwsPayload, postSiwsVerify, postVerifySeeker } from '@/features/account/nuntius-api'
 import { loadAuth, saveAuth } from '@/features/account/auth-storage'
+import { saveWalletToken } from '@/features/wallet/wallet-auth-storage'
 
 /** Backend-verified identity: SIWS session plus the Seeker gate result. */
 export interface NuntiusAuth {
@@ -39,8 +40,8 @@ export function useSignInMutation() {
       // 1. Backend issues the payload — single-use nonce, issuedAt, expirationTime.
       const payload = await getSiwsPayload()
 
-      // 2. Authorize FRESH inside a new transact session, never passing a stored
-      // auth_token. The kit's own signIn() reauthorizes with a cached token and
+      // 2. Sign-in authorizes FRESH inside a new transact session, never passing a
+      // stored auth_token: this is where the user picks the wallet. The kit's own signIn() reauthorizes with a cached token and
       // never clears it when the wallet cancels or tears down the session, so one
       // dismissed sheet — or a rotated token after a restart — bricks every later
       // sign-in until the app data is cleared. A token-free authorize always opens
@@ -67,6 +68,9 @@ export function useSignInMutation() {
         signed_message: signIn.signed_message,
         signature: signIn.signature,
       })
+      // Later approvals pass this token back, so Seed Vault skips its wallet
+      // picker and shows only the transaction (features/wallet/sign-and-send.ts).
+      await saveWalletToken(address, result.auth_token).catch(() => {})
 
       // 4. Seeker gate. An RPC hiccup must not cost the fresh session — the
       // basic tier keeps a retry path via useVerifySeekerMutation.
@@ -102,6 +106,7 @@ export function useSignOut() {
 
   return async () => {
     await setAuth(queryClient, null)
+    await saveWalletToken('', null).catch(() => {})
     queryClient.removeQueries({ queryKey: ['mandates'] })
     await disconnect()
   }

@@ -28,6 +28,7 @@ import {
   startersFor,
 } from './mandate-form.ts'
 import { isBlockhashExpired } from './grant-errors.ts'
+import { revokeFailureText, walletFailureText, WalletStepError, withStoredAuthorization } from './wallet-session.ts'
 
 const NOW = Date.UTC(2026, 9, 1, 12)
 const nowS = NOW / 1000
@@ -299,4 +300,71 @@ test('period chips match the mockup: "month" is the fixed 30-day period the prog
   )
   assert.equal(PERIOD_OPTIONS.find((o) => o.label === 'month')!.key, '30days')
   assert.equal(perWords(2_592_000), 'every 30 days', 'the sentence stays exact')
+})
+
+test('wallet: one sheet with the stored authorization, a fresh one when the wallet refuses it', async () => {
+  const run = (log: (string | null)[], fail: (token: string | null) => Error | null) => ({
+    saved: [] as (string | null)[],
+    stored: null as string | null,
+    async load() {
+      return this.stored
+    },
+    async save(t: string | null) {
+      this.saved.push(t)
+      this.stored = t
+    },
+    async run(token: string | null) {
+      log.push(token)
+      const err = fail(token)
+      if (err) throw err
+      return { result: 'sig', token: `t${log.length}` }
+    },
+  })
+  // First time: no token, one session, the token is kept.
+  const log: (string | null)[] = []
+  const s = run(log, () => null)
+  assert.equal(await withStoredAuthorization(s), 'sig')
+  assert.deepEqual(log, [null])
+  // Next time the token goes along: the wallet can skip "Connect".
+  assert.equal(await withStoredAuthorization(s), 'sig')
+  assert.deepEqual(log, [null, 't1'])
+  // A token the wallet refuses: dropped, one fresh try.
+  const log2: (string | null)[] = []
+  const s2 = run(log2, (t) =>
+    t === 'stale' ? Object.assign(new Error('authorization request failed'), { code: -1 }) : null,
+  )
+  s2.stored = 'stale'
+  assert.equal(await withStoredAuthorization(s2), 'sig')
+  assert.deepEqual(log2, ['stale', null])
+  assert.equal(s2.stored, 't2')
+  // A dismissal or a timeout is not the token's fault: no second sheet, token kept.
+  for (const msg of [
+    'User declined',
+    'java.util.concurrent.TimeoutException: Timed out waiting for response with id=1',
+  ]) {
+    const log3: (string | null)[] = []
+    const s3 = run(log3, () => new Error(msg))
+    s3.stored = 'good'
+    await assert.rejects(withStoredAuthorization(s3))
+    assert.deepEqual(log3, ['good'])
+    assert.equal(s3.stored, 'good')
+  }
+})
+
+test('wallet: failures read as sentences, never as a Java exception', () => {
+  const t = walletFailureText(
+    new Error('java.util.concurrent.TimeoutException: Timed out waiting for response with id=1'),
+    'revoke',
+  )
+  assert.equal(t, 'Seed Vault did not answer in time. Nothing was signed; the permission is still live.')
+  assert.doesNotMatch(walletFailureText(new Error('java.lang.IllegalStateException: x'), 'revoke'), /java|Exception/)
+  assert.match(walletFailureText(new Error('User declined'), 'grant'), /^Closed in Seed Vault/)
+})
+
+test('revoke: a Seed Vault failure says nothing was sent; a later one says it may still land', () => {
+  const timeout = new WalletStepError(new Error('java.util.concurrent.TimeoutException: Timed out'))
+  assert.match(revokeFailureText(timeout), /^Seed Vault did not answer in time\. Nothing was signed/)
+  const server = Object.assign(new Error('That permission is already gone.'), { code: 'no_delegation', status: 404 })
+  assert.equal(revokeFailureText(server), 'That permission is already gone.')
+  assert.match(revokeFailureText(new Error('still_live')), /^Sent to the chain but not confirmed yet/)
 })

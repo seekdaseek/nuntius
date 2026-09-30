@@ -1,35 +1,55 @@
-import { getBase64Encoder, getTransactionDecoder, type Transaction } from '@solana/kit'
+import { getBase64Encoder, getTransactionDecoder, type SignatureBytes, type Transaction } from '@solana/kit'
 import { transact, type useMobileWallet } from '@wallet-ui/react-native-kit'
+import { withStoredAuthorization } from '@/core/wallet-session'
+import { loadWalletToken, saveWalletToken } from '@/features/wallet/wallet-auth-storage'
 
 type MobileWallet = ReturnType<typeof useMobileWallet>
 
 /**
  * Hands ONE server-built transaction to Seed Vault and returns its signature.
  *
+ * Authorizes with the token from the last authorize for this wallet, so Seed
+ * Vault opens straight on the transaction (one sheet, no "Connect" picker).
+ * A token the wallet refuses is dropped and the request retried once without
+ * one (core/wallet-session.ts), so a stale token never locks the app out, the
+ * failure 66ab4e8 fixed. The server built the bytes with the user as fee payer
+ * and sole signer; the wallet shows the user exactly what they are approving.
+ *
  * The transaction may be given as a function: it is then fetched only after
  * authorize, inside the wallet session, so its blockhash is as fresh as it can
  * be when the sign sheet opens.
- *
- * Authorizes fresh inside every transact session and never replays a stored
- * auth_token — the rule that fixed the MWA cancel bug (66ab4e8). The server
- * built the bytes with the user as fee payer and sole signer; the wallet shows
- * the user exactly what they are approving.
  */
 export async function signAndSend(
   chain: MobileWallet['chain'],
   identity: MobileWallet['identity'],
+  address: string,
   transactionBase64: string | (() => Promise<string>),
 ): Promise<string> {
-  const signatures = await transact(async (wallet) => {
-    await wallet.authorize({ chain, identity })
-    const base64 = typeof transactionBase64 === 'string' ? transactionBase64 : await transactionBase64()
-    const transaction: Transaction = getTransactionDecoder().decode(getBase64Encoder().encode(base64))
-    return wallet.signAndSendTransactions({ transactions: [transaction as never] })
+  const signatures = await withStoredAuthorization<SignatureBytes[]>({
+    load: () => loadWalletToken(address),
+    save: (token) => saveWalletToken(address, token),
+    run: async (token) =>
+      await transact(async (wallet) => {
+        const auth = await wallet.authorize({ chain, identity, ...(token ? { auth_token: token } : {}) })
+        const account = auth.accounts[0]?.address
+        if (account && base64ToBase58(account) !== address) {
+          throw new Error(
+            `Seed Vault is on another wallet (${short(base64ToBase58(account))}). Sign in again with ${short(address)}.`,
+          )
+        }
+        const base64 = typeof transactionBase64 === 'string' ? transactionBase64 : await transactionBase64()
+        const transaction: Transaction = getTransactionDecoder().decode(getBase64Encoder().encode(base64))
+        const result = await wallet.signAndSendTransactions({ transactions: [transaction as never] })
+        return { result, token: auth.auth_token }
+      }),
   })
   const first = signatures[0]
   if (!first) throw new Error('wallet returned no signature')
   return bytesToBase58(first)
 }
+
+const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`
+const base64ToBase58 = (b64: string) => bytesToBase58(new Uint8Array(getBase64Encoder().encode(b64)))
 
 const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 
