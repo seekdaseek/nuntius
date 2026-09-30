@@ -70,10 +70,25 @@ export function Screen({
   )
 }
 
+/**
+ * The mockup's back arrow: Figtree SemiBold's own "←" (U+2190) at 22px, drawn
+ * as a shape from the font's outline, so the button carries no text arrow.
+ */
+const BACK_ARROW =
+  'M415-499L151-247L58-298L349-569L415-499ZM682-347L682-250L132-250L132-347L682-347ZM417-100L352-29L58-298L150-350L417-100Z'
+
 export function BackArrow() {
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()} hitSlop={16}>
-      <Text style={t.back}>←</Text>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Back"
+      onPress={() => router.back()}
+      hitSlop={16}
+      style={l.back}
+    >
+      <Svg width={16.456} height={26.4} viewBox="0 -950 748 1200">
+        <Path d={BACK_ARROW} fill={color.ink} />
+      </Svg>
     </Pressable>
   )
 }
@@ -349,7 +364,6 @@ const t = StyleSheet.create({
   muted: { fontFamily: font.regular, fontSize: 14.5, lineHeight: 21, color: color.ink2 },
   label: { fontFamily: font.medium, fontSize: 13, color: color.ink2 },
   section: { fontFamily: font.semibold, fontSize: 15, color: color.ink, marginTop: 14 },
-  back: { fontFamily: font.semibold, fontSize: 22, color: color.ink, paddingVertical: 4 },
   word: { fontFamily: font.display, fontSize: 26, letterSpacing: -0.5, color: color.ink },
   chip: { fontFamily: font.semibold, fontSize: 13 },
   seg: { fontFamily: font.semibold, fontSize: 14, color: color.ink2 },
@@ -387,7 +401,7 @@ const l = StyleSheet.create({
   heroInner: { paddingHorizontal: space.side, paddingTop: 8, paddingBottom: 24, gap: 8 },
   card: { backgroundColor: color.card, borderRadius: radius.card, padding: 16, gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  note: { borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16 },
+  note: { borderRadius: radius.panel, paddingVertical: 14, paddingHorizontal: 16 },
   chip: { borderRadius: radius.chip, paddingVertical: 7, paddingHorizontal: 12, alignSelf: 'flex-start' },
   seg: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   segItem: { borderRadius: radius.chip, paddingVertical: 9, paddingHorizontal: 14, backgroundColor: color.card },
@@ -409,6 +423,7 @@ const l = StyleSheet.create({
     justifyContent: 'center',
   },
   disabled: { opacity: 0.45 },
+  back: { alignSelf: 'flex-start', height: 35, justifyContent: 'center' },
   // A floating call to action must stay opaque, or the list shows through it.
   ctaDisabled: { backgroundColor: color.signal50 },
   meter: { height: 12, borderRadius: radius.meter, backgroundColor: color.track, marginRight: 8 },
@@ -426,7 +441,7 @@ const l = StyleSheet.create({
     top: -7,
     width: 5,
     height: 26,
-    borderRadius: 3,
+    borderRadius: radius.stop,
     backgroundColor: color.ink,
   },
   meterLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, gap: 8 },
@@ -444,7 +459,7 @@ const l = StyleSheet.create({
     alignSelf: 'flex-start',
     borderWidth: 3,
     borderColor: color.refused,
-    borderRadius: 10,
+    borderRadius: radius.stamp,
     paddingVertical: 8,
     paddingHorizontal: 12,
     transform: [{ rotate: '-6deg' }],

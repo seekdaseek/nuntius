@@ -108,7 +108,7 @@ export default function NewPermissionScreen() {
           style={[s.slot, s.slotInput, { width: slotWidth(form.label || 'name') }]}
           value={form.label}
           placeholder="name"
-          placeholderTextColor="rgba(79,59,246,0.45)"
+          placeholderTextColor={color.slotPlaceholder}
           onChangeText={(v) => set('label', v)}
           maxLength={40}
         />
@@ -119,7 +119,7 @@ export default function NewPermissionScreen() {
           style={[s.slot, s.slotInput, { width: slotWidth(form.amount || '0.05') }]}
           value={form.amount}
           placeholder="0.05"
-          placeholderTextColor="rgba(79,59,246,0.45)"
+          placeholderTextColor={color.slotPlaceholder}
           keyboardType="decimal-pad"
           onChangeText={(v) => set('amount', sanitizeAmount(v))}
         />
@@ -237,7 +237,7 @@ const SENT = { fontFamily: font.display, fontSize: 30, lineHeight: 40, letterSpa
 const s = StyleSheet.create({
   sentence: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', rowGap: 6, marginTop: 10, marginBottom: 4 },
   word: { ...SENT, color: color.ink },
-  slot: { backgroundColor: color.signal50, borderRadius: 12, paddingHorizontal: 8 },
+  slot: { backgroundColor: color.signal50, borderRadius: radius.slot, paddingHorizontal: 8 },
   slotText: { ...SENT, color: color.signal },
   slotInput: {
     ...SENT,

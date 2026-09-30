@@ -1,35 +1,28 @@
 import React from 'react'
 import { FlexWidget, TextWidget } from 'react-native-android-widget'
+import { color as C, radius } from '@/constants/app-styles'
 import type { WidgetView } from '@/core/widget-model'
 
 /**
  * The home-screen widget. Layout only: every string and share comes from
  * widgetView() (core/widget-model.ts), which is unit-tested. Widgets use the
- * system bold (no custom fonts); the colours are the app's tokens, written as
- * literals because widget styles take hex strings only.
+ * system bold (no custom fonts); colours and radii are the app's tokens.
  */
-const C = {
-  card: '#FFFFFF',
-  ink: '#151A3D',
-  ink2: '#5A6088',
-  signal: '#4F3BF6',
-  track: '#E8EAF6',
-  moved: '#19C37D',
-  refused: '#F0325C',
-} as const
 
 function Meter({ share }: { share: number }) {
   const filled = Math.round(Math.min(1, Math.max(0, share)) * 100)
   return (
     <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', width: 'match_parent', height: 26 }}>
-      <FlexWidget style={{ flex: 1, height: 12, borderRadius: 6, backgroundColor: C.track, flexDirection: 'row' }}>
+      <FlexWidget
+        style={{ flex: 1, height: 12, borderRadius: radius.meter, backgroundColor: C.track, flexDirection: 'row' }}
+      >
         {filled > 0 ? (
-          <FlexWidget style={{ flex: filled, height: 12, borderRadius: 6, backgroundColor: C.moved }} />
+          <FlexWidget style={{ flex: filled, height: 12, borderRadius: radius.meter, backgroundColor: C.moved }} />
         ) : null}
         {filled < 100 ? <FlexWidget style={{ flex: 100 - filled, height: 12 }} /> : null}
       </FlexWidget>
       {/* The hard stop at the cap. */}
-      <FlexWidget style={{ width: 5, height: 22, borderRadius: 3, backgroundColor: C.ink, marginLeft: 3 }} />
+      <FlexWidget style={{ width: 5, height: 22, borderRadius: radius.stop, backgroundColor: C.ink, marginLeft: 3 }} />
     </FlexWidget>
   )
 }
@@ -44,7 +37,7 @@ export function PermissionsWidget({ view }: { view: WidgetView }) {
         height: 'match_parent',
         width: 'match_parent',
         backgroundColor: C.card,
-        borderRadius: 28,
+        borderRadius: radius.widget,
         paddingHorizontal: 18,
         paddingVertical: 16,
         flexDirection: 'column',

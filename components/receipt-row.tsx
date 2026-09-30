@@ -2,7 +2,7 @@ import React from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import { color, font } from '@/components/ui'
-import { tabular } from '@/constants/app-styles'
+import { radius, tabular } from '@/constants/app-styles'
 import type { Receipt } from '@/features/mandates/mandates-api'
 import { ago, shortAddr } from '@/core/format'
 
@@ -64,7 +64,7 @@ const s = StyleSheet.create({
     gap: 12,
     alignItems: 'center',
     backgroundColor: color.card,
-    borderRadius: 18,
+    borderRadius: radius.panel,
     padding: 14,
   },
   rowRefused: { backgroundColor: color.refused50 },

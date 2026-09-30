@@ -16,7 +16,7 @@ import {
   Section,
   Wordmark,
 } from '@/components/ui'
-import { space, tabular } from '@/constants/app-styles'
+import { radius, space, tabular } from '@/constants/app-styles'
 import { useNuntiusAuth, useSignOut, useVerifySeekerMutation } from '@/features/account/use-nuntius-auth'
 import { AccountFeatureSignIn } from '@/features/account/account-feature-sign-in'
 import { usePushRegistration } from '@/features/push/use-push-registration'
@@ -345,7 +345,7 @@ const s = StyleSheet.create({
   cardTitle: { fontFamily: font.semibold, fontSize: 17 },
   clockIn: {
     backgroundColor: color.signal50,
-    borderRadius: 22,
+    borderRadius: radius.card,
     paddingVertical: 14,
     paddingHorizontal: 16,
     gap: 2,
@@ -353,7 +353,7 @@ const s = StyleSheet.create({
   },
   clockInText: { fontFamily: font.bold, fontSize: 16, color: color.signal },
   clockInSub: { fontFamily: font.medium, fontSize: 13, color: color.ink2 },
-  tile: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  tile: { width: 36, height: 36, borderRadius: radius.tile, alignItems: 'center', justifyContent: 'center' },
   tileText: { fontFamily: font.display, fontSize: 17 },
   name: { fontFamily: font.semibold, fontSize: 17, color: color.ink, flex: 1 },
   rate: { fontFamily: font.semibold, fontSize: 15, color: color.ink, ...tabular },

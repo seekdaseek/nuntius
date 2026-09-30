@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { Button, Muted, Note, Screen, Section, Title, color, font } from '@/components/ui'
+import { radius } from '@/constants/app-styles'
 import { useNuntiusAuth } from '@/features/account/use-nuntius-auth'
 import { useClockIn, useDigest, useDigestPrefs } from '@/features/mandates/use-mandates'
 import { tzOffsetMin } from '@/core/format'
@@ -136,12 +137,12 @@ function Hole({ state }: { state: SlotState }) {
 }
 
 const s = StyleSheet.create({
-  punch: { backgroundColor: color.signal, borderRadius: 24, padding: 18, marginTop: 6 },
+  punch: { backgroundColor: color.signal, borderRadius: radius.punch, padding: 18, marginTop: 6 },
   streak: { fontFamily: font.display, fontSize: 34, lineHeight: 36, letterSpacing: -0.5, color: color.white },
-  best: { fontFamily: font.regular, fontSize: 15, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
+  best: { fontFamily: font.regular, fontSize: 15, color: color.onSignalSoft, marginTop: 4 },
   days: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 14 },
   dayCol: { alignItems: 'center', gap: 6 },
-  dayLabel: { fontFamily: font.semibold, fontSize: 12, color: 'rgba(255,255,255,0.75)' },
+  dayLabel: { fontFamily: font.semibold, fontSize: 12, color: color.onSignalFaint },
   hole: { width: 34, height: 34, borderRadius: 17, overflow: 'hidden' },
   holeOn: { backgroundColor: color.paper },
   holeShade: {
@@ -152,12 +153,12 @@ const s = StyleSheet.create({
     height: 34,
     borderRadius: 17,
     borderTopWidth: 4,
-    borderColor: 'rgba(21,26,61,0.22)',
+    borderColor: color.holeShade,
   },
   holeTodayRing: { borderWidth: 2, borderColor: color.white },
-  holeToday: { borderWidth: 2, borderColor: color.white, backgroundColor: 'rgba(255,255,255,0.18)' },
-  holeFuture: { borderWidth: 2, borderStyle: 'dashed', borderColor: 'rgba(255,255,255,0.45)' },
-  list: { backgroundColor: color.card, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 4 },
+  holeToday: { borderWidth: 2, borderColor: color.white, backgroundColor: color.holeToday },
+  holeFuture: { borderWidth: 2, borderStyle: 'dashed', borderColor: color.holeDash },
+  list: { backgroundColor: color.card, borderRadius: radius.panel, paddingHorizontal: 16, paddingVertical: 4 },
   li: { flexDirection: 'row', gap: 12, paddingVertical: 13 },
   liBorder: { borderBottomWidth: 1.5, borderBottomColor: color.line },
   liTop: { borderTopWidth: 1.5, borderTopColor: color.line },
@@ -168,7 +169,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     backgroundColor: color.card,
-    borderRadius: 22,
+    borderRadius: radius.card,
     padding: 12,
   },
   hour: { fontFamily: font.display, fontSize: 26, color: color.ink },

@@ -1,6 +1,7 @@
 /**
  * nuntius design tokens (BRIEF-C1 part C; reference: design/nuntius-mockups-v1.png).
- * Every colour, font and radius in the app comes from here and nowhere else.
+ * Every colour, font and radius in the app and the widget comes from here and
+ * nowhere else. The one derived value is a circle's radius, half its size.
  */
 export const color = {
   paper: '#F3F4FA',
@@ -25,8 +26,15 @@ export const color = {
   foreignInk: '#8A5300',
   foreign50: '#FFF1DA',
   white: '#FFFFFF',
+  // Alphas over the signal blue, as in the mockup's CSS.
   glass: 'rgba(255,255,255,0.16)',
   onSignalMuted: 'rgba(255,255,255,0.82)',
+  onSignalSoft: 'rgba(255,255,255,0.8)',
+  onSignalFaint: 'rgba(255,255,255,0.75)',
+  holeDash: 'rgba(255,255,255,0.45)',
+  holeToday: 'rgba(255,255,255,0.18)',
+  holeShade: 'rgba(21,26,61,0.22)',
+  slotPlaceholder: 'rgba(79,59,246,0.45)',
 } as const
 
 /** Font family names as registered with useFonts in app/_layout.tsx. */
@@ -40,12 +48,19 @@ export const font = {
 
 export const radius = {
   hero: 32,
+  widget: 28,
+  punch: 24,
   card: 22,
   cta: 20,
+  panel: 18,
   field: 16,
   button: 12,
+  slot: 12,
+  tile: 12,
+  stamp: 10,
   slip: 6,
   meter: 6,
+  stop: 3,
   chip: 999,
 } as const
 
