@@ -21,6 +21,9 @@ import {
 } from './delegation.js'
 import type { Address, TransactionSigner } from '@solana/kit'
 import { registerMandateRoutes, type MandateApiDeps } from './mandates-api.js'
+import { registerIdentityRoutes } from './identity.js'
+import { defaultLimits, limitByIp, type Limits } from './rate-limit.js'
+import path from 'node:path'
 
 const SESSION_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/
 // A pull amount is a whole number of base units, capped only by what u64 can hold.
@@ -58,19 +61,28 @@ export function createApp(
   store: Store,
   fcm: FcmSender | null,
   delegation?: { payer: TransactionSigner; delegatee: TransactionSigner },
-  mandates?: Omit<MandateApiDeps, 'store'>,
+  mandates?: Omit<MandateApiDeps, 'store' | 'limits'>,
+  options: { limits?: Limits; staticDir?: string } = {},
 ): express.Express {
   const app = express()
+  const limits = options.limits ?? defaultLimits()
   app.disable('x-powered-by')
   app.use(express.json({ limit: '8kb' }))
 
-  app.get('/api/siws-payload', (_req, res) => {
+  // App identity for MWA: Digital Asset Links + the identity icon, on this host.
+  registerIdentityRoutes(
+    app,
+    config.androidCertSha256 ?? null,
+    options.staticDir ?? path.join(import.meta.dirname, '..', 'static'),
+  )
+
+  app.get('/api/siws-payload', limitByIp(limits.siwsPayload), (_req, res) => {
     const payload = buildPayload(config.domain, Date.now())
     store.issueNonce(payload)
     res.json({ ok: true, payload })
   })
 
-  app.post('/api/siws-verify', (req, res) => {
+  app.post('/api/siws-verify', limitByIp(limits.siwsVerify), (req, res) => {
     const body: unknown = req.body
     const nonce = typeof body === 'object' && body !== null ? (body as Record<string, unknown>).nonce : undefined
     const signInResult =
@@ -199,7 +211,7 @@ export function createApp(
       .catch(() => res.status(502).json({ ok: false, error: 'fcm_error' }))
   })
 
-  app.post('/api/rpc', (req, res) => {
+  app.post('/api/rpc', limitByIp(limits.rpc), (req, res) => {
     const request = parseRpcRequest(req.body)
     if (!request) {
       res.status(400).json({ ok: false, error: 'bad_request' })
@@ -515,7 +527,7 @@ export function createApp(
   })
 
   // mandatum: one-signature grant/revoke, guard, receipts, digest, widget.
-  if (mandates) registerMandateRoutes(app, { ...mandates, store })
+  if (mandates) registerMandateRoutes(app, { ...mandates, store, limits })
 
   app.use((_req, res) => {
     res.status(404).json({ ok: false, error: 'not_found' })

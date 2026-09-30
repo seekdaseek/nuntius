@@ -45,6 +45,8 @@ That run used **two** Seed Vault approvals (init, then create). This build cuts 
 
 Steps 4–7 on the Seeker are **UNTESTED in this build**. MAC-HANDOFF.md holds the device checklist that will record them before submission.
 
+**Identity check, no install.** `curl -s https://nuntius.ochinimus.app/.well-known/assetlinks.json` shows the package and the release certificate fingerprint that wallets verify the app against. **UNTESTED until the VPS deploy** (`tools/mac/02-deploy-vps.sh` checks it live).
+
 ## 3. The tests against the real program (any machine)
 
 ```bash

@@ -38,6 +38,7 @@ import { cleanLabel, describeMandate, formatUnits, parseUnits, PERIODS, type Per
 import { canCreateMandate, LIMITS, tierOf } from './tier.js'
 import { buildDigest, computeStreak, localDay, type LiveMandate } from './digest.js'
 import { safeError } from './log.js'
+import { clientIp, type Limits } from './rate-limit.js'
 import type { Rpc } from './tx.js'
 
 const SESSION_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/
@@ -52,6 +53,7 @@ export interface MandateApiDeps {
   delegatee: Address
   receipts: Receipts
   executor: Executor | null
+  limits?: Pick<Limits, 'demoPerIp' | 'demoPerMandate'>
   now?: () => number
 }
 
@@ -443,6 +445,23 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
   })
 
   if (cfg.demoEndpoints) {
+    // Every call spends the delegatee's SOL on a transaction that is meant to fail,
+    // so it is limited per client IP and, tightly, per mandate.
+    app.post('/api/mandates/demo-overcap', (req, res, next) => {
+      const lim = deps.limits
+      const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Body
+      if (lim) {
+        const waitIp = lim.demoPerIp.take(clientIp(req))
+        const waitM = waitIp > 0 ? 0 : lim.demoPerMandate.take(String(body.mandateId ?? ''))
+        const wait = Math.max(waitIp, waitM)
+        if (wait > 0) {
+          res.setHeader('Retry-After', String(wait))
+          res.status(429).json({ ok: false, error: 'rate_limited', retryAfterS: wait })
+          return
+        }
+      }
+      next()
+    })
     route('/api/mandates/demo-overcap', async (body) => {
       const a = auth(body)
       const m = typeof body.mandateId === 'string' ? mandates.getMandate(body.mandateId) : null

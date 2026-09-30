@@ -32,7 +32,12 @@ Read from `server/.env` (gitignored — never commit it; create it by hand, it h
 - `POST /api/push/register` — body `{ session, token, platform }`. Session-gated: the token binds to the session's own wallet address and SGT mint, never a client-supplied address. Unique on token (re-registering updates in place). An open endpoint here would let anyone attach a token to any wallet.
 - `POST /api/push/test` — body `{ session }`. Sends a test push to **only the caller's own** registered tokens; cannot address anyone else's device. `503` if FCM is not configured, `404` if the caller has no registered token. Returns FCM's per-token response.
 
-### Push message shape — device-verified 2026-09-09
+#- `GET /.well-known/assetlinks.json` — the Digital Asset Links statement for `app.ochinimus.nuntius`, with the release certificate from `ANDROID_CERT_SHA256`. It answers `404` until that is set. The MWA app identity is `https://nuntius.ochinimus.app`, and wallets verify it here.
+
+- `GET /identity-icon-192.png` — the identity icon (relative `icon` path in the app identity).
+- Rate limits (in-memory, per client IP; `CF-Connecting-IP` is trusted only from the loopback tunnel): `/api/rpc` 60/min, `/api/siws-payload` and `/api/siws-verify` 20/min each, `/api/mandates/demo-overcap` 10/hour per IP and 1 per 2 minutes per mandate. Excess gets `429 {"ok":false,"error":"rate_limited"}` with `Retry-After`.
+
+## Push message shape — device-verified 2026-09-09
 
 FCM v1 messages are sent as **`notification` + `data`**, not data-only, and routed to the `alerts` channel via `android.notification.channel_id`. A **data-only** message never reaches a killed app without a background task (`expo-task-manager`, out of scope for this step): FCM returns 200 but nothing displays. Since waking a killed phone is the product's whole point, the `notification` block lets the Android FCM SDK draw the tray notification itself in the backgrounded and killed cases, with no app code running; `data.url` still rides along for tap-through. Confirmed on the Seeker in all three states (foreground, backgrounded, `am kill`-ed).
 
@@ -46,5 +51,6 @@ Note for step 5/6: presenting a **pure data-only** payload (e.g. a silent backgr
 
 ## Open items
 
+- **Resolved by the move to `nuntius.ochinimus.app`:** the backend serves the icon and `assetlinks.json` itself (see Endpoints). The two items below describe the old `ochinimus.app` identity and are kept as history.
 - **`https://ochinimus.app/favicon.ico` must be hosted.** The app identity sets `icon: 'favicon.ico'` (relative to `uri`). Verified on device 2026-09-09: Seed Vault Wallet accepts the relative path and authorizes, but the file currently 404s so the wallet shows a **"?" placeholder** instead of an icon. A `data:` URI is **not** an alternative — Seed Vault rejects it outright with `-32602 "When specified, identity.icon must be a relative URI"` (the Kotlin client is stricter than the MWA spec). Hosting the favicon is therefore the only route to a real icon; not required for authorization to succeed.
 - **`https://ochinimus.app/.well-known/assetlinks.json` (404s today)** must carry the release keystore fingerprint before wallets will trust the MWA app identity `https://ochinimus.app` via the Digital Asset Links check. The fingerprint does not exist yet (no release keystore).

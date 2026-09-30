@@ -16,7 +16,13 @@ export class AppConfig {
    * an absolute http(s) icon URL is out of spec. Wallets verify the identity
    * via Digital Asset Links at `${uri}/.well-known/assetlinks.json`.
    */
-  static identity: AppIdentity = { name: 'nuntius', uri: 'https://ochinimus.app', icon: 'favicon.ico' }
+  static identity: AppIdentity = {
+    name: 'nuntius',
+    // The backend's own host serves /.well-known/assetlinks.json and this icon,
+    // so wallet verification needs no deploy on ochinimus.app.
+    uri: 'https://nuntius.ochinimus.app',
+    icon: 'identity-icon-192.png',
+  }
 
   /**
    * Mainnet goes through the backend's allowlisted RPC proxy so the Helius key

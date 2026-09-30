@@ -198,6 +198,8 @@ The full threat model is in [SECURITY.md](SECURITY.md). In short:
 - Logs are JSON with API keys, keypairs and session and FCM tokens redacted.
 - SIWS nonces are single-use and atomic, and sessions expire after 30 days.
 - The legacy spike routes exist only with `SPIKE_ROUTES=1`.
+- `/api/rpc`, the SIWS routes and the demo route are rate-limited per client IP (429 with JSON).
+- The MWA app identity is `https://nuntius.ochinimus.app`. That host serves its own `/.well-known/assetlinks.json` and icon.
 - Server `npm audit`: 0 vulnerabilities. App: 15 moderate, all transitive through the Expo SDK 55 toolchain (SECURITY.md §5).
 
 ---

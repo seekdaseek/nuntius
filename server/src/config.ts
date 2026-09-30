@@ -1,9 +1,13 @@
+import { parseCertFingerprint } from './identity.js'
+
 export interface Config {
   port: number
   domain: string
   heliusRpc: string | null
   fcmServiceAccount: string | null
   fcmProjectId: string | null
+  /** Release signing certificate SHA-256 for /.well-known/assetlinks.json; null = route answers 404. */
+  androidCertSha256?: string | null
   delegation: DelegationConfig
 }
 
@@ -35,7 +39,7 @@ const DOMAIN_RE = /^[a-z0-9][a-z0-9.-]*(?::\d{1,5})?$/i
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const domain = env.NUNTIUS_DOMAIN ?? ''
   if (!DOMAIN_RE.test(domain)) {
-    throw new Error('NUNTIUS_DOMAIN must be a bare host such as ochinimus.app')
+    throw new Error('NUNTIUS_DOMAIN must be a bare host such as nuntius.ochinimus.app')
   }
 
   const port = env.PORT === undefined || env.PORT === '' ? 8787 : Number(env.PORT)
@@ -56,7 +60,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error('FCM_SERVICE_ACCOUNT and FCM_PROJECT_ID must be set together')
   }
 
-  return { port, domain, heliusRpc, fcmServiceAccount, fcmProjectId, delegation: loadDelegationConfig(env) }
+  const androidCertSha256 = parseCertFingerprint(env.ANDROID_CERT_SHA256)
+  return {
+    port,
+    domain,
+    heliusRpc,
+    fcmServiceAccount,
+    fcmProjectId,
+    androidCertSha256,
+    delegation: loadDelegationConfig(env),
+  }
 }
 
 // Base58, 32-byte range. Enough to reject a typo before it reaches the chain.
