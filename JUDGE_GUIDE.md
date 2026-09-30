@@ -70,7 +70,7 @@ Things worth reading in the output:
 - `a lost transaction is replaced only after its blockhash is dead — never doubled`. This is the executor's idempotency.
 - `guard: receipts for delegations nuntius did not create`.
 
-`npm test` without a validator runs 31 tests and reports the 5 localnet suites as skipped. `npm run test:core` at the repo root runs the app's 9 logic tests.
+`npm test` without a validator runs 31 tests and reports the 5 localnet suites as skipped. `npm run test:core` at the repo root runs the app's 10 logic tests.
 
 ## Where to look in the code
 
