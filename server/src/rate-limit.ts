@@ -53,9 +53,16 @@ export class RateLimiter {
   }
 }
 
+/** "Too many tries. Try again in 2 minutes.": a sentence the app shows as is. */
+export function retryMessage(retryAfterS: number): string {
+  const minutes = retryAfterS >= 60
+  const n = minutes ? Math.ceil(retryAfterS / 60) : retryAfterS
+  return `Too many tries. Try again in ${n} ${minutes ? 'minute' : 'second'}${n === 1 ? '' : 's'}.`
+}
+
 export function tooMany(res: express.Response, retryAfterS: number): void {
   res.setHeader('Retry-After', String(retryAfterS))
-  res.status(429).json({ ok: false, error: 'rate_limited', retryAfterS })
+  res.status(429).json({ ok: false, error: 'rate_limited', message: retryMessage(retryAfterS), retryAfterS })
 }
 
 /** Express middleware: one limiter, keyed on the client IP. */

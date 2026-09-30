@@ -38,7 +38,7 @@ import { cleanLabel, describeMandate, formatUnits, parseUnits, PERIODS, type Per
 import { canCreateMandate, LIMITS, tierOf } from './tier.js'
 import { buildDigest, computeStreak, localDay, type LiveMandate } from './digest.js'
 import { safeError } from './log.js'
-import { clientIp, type Limits } from './rate-limit.js'
+import { clientIp, tooMany, type Limits } from './rate-limit.js'
 import type { Rpc } from './tx.js'
 
 const SESSION_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/
@@ -243,7 +243,7 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       d.amountPerPeriod === BigInt(m.amountPerPeriod) &&
       d.periodLengthS === BigInt(m.periodLengthS) &&
       d.expiryTs === BigInt(m.expiryTs)
-    if (!match) throw new HttpError(409, 'terms_mismatch', 'on-chain delegation does not match this mandate')
+    if (!match) throw new HttpError(409, 'terms_mismatch', 'the on-chain delegation does not match this permission')
     mandates.setStatus(m.id, 'active', now())
     mandates.setGuardCursor(m.delegationPda, a.address, null, now(), { delegatee: m.delegatee, mint: m.mint })
     await deps.receipts.emit(
@@ -459,19 +459,17 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
         const waitIp = lim.demoPerIp.take(clientIp(req))
         const waitM = waitIp > 0 ? 0 : lim.demoPerMandate.take(String(body.mandateId ?? ''))
         const wait = Math.max(waitIp, waitM)
-        if (wait > 0) {
-          res.setHeader('Retry-After', String(wait))
-          res.status(429).json({ ok: false, error: 'rate_limited', retryAfterS: wait })
-          return
-        }
+        if (wait > 0) return tooMany(res, wait)
       }
       next()
     })
     route('/api/mandates/demo-overcap', async (body) => {
       const a = auth(body)
       const m = typeof body.mandateId === 'string' ? mandates.getMandate(body.mandateId) : null
-      if (!m || m.address !== a.address || m.status !== 'active') throw new HttpError(404, 'no_mandate')
-      if (!deps.executor) throw new HttpError(503, 'not_configured')
+      // The app shows these messages as they are, under "Try to take more".
+      if (!m || m.address !== a.address || m.status !== 'active')
+        throw new HttpError(404, 'no_mandate', 'This permission is no longer live.')
+      if (!deps.executor) throw new HttpError(503, 'not_configured', 'The demo is off on this server.')
       const r = await deps.executor.demoOverCap(m)
       return { signature: r.signature, customCode: r.customCode, refusedByChain: r.customCode === 400 }
     })

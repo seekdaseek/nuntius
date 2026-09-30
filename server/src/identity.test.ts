@@ -8,7 +8,7 @@ import { MandateStore } from './mandate-store.js'
 import type { Config } from './config.js'
 import { loadConfig } from './config.js'
 import { parseCertFingerprint } from './identity.js'
-import { clientIp, RateLimiter, type Limits } from './rate-limit.js'
+import { clientIp, RateLimiter, retryMessage, type Limits } from './rate-limit.js'
 
 const FP = Array.from({ length: 32 }, (_, i) => i.toString(16).padStart(2, '0').toUpperCase()).join(':')
 
@@ -109,7 +109,9 @@ test('rate limits: /api/rpc, /api/siws-payload and /api/siws-verify answer 429 w
     assert.notEqual((await hit()).status, 429)
     const r = await hit()
     assert.equal(r.status, 429, p)
-    assert.equal(((await r.json()) as { error: string }).error, 'rate_limited')
+    const j = (await r.json()) as { error: string; message: string }
+    assert.equal(j.error, 'rate_limited')
+    assert.match(j.message, /^Too many tries\. Try again in \d+ (second|minute)s?\.$/, 'a sentence the app can show')
     assert.ok(Number(r.headers.get('retry-after')) > 0)
     // A different client behind the tunnel has its own bucket.
     const other = await fetch(`${s.base}${p}`, {
@@ -133,8 +135,28 @@ test('demo-overcap: one call per mandate per window, before any work is done', a
   assert.equal((await hit('m1')).status, 400, 'first call reaches the handler (and fails auth)')
   const r = await hit('m1')
   assert.equal(r.status, 429)
-  assert.equal(((await r.json()) as { error: string }).error, 'rate_limited')
+  const j = (await r.json()) as { error: string; message: string }
+  assert.equal(j.error, 'rate_limited')
+  assert.match(j.message, /^Too many tries\. Try again in (1 minute|\d+ seconds)\.$/, 'shown under "Try to take more"')
   assert.equal((await hit('m2')).status, 400, 'another mandate is not blocked')
+  s.close()
+})
+
+test('demo-overcap: capped per client IP across mandates, with a separate bucket per CF-Connecting-IP', async () => {
+  const s = await serve({}, true)
+  const hit = (mandateId: string, ip: string) =>
+    fetch(`${s.base}/api/mandates/demo-overcap`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'cf-connecting-ip': ip },
+      body: JSON.stringify({ mandateId, session: 'x' }),
+    })
+  // The test limiter allows 10 per window per IP; each call names a new mandate.
+  for (let i = 0; i < 10; i++) assert.equal((await hit(`m${i}`, '203.0.113.7')).status, 400, `call ${i + 1}`)
+  const r = await hit('m10', '203.0.113.7')
+  assert.equal(r.status, 429, 'the 11th call from one IP is refused even for a fresh mandate')
+  assert.equal(((await r.json()) as { error: string }).error, 'rate_limited')
+  assert.ok(Number(r.headers.get('retry-after')) > 0)
+  assert.equal((await hit('m11', '198.51.100.9')).status, 400, 'another client is not blocked')
   s.close()
 })
 
@@ -152,4 +174,9 @@ test('clientIp trusts CF-Connecting-IP only from the loopback tunnel', () => {
   assert.equal(l.take('a'), 1)
   t.now = 1000
   assert.equal(l.take('a'), 0, 'window resets')
+  assert.equal(retryMessage(1), 'Too many tries. Try again in 1 second.')
+  assert.equal(retryMessage(45), 'Too many tries. Try again in 45 seconds.')
+  assert.equal(retryMessage(60), 'Too many tries. Try again in 1 minute.')
+  assert.equal(retryMessage(61), 'Too many tries. Try again in 2 minutes.')
+  assert.equal(retryMessage(3600), 'Too many tries. Try again in 60 minutes.')
 })

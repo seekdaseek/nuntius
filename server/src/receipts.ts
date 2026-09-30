@@ -66,7 +66,7 @@ export function receiptMessage(e: LedgerEvent, x: ReceiptExtra): { title: string
             body: `${who} can now pull ${e.symbol}. Not created in nuntius — check it.`,
             url,
           }
-        : { title: `Mandate live: ${who}`, body: left || 'Authorized with one approval.', url }
+        : { title: `Permission live: ${who}`, body: left || 'Authorized with one approval.', url }
     case 'revoked':
       return { title: `Revoked: ${who}`, body: 'It can no longer pull anything.', url }
     case 'expired':

@@ -67,7 +67,7 @@ export function buildDigest(events: LedgerEvent[], live: LiveMandate[], nowMs: n
   const movedText =
     Object.entries(moved)
       .map(([s, a]) => `${a} ${s}`)
-      .join(' + ') || 'nothing'
+      .join(' and ') || 'nothing'
 
   const lines: string[] = []
   for (const r of refused) lines.push(`Refused by the chain: ${who(r)} asked above its cap.`)
@@ -94,13 +94,13 @@ export function buildDigest(events: LedgerEvent[], live: LiveMandate[], nowMs: n
   if (refused.length > 0)
     title = `${refused.length} pull${refused.length > 1 ? 's' : ''} refused by the chain overnight`
   else if (granted.some((g) => g.actor === 'other')) title = 'A new permission appeared on your wallet'
-  else if (pulls.length > 0) title = `${pulls.length} pull${pulls.length > 1 ? 's' : ''} overnight · ${movedText}`
-  else title = 'Quiet night · nothing moved'
+  else if (pulls.length > 0) title = `${pulls.length} pull${pulls.length > 1 ? 's' : ''} overnight: ${movedText} moved`
+  else title = 'Quiet night, nothing moved'
 
   const capsLeft =
     live.length === 0
-      ? 'No live mandates.'
-      : `${live.length} live mandate${live.length > 1 ? 's' : ''}, all inside their caps.`
+      ? 'No live permissions.'
+      : `${live.length} live permission${live.length > 1 ? 's' : ''}, all inside their caps.`
   const body = [
     capsLeft,
     expiringSoon.length ? `Expiring within 7 days: ${expiringSoon.join(', ')}.` : '',

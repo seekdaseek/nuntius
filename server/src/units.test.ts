@@ -176,10 +176,20 @@ test('digest leads with refusals, sums exactly, and lists caps left', () => {
   assert.match(d.body, /Tap to clock in/)
 
   const quiet = buildDigest([], [], now)
-  assert.equal(quiet.title, 'Quiet night · nothing moved')
+  assert.equal(quiet.title, 'Quiet night, nothing moved')
+  assert.match(quiet.body, /^No live permissions\./)
+  const pulled = buildDigest(
+    [ev({ amountBaseUnits: '50000' }), ev({ amountBaseUnits: '25000000', symbol: 'SKR', label: 'Club' })],
+    [],
+    now,
+  )
+  assert.equal(pulled.title, '2 pulls overnight: 0.05 USDC and 25 SKR moved')
   const foreign = buildDigest([ev({ kind: 'granted', actor: 'other', label: null })], [], now)
   assert.equal(foreign.title, 'A new permission appeared on your wallet')
   assert.match(foreign.lines[0]!, /granted outside nuntius/)
+  for (const s of [d, quiet, pulled, foreign]) {
+    assert.doesNotMatch(`${s.title} ${s.body} ${s.lines.join(' ')}`, /·|mandate/i, 'user-facing copy')
+  }
 })
 
 test('streak counts consecutive days, survives until the user has had today to clock in', () => {

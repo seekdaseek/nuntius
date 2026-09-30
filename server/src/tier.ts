@@ -40,6 +40,6 @@ export function canCreateMandate(tier: Tier, openCount: number): GateResult {
     error: 'tier_limit',
     tier,
     limit,
-    upgrade: tier === 'basic' ? 'Verify Seeker ownership to hold up to 10 mandates.' : null,
+    upgrade: tier === 'basic' ? 'Verify Seeker ownership to hold up to 10 permissions.' : null,
   }
 }

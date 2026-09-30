@@ -130,7 +130,7 @@ test('mandatum API end to end on the real program', { skip: skipLocalnet, timeou
     assert.equal(f.json.mandate.remaining, '2.5')
     mandateId = c.json.mandateId
     pda = c.json.delegationPda
-    assert.ok(pushes.includes('Mandate live: Rent to Ana'))
+    assert.ok(pushes.includes('Permission live: Rent to Ana'))
   })
 
   await t.test('tier gate: a basic session gets one mandate, the guard stays free', async () => {
@@ -251,6 +251,6 @@ test('digest scheduler sends once per local day, Seeker tier only', async () => 
   assert.deepEqual(await runDigests(deps, at8 - 3600_000), [], 'before the hour')
   assert.deepEqual(await runDigests(deps, at8), ['Seeker1111111111111111111111111111111111111'])
   assert.deepEqual(await runDigests(deps, at8 + 60_000), [], 'once per day')
-  assert.equal(sent[0], 'Seeker1111111111111111111111111111111111111:Quiet night · nothing moved')
+  assert.equal(sent[0], 'Seeker1111111111111111111111111111111111111:Quiet night, nothing moved')
   assert.deepEqual(await runDigests(deps, at8 + 24 * 3600_000), ['Seeker1111111111111111111111111111111111111'])
 })
