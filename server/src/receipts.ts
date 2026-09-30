@@ -40,6 +40,7 @@ export function receiptMessage(e: LedgerEvent, x: ReceiptExtra): { title: string
     pda: e.delegationPda,
     cluster: x.cluster,
     actor: e.actor,
+    at: String(e.at),
   })
   // End-of-life receipts are keyed `revoked:<pda>` for dedupe; that is not a signature.
   if (e.signature && !e.signature.includes(':')) q.set('sig', e.signature)

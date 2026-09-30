@@ -44,6 +44,10 @@ test('describeMandate states the cap, who enforces it, and the exit', () => {
   assert.equal(d.headline, 'Rent to Ana (ASCQ…natX) can receive up to 10 USDC every week, until 31 Dec 2026.')
   assert.equal(d.schedule, 'nuntius sends the first 10 USDC right after you approve, then one payment every week.')
   assert.match(d.guarantee, /refused by the Solana program itself/)
+  assert.equal(
+    d.enforce,
+    'The chain will enforce this: at most 10 USDC a week to ASCQ…natX, until 31 Dec. A pull above that fails with error 0x190.',
+  )
   assert.match(d.exit, /one approval/)
 })
 
@@ -208,4 +212,25 @@ test('sessions expire 30 days after sign-in', async () => {
   store.createSession('T'.repeat(43), 'Addr', t0)
   assert.ok(store.getSession('T'.repeat(43), t0 + SESSION_TTL_MS - 1))
   assert.equal(store.getSession('T'.repeat(43), t0 + SESSION_TTL_MS), null)
+})
+
+test('MANDATE_MINTS: optional per-mint ceiling; mainnet offers USDC and SKR by default', async () => {
+  const { loadMandateConfig, parseMints, SKR_MAINNET } = await import('./mandate-config.js')
+  const A = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+  const S = 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3'
+  assert.deepEqual(parseMints(`USDC:${A}:6:1,SKR:${S}:6:250`), [
+    { symbol: 'USDC', mint: A, decimals: 6, maxPerPeriodUi: '1' },
+    { symbol: 'SKR', mint: S, decimals: 6, maxPerPeriodUi: '250' },
+  ])
+  assert.deepEqual(parseMints(`USDC:${A}:6`), [{ symbol: 'USDC', mint: A, decimals: 6 }])
+  assert.throws(() => parseMints(`USDC:${A}:6:lots`), /bad ceiling/)
+  assert.throws(() => parseMints(`USDC:${A}:6:1:9`), /too many fields/)
+  const cfg = loadMandateConfig({ MANDATE_CLUSTER: 'mainnet' }, 'https://rpc.example/?api-key=x')!
+  assert.deepEqual(
+    cfg.mints.map((m) => m.symbol),
+    ['USDC', 'SKR'],
+  )
+  assert.equal(cfg.mints[1]!.mint, S)
+  assert.equal(SKR_MAINNET.maxPerPeriodUi, '100')
+  assert.equal(SKR_MAINNET.decimals, 6)
 })

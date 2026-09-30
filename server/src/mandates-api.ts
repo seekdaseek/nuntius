@@ -124,13 +124,10 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     } catch (e) {
       throw new HttpError(400, 'bad_amount', safeError(e))
     }
-    const ceiling = parseUnits(cfg.maxPerPeriodUi, mint.decimals)
+    const ceilingUi = mint.maxPerPeriodUi ?? cfg.maxPerPeriodUi
+    const ceiling = parseUnits(ceilingUi, mint.decimals)
     if (amount > ceiling) {
-      throw new HttpError(
-        400,
-        'over_beta_ceiling',
-        `beta limit: at most ${cfg.maxPerPeriodUi} ${mint.symbol} per period`,
-      )
+      throw new HttpError(400, 'over_beta_ceiling', `beta limit: at most ${ceilingUi} ${mint.symbol} per period`)
     }
     const periodKey = (typeof body.period === 'string' ? body.period : '') as PeriodKey
     const periodLengthS = PERIODS[periodKey]
@@ -378,7 +375,14 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
           revocable: d.kind !== 'subscription',
         }
       })
-    const ata = await readAta(rpc, (await userAtaOf(a.address as Address, cfg.mints[0]!.mint as Address)) as Address)
+    // One token account per offered mint; each can carry the program's authority as its delegate.
+    const tokenAccounts = await Promise.all(
+      cfg.mints.map(async (m) => {
+        const ata = await readAta(rpc, await userAtaOf(a.address as Address, m.mint as Address))
+        return { symbol: m.symbol, exists: ata.exists, delegate: ata.delegate, balance: ata.amount }
+      }),
+    )
+    const ata = tokenAccounts[0]!
     return {
       tier: a.tier,
       limits: a.limits,
@@ -387,7 +391,8 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       demo: cfg.demoEndpoints,
       mine,
       others,
-      tokenAccount: { delegate: ata.delegate, delegatedAmount: ata.delegatedAmount, balance: ata.amount },
+      tokenAccount: { delegate: ata.delegate, balance: ata.balance },
+      tokenAccounts,
     }
   })
 
@@ -478,6 +483,10 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     return {
       receipts: mandates.events(a.address, 0, limit).map((e) => ({
         ...e,
+        // The mandate's cap, when nuntius knows it: the refused receipt shows "cap this period".
+        cap: ((m) => (m ? formatUnits(BigInt(m.amountPerPeriod), m.decimals) : null))(
+          mandates.getMandateByPda(e.delegationPda),
+        ),
         amount: e.amountBaseUnits ? formatUnits(BigInt(e.amountBaseUnits), e.decimals) : null,
         signature: e.signature && !e.signature.includes(':') ? e.signature : null,
       })),
@@ -498,7 +507,8 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     const tz = tzOf(body)
     const digest = buildDigest(mandates.events(a.address, now() - 24 * 3600_000), await liveMandates(a.address), now())
     const streak = computeStreak(mandates.clockInDays(a.address), localDay(now(), tz))
-    return { digest, streak, tier: a.tier, prefs: mandates.digestPrefs(a.address) }
+    const days = mandates.clockInDays(a.address).slice(-14)
+    return { digest, streak, days, today: localDay(now(), tz), tier: a.tier, prefs: mandates.digestPrefs(a.address) }
   })
 
   route('/api/digest/prefs', async (body) => {
@@ -516,7 +526,8 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     if (!a.limits.streak) throw new HttpError(403, 'tier_limit', 'Verify Seeker ownership to keep a streak.')
     const day = localDay(now(), tzOf(body))
     const first = mandates.clockIn(a.address, day, now())
-    return { day, firstToday: first, streak: computeStreak(mandates.clockInDays(a.address), day) }
+    const days = mandates.clockInDays(a.address)
+    return { day, firstToday: first, streak: computeStreak(days, day), days: days.slice(-14) }
   })
 
   route('/api/widget', async (body) => {

@@ -54,6 +54,19 @@ export function formatUnits(baseUnits: bigint, decimals: number): string {
   return `${negative ? '-' : ''}${whole}${frac ? `.${frac}` : ''}`
 }
 
+/** "a day", "an hour", "a week", "every 30 days" — the rate form of a period. */
+export function perWords(seconds: number): string {
+  if (seconds === 3_600) return 'an hour'
+  if (seconds === 86_400) return 'a day'
+  if (seconds === 604_800) return 'a week'
+  return periodWords(seconds)
+}
+
+export function shortDate(unixS: number): string {
+  const d = new Date(unixS * 1000)
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`
+}
+
 export function shortAddress(a: string): string {
   return a.length > 10 ? `${a.slice(0, 4)}…${a.slice(-4)}` : a
 }
@@ -85,6 +98,7 @@ export function describeMandate(m: MandateWords): {
   schedule: string
   guarantee: string
   exit: string
+  enforce: string
 } {
   const amount = `${formatUnits(m.amountBaseUnits, m.decimals)} ${m.symbol}`
   const who = m.label ? `${m.label} (${shortAddress(m.payee)})` : shortAddress(m.payee)
@@ -95,6 +109,9 @@ export function describeMandate(m: MandateWords): {
     schedule: `nuntius sends the first ${amount} right after you approve, then one payment ${periodWords(m.periodLengthS)}.`,
     guarantee: `Anything above ${amount} in a period is refused by the Solana program itself, not by nuntius.`,
     exit: 'Revoke any time with one approval. Nothing is taken without a receipt on this phone.',
+    enforce: `The chain will enforce this: at most ${amount} ${perWords(m.periodLengthS)} to ${shortAddress(m.payee)}${
+      m.expiryTs > 0 ? `, until ${shortDate(m.expiryTs)}` : ''
+    }. A pull above that fails with error 0x190.`,
   }
 }
 

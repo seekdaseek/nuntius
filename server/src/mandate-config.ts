@@ -4,9 +4,10 @@
  *
  * - MANDATE_CLUSTER       'mainnet' | 'localnet'. Absent = mandates disabled.
  * - MANDATE_RPC           RPC URL. Mainnet falls back to HELIUS_RPC; localnet must be loopback.
- * - MANDATE_MINTS         SYMBOL:mint:decimals[,…] the app offers. Mainnet default: USDC.
- * - MANDATE_MAX_PER_PERIOD  beta ceiling on any one mandate's cap, in UI units of each
- *                         mint (default 100). A second, server-side bound on top of the chain's.
+ * - MANDATE_MINTS         SYMBOL:mint:decimals[:maxPerPeriod][,…] the app offers.
+ *                         Mainnet default: USDC and SKR (SKR ceiling 100).
+ * - MANDATE_MAX_PER_PERIOD  beta ceiling for mints without their own, in UI units
+ *                         (default 100). A second, server-side bound on top of the chain's.
  * - MANDATE_DELEGATEE     path to the executor keypair file (never committed).
  * - EXECUTOR_INTERVAL_MS  default 30000. GUARD_INTERVAL_MS default 60000.
  * - DEMO_ENDPOINTS        '1' enables the over-cap demo button. Off by default.
@@ -15,6 +16,8 @@ export interface MintInfo {
   symbol: string
   mint: string
   decimals: number
+  /** This mint's beta ceiling per period, UI units. Absent = MANDATE_MAX_PER_PERIOD. */
+  maxPerPeriodUi?: string
 }
 
 export interface MandateConfig {
@@ -29,6 +32,14 @@ export interface MandateConfig {
 }
 
 const USDC_MAINNET: MintInfo = { symbol: 'USDC', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6 }
+/** Solana Mobile's SKR (SPL Token program, 6 decimals; read on mainnet 30 Sep 2026). */
+export const SKR_MAINNET: MintInfo = {
+  symbol: 'SKR',
+  mint: 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3',
+  decimals: 6,
+  // Placeholder ceiling; re-set to about 1 USD of SKR at deploy time (STATUS.md).
+  maxPerPeriodUi: '100',
+}
 const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
 
 export function loadMandateConfig(env: NodeJS.ProcessEnv, heliusRpc: string | null): MandateConfig | null {
@@ -44,7 +55,11 @@ export function loadMandateConfig(env: NodeJS.ProcessEnv, heliusRpc: string | nu
   if (cluster === 'localnet' && !loopback) throw new Error('MANDATE_CLUSTER=localnet requires a loopback MANDATE_RPC')
   if (cluster === 'mainnet' && !rpcUrl.startsWith('https://')) throw new Error('mainnet MANDATE_RPC must be https')
 
-  const mints = env.MANDATE_MINTS ? parseMints(env.MANDATE_MINTS) : cluster === 'mainnet' ? [USDC_MAINNET] : []
+  const mints = env.MANDATE_MINTS
+    ? parseMints(env.MANDATE_MINTS)
+    : cluster === 'mainnet'
+      ? [USDC_MAINNET, SKR_MAINNET]
+      : []
   if (mints.length === 0) throw new Error('MANDATE_MINTS is required on localnet')
 
   const maxPerPeriodUi = env.MANDATE_MAX_PER_PERIOD || '100'
@@ -70,12 +85,14 @@ export function loadMandateConfig(env: NodeJS.ProcessEnv, heliusRpc: string | nu
 
 export function parseMints(raw: string): MintInfo[] {
   return raw.split(',').map((part) => {
-    const [symbol, mint, dec] = part.trim().split(':')
+    const [symbol, mint, dec, max, ...rest] = part.trim().split(':')
+    if (rest.length) throw new Error(`MANDATE_MINTS: too many fields in "${part}"`)
     const decimals = Number(dec)
     if (!symbol || !/^[A-Z0-9]{1,10}$/.test(symbol)) throw new Error(`MANDATE_MINTS: bad symbol in "${part}"`)
     if (!mint || !ADDRESS_RE.test(mint)) throw new Error(`MANDATE_MINTS: bad mint in "${part}"`)
     if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18)
       throw new Error(`MANDATE_MINTS: bad decimals in "${part}"`)
-    return { symbol, mint, decimals }
+    if (max !== undefined && !/^\d+(\.\d+)?$/.test(max)) throw new Error(`MANDATE_MINTS: bad ceiling in "${part}"`)
+    return max === undefined ? { symbol, mint, decimals } : { symbol, mint, decimals, maxPerPeriodUi: max }
   })
 }

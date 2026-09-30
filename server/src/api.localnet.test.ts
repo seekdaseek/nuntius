@@ -190,6 +190,7 @@ test('mandatum API end to end on the real program', { skip: skipLocalnet, timeou
     const c = await call('/api/clock-in', { tzOffsetMin: 180 })
     assert.equal(c.json.streak.current, 1)
     assert.equal(c.json.firstToday, true)
+    assert.equal(c.json.days.length, 1, 'punch-card days returned')
     assert.equal((await call('/api/clock-in', { tzOffsetMin: 180 })).json.firstToday, false)
     const g = await call('/api/digest', { tzOffsetMin: 180 })
     assert.equal(g.json.digest.title, '1 pull refused by the chain overnight')
