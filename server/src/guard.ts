@@ -238,7 +238,12 @@ export class Guard {
               amountBaseUnits: kind === 'pull' ? (-fx.delta).toString() : null,
               signature: sig,
             },
-            { capBaseUnits: cap, remainingBaseUnits: w?.remaining, nextResetTs: w ? Number(w.nextResetTs) : undefined },
+            {
+              capBaseUnits: cap,
+              remainingBaseUnits: w?.remaining,
+              nextResetTs: w ? Number(w.nextResetTs) : undefined,
+              periodLengthS: d.periodLengthS ?? undefined,
+            },
           )
         ) {
           emitted++

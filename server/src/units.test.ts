@@ -334,3 +334,48 @@ test('push: one tray tag per permission, the digest on its own channel, the url 
   assert.equal(digest.channelId, 'digest', 'the digest goes to its own quiet channel')
   assert.equal(digest.tag, 'digest')
 })
+
+test('receipts record the window after the pull; old databases gain the columns in place', async () => {
+  const Database = (await import('better-sqlite3')).default
+  const { MandateStore } = await import('./mandate-store.js')
+  const { Receipts } = await import('./receipts.js')
+  const db = new Database(':memory:')
+  // A database created before the window columns existed, as on the deployed server.
+  db.exec(`CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT NOT NULL, kind TEXT NOT NULL,
+    at INTEGER NOT NULL, delegation_pda TEXT NOT NULL, delegatee TEXT NOT NULL, label TEXT, amount TEXT,
+    decimals INTEGER NOT NULL, symbol TEXT NOT NULL, signature TEXT, actor TEXT NOT NULL, pushed INTEGER NOT NULL DEFAULT 0)`)
+  db.prepare(
+    `INSERT INTO events (address, kind, at, delegation_pda, delegatee, amount, decimals, symbol, signature, actor)
+     VALUES ('U', 'pull', 1, 'P', 'D', '10', 6, 'USDC', 'old', 'nuntius')`,
+  ).run()
+  const store = new MandateStore(db)
+  const receipts = new Receipts(
+    store,
+    null,
+    createLogger(() => {}),
+    'mainnet',
+  )
+  await receipts.emit(
+    'U',
+    {
+      kind: 'pull',
+      at: 2,
+      delegationPda: 'P',
+      delegatee: 'D',
+      label: 'natXcheck',
+      amountBaseUnits: '50000',
+      decimals: 6,
+      symbol: 'USDC',
+      signature: 'new',
+      actor: 'nuntius',
+    },
+    { remainingBaseUnits: 0n, capBaseUnits: 50000n, nextResetTs: 1_790_000_000, periodLengthS: 86_400 },
+  )
+  const [newest, oldest] = store.events('U')
+  assert.equal(newest!.remainingBaseUnits, '0')
+  assert.equal(newest!.capBaseUnits, '50000')
+  assert.equal(newest!.nextResetTs, 1_790_000_000)
+  assert.equal(newest!.periodLengthS, 86_400)
+  assert.equal(oldest!.signature, 'old', 'existing receipts survive the migration')
+  assert.equal(oldest!.remainingBaseUnits, undefined, 'and have no window')
+})

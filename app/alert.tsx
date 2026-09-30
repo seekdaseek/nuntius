@@ -4,7 +4,7 @@ import { useLocalSearchParams } from 'expo-router'
 import { Button, CapMeter, Chip, KV, Muted, Note, Screen, Slip, Stamp, Title, color, font } from '@/components/ui'
 import { tabular } from '@/constants/app-styles'
 import { explorerTx, shortAddr, tzOffsetMin } from '@/core/format'
-import { meter, span, whenWords } from '@/core/home-model'
+import { slipMeter, whenWords } from '@/core/home-model'
 
 /**
  * The receipt: what every push opens. Never a bare number — what moved, what
@@ -27,6 +27,7 @@ export default function ReceiptScreen() {
     actor?: string
     at?: string
     moved?: string
+    per?: string
   }>()
 
   // Receipt pushes and the older delegation spike share this screen.
@@ -45,9 +46,17 @@ export default function ReceiptScreen() {
   ) : null
 
   if (kind === 'pull') {
-    // Only a receipt that carries what was left at the time (the push link) shows the meter;
-    // guessing it from today's state would draw a wrong one.
-    const mt = p.cap && p.remaining ? meter(p.cap, p.remaining, 6) : null
+    // The meter shows what was left right after this pull, as the receipt recorded
+    // it (push link or list); a receipt without that record shows none rather than a guess.
+    const mt = slipMeter(
+      {
+        cap: p.cap,
+        remaining: p.remaining,
+        per: p.per && /^\d+$/.test(p.per) ? Number(p.per) : null,
+        reset: p.reset && /^\d+$/.test(p.reset) ? Number(p.reset) : null,
+      },
+      Date.now(),
+    )
     return (
       <Screen back tint="moved">
         <Slip>
@@ -59,13 +68,9 @@ export default function ReceiptScreen() {
             {who}
             {at ? `, ${at}` : ''}
           </Muted>
-          {mt && p.cap ? (
+          {mt ? (
             <View style={{ marginBottom: 14 }}>
-              <CapMeter
-                takenShare={mt.takenShare}
-                left={`${mt.left} of ${p.cap} left this period`}
-                right={p.reset ? `resets in ${span(Number(p.reset), Date.now())}` : undefined}
-              />
+              <CapMeter takenShare={mt.takenShare} left={mt.left} right={mt.right} />
             </View>
           ) : null}
           <KV k="Signed by" v={byOther ? `${shortAddr(p.who ?? '')}, another app` : 'nuntius executor only'} />

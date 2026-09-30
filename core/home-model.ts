@@ -178,3 +178,18 @@ export function initial(label: string): string {
   const c = label.trim().charAt(0)
   return c ? c.toUpperCase() : '?'
 }
+
+/**
+ * The receipt slip's meter, from what the receipt recorded right after the pull
+ * (cap, what was left, the period and its reset). null when the receipt did not
+ * record it: guessing from today's state would draw a wrong meter.
+ */
+export function slipMeter(
+  r: { cap?: string | null; remaining?: string | null; per?: number | null; reset?: number | null },
+  nowMs: number,
+): { takenShare: number; left: string; right: string | undefined } | null {
+  if (!r.cap || r.remaining == null || r.remaining === '') return null
+  const m = meter(r.cap, r.remaining, 6)
+  const right = r.reset && r.reset * 1000 > nowMs ? `resets in ${span(r.reset, nowMs)}` : undefined
+  return { takenShare: m.takenShare, left: `${m.left} of ${r.cap} left ${windowWords(r.per ?? null)}`, right }
+}

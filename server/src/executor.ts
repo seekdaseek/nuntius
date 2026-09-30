@@ -278,6 +278,7 @@ export class Executor {
           remainingBaseUnits: w?.remaining,
           capBaseUnits: BigInt(m.amountPerPeriod),
           nextResetTs: w ? Number(w.nextResetTs) : undefined,
+          periodLengthS: m.periodLengthS,
         },
       )
       return 'landed'
@@ -316,7 +317,7 @@ export class Executor {
         signature,
         actor: 'nuntius',
       },
-      { capBaseUnits: BigInt(m.amountPerPeriod) },
+      { capBaseUnits: BigInt(m.amountPerPeriod), periodLengthS: m.periodLengthS },
     )
   }
 

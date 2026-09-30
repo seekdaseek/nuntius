@@ -50,6 +50,8 @@ export interface ReceiptExtra {
   remainingBaseUnits?: bigint
   capBaseUnits?: bigint
   nextResetTs?: number
+  /** The permission's period, so the receipt can say "today" or "this hour". */
+  periodLengthS?: number
   cluster: 'devnet' | 'mainnet' | 'localnet'
 }
 
@@ -81,6 +83,7 @@ function receiptBody(e: LedgerEvent, x: ReceiptExtra): { title: string; body: st
   if (x.remainingBaseUnits !== undefined) q.set('remaining', formatUnits(x.remainingBaseUnits, e.decimals))
   if (x.capBaseUnits !== undefined) q.set('cap', formatUnits(x.capBaseUnits, e.decimals))
   if (x.nextResetTs) q.set('reset', String(x.nextResetTs))
+  if (x.periodLengthS) q.set('per', String(x.periodLengthS))
   const url = `/alert?${q.toString()}`
   switch (e.kind) {
     case 'pull':
@@ -116,7 +119,12 @@ export class Receipts {
 
   /** Records, and pushes only if this is the first time this receipt was recorded. */
   async emit(address: string, e: LedgerEvent, x: Omit<ReceiptExtra, 'cluster'> = {}): Promise<boolean> {
-    const id = this.store.addEvent(address, e)
+    const id = this.store.addEvent(address, e, {
+      remainingBaseUnits: x.remainingBaseUnits?.toString(),
+      capBaseUnits: x.capBaseUnits?.toString(),
+      nextResetTs: x.nextResetTs,
+      periodLengthS: x.periodLengthS,
+    })
     if (id === null) return false
     this.log.info('receipt', {
       kind: e.kind,

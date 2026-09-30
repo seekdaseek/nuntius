@@ -190,6 +190,11 @@ test('mandatum API end to end on the real program', { skip: skipLocalnet, timeou
     assert.deepEqual(kinds.slice(0, 3), ['refused', 'pull', 'granted'])
     assert.equal(rc.json.receipts[1].amount, '2.5')
     assert.match(rc.json.receipts[1].signature, /^[1-9A-HJ-NP-Za-km-z]{80,90}$/)
+    // The pull's receipt remembers what was left right after it, so the slip draws its meter.
+    assert.equal(rc.json.receipts[1].cap, '2.5')
+    assert.equal(rc.json.receipts[1].remaining, '0')
+    assert.equal(rc.json.receipts[1].per, 604800)
+    assert.ok(rc.json.receipts[1].reset > Date.now() / 1000, 'the reset is in the future')
   })
 
   await t.test('clock-in, digest and widget', async () => {

@@ -99,6 +99,12 @@ export interface Receipt {
   actor: 'nuntius' | 'other'
   /** The mandate's cap when nuntius knows it. */
   cap: string | null
+  /** What was left right after this receipt, as recorded then (null for older receipts). */
+  remaining?: string | null
+  /** Unix seconds of the next reset at that time. */
+  reset?: number | null
+  /** The permission's period in seconds. */
+  per?: number | null
 }
 
 export interface Streak {

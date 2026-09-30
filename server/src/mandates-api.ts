@@ -506,12 +506,18 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     const a = auth(body)
     const limit = Math.min(Math.max(Number(body.limit ?? 50) || 50, 1), 200)
     return {
-      receipts: mandates.events(a.address, 0, limit).map((e) => ({
+      receipts: mandates.events(a.address, 0, limit).map(({ remainingBaseUnits, capBaseUnits, ...e }) => ({
         ...e,
-        // The mandate's cap, when nuntius knows it: the refused receipt shows "cap this period".
-        cap: ((m) => (m ? formatUnits(BigInt(m.amountPerPeriod), m.decimals) : null))(
-          mandates.getMandateByPda(e.delegationPda),
-        ),
+        // The cap, from the receipt itself or else the mandate: the slip's "cap this period".
+        cap: capBaseUnits
+          ? formatUnits(BigInt(capBaseUnits), e.decimals)
+          : ((m) => (m ? formatUnits(BigInt(m.amountPerPeriod), m.decimals) : null))(
+              mandates.getMandateByPda(e.delegationPda),
+            ),
+        // What was left right after this receipt, when it was recorded: the slip's meter.
+        remaining: remainingBaseUnits ? formatUnits(BigInt(remainingBaseUnits), e.decimals) : null,
+        reset: e.nextResetTs ?? null,
+        per: e.periodLengthS ?? null,
         amount: e.amountBaseUnits ? formatUnits(BigInt(e.amountBaseUnits), e.decimals) : null,
         signature: e.signature && !e.signature.includes(':') ? e.signature : null,
       })),

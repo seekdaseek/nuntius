@@ -245,3 +245,21 @@ test('push tap: the receipt url is found for every app state and push type', asy
     assert.equal(tapUrl(res('g', { url: bad })), null, bad)
   }
 })
+
+test('receipt slip meter: what the receipt recorded, in the mockup words', async () => {
+  const { slipMeter } = await import('./home-model.ts')
+  const now = Date.UTC(2026, 8, 30, 15, 32)
+  const reset = Math.floor(now / 1000) + 23 * 3600 + 58 * 60
+  const m = slipMeter({ cap: '0.05', remaining: '0', per: 86_400, reset }, now)!
+  assert.equal(m.takenShare, 1, 'a full meter')
+  assert.equal(m.left, '0 of 0.05 left today')
+  assert.equal(m.right, 'resets in 23h 58m')
+  assert.equal(
+    slipMeter({ cap: '0.01', remaining: '0', per: 3600, reset: 1 }, now)!.right,
+    undefined,
+    'a past reset is not shown',
+  )
+  assert.equal(slipMeter({ cap: '25', remaining: '0', per: 604_800 }, now)!.left, '0 of 25 left this week')
+  assert.equal(slipMeter({ cap: '0.05', remaining: null }, now), null, 'no record, no meter')
+  assert.equal(slipMeter({ cap: null, remaining: '0' }, now), null)
+})

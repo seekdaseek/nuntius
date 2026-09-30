@@ -38,6 +38,14 @@ export interface Mandate {
   endedAt: number | null
 }
 
+/** The permission's window right after a receipt, in base units: what the meter draws. */
+export interface EventWindow {
+  remainingBaseUnits?: string
+  capBaseUnits?: string
+  nextResetTs?: number
+  periodLengthS?: number
+}
+
 export type PullState = 'signed' | 'landed' | 'refused' | 'failed'
 
 export interface PullRow {
@@ -138,6 +146,17 @@ export function migrateMandates(db: Database.Database): void {
       seen_at INTEGER NOT NULL
     );
   `)
+  // Receipts remember what was left right after them, so any receipt (not only
+  // the push link) can draw the cap meter. Added in place on existing databases.
+  const cols = new Set((db.prepare('PRAGMA table_info(events)').all() as { name: string }[]).map((c) => c.name))
+  for (const [name, type] of [
+    ['remaining', 'TEXT'],
+    ['cap', 'TEXT'],
+    ['reset_ts', 'INTEGER'],
+    ['period_s', 'INTEGER'],
+  ] as const) {
+    if (!cols.has(name)) db.exec(`ALTER TABLE events ADD COLUMN ${name} ${type}`)
+  }
 }
 
 type Row = Record<string, unknown>
@@ -312,17 +331,26 @@ export class MandateStore {
   // --- events (receipts) ---
 
   /** Returns the new event id, or null when this signature already has this receipt. */
-  addEvent(address: string, e: LedgerEvent): number | null {
+  addEvent(address: string, e: LedgerEvent, w: EventWindow = {}): number | null {
     const r = this.db
       .prepare(
-        `INSERT OR IGNORE INTO events (address, kind, at, delegation_pda, delegatee, label, amount, decimals, symbol, signature, actor)
-         VALUES (@address, @kind, @at, @delegationPda, @delegatee, @label, @amountBaseUnits, @decimals, @symbol, @signature, @actor)`,
+        `INSERT OR IGNORE INTO events (address, kind, at, delegation_pda, delegatee, label, amount, decimals, symbol, signature, actor,
+                                       remaining, cap, reset_ts, period_s)
+         VALUES (@address, @kind, @at, @delegationPda, @delegatee, @label, @amountBaseUnits, @decimals, @symbol, @signature, @actor,
+                 @remaining, @cap, @resetTs, @periodS)`,
       )
-      .run({ address, ...e })
+      .run({
+        address,
+        ...e,
+        remaining: w.remainingBaseUnits ?? null,
+        cap: w.capBaseUnits ?? null,
+        resetTs: w.nextResetTs ?? null,
+        periodS: w.periodLengthS ?? null,
+      })
     return r.changes === 1 ? Number(r.lastInsertRowid) : null
   }
 
-  events(address: string, sinceMs = 0, limit = 200): (LedgerEvent & { id: number })[] {
+  events(address: string, sinceMs = 0, limit = 200): (LedgerEvent & EventWindow & { id: number })[] {
     return (
       this.db
         .prepare('SELECT * FROM events WHERE address = ? AND at >= ? ORDER BY at DESC, id DESC LIMIT ?')
@@ -339,6 +367,10 @@ export class MandateStore {
       symbol: String(r.symbol),
       signature: r.signature === null ? null : String(r.signature),
       actor: String(r.actor) as 'nuntius' | 'other',
+      remainingBaseUnits: r.remaining == null ? undefined : String(r.remaining),
+      capBaseUnits: r.cap == null ? undefined : String(r.cap),
+      nextResetTs: r.reset_ts == null ? undefined : Number(r.reset_ts),
+      periodLengthS: r.period_s == null ? undefined : Number(r.period_s),
     }))
   }
 
