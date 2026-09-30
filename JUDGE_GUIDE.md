@@ -28,7 +28,7 @@ That run used **two** Seed Vault approvals (init, then create). This build cuts 
 
 ## 2. The app on a Seeker
 
-> **APK link: filled in on the Mac when the release is published — see MAC-RUN.md step 3 (the APK is published to a GitHub release after the device checks).** Until that line is replaced with a URL, the APK has not been published.
+> **APK link: filled in on the Mac when the release is published — the APK is published to a GitHub release after the device checks.** Until that line is replaced with a URL, the APK has not been published.
 
 1. **Install.** On the Seeker, open the release page, download `nuntius.apk`, allow the install. The app talks to mainnet through the nuntius backend.
 2. **Sign in** (about 20 s). Tap **Sign in with Solana** and approve in Seed Vault. The backend verifies the signature with a single-use nonce and checks the Seeker Genesis Token. The pill reads **Seeker verified**.
@@ -43,9 +43,9 @@ That run used **two** Seed Vault approvals (init, then create). This build cuts 
 6. **Revoke** (about 20 s). Tap **Revoke** and approve once. The mandate disappears. If it was the last one on USDC, the footer reads **Token account delegate: none**.
 7. **Clock in.** Open the **Clock in** card: the digest of the last 24 hours and your streak. Set the digest hour with − and +. The home-screen widget (long-press the home screen → Widgets → nuntius) shows the cap left and today's clock-in.
 
-Steps 4–7 on the Seeker are **UNTESTED in this build**. MAC-RUN.md step 4 holds the device checklist that will record them before submission.
+Steps 4–7 on the Seeker are **UNTESTED in this build**. A device checklist records them before submission.
 
-**Identity check, no install.** `curl -s https://nuntius.ochinimus.app/.well-known/assetlinks.json` shows the package and the release certificate fingerprint that wallets verify the app against. **UNTESTED until the VPS deploy** (`tools/mac/02-deploy-vps.sh` checks it live).
+**Identity check, no install.** `curl -s https://nuntius.ochinimus.app/.well-known/assetlinks.json` shows the package and the release certificate fingerprint that wallets verify the app against. **UNTESTED until the backend is deployed.**
 
 ## 3. The tests against the real program (any machine)
 

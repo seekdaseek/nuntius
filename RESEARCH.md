@@ -1,6 +1,6 @@
 # RESEARCH — who else is doing this, and what is left to win
 
-Written 2026-09-27 in the cloud build session. **Method and honesty note.** This session's egress policy blocks `solana.com`, `colosseum.com`, `x.com`, `solanamobile.com`, `radiant.nexus` and most vendor docs. GitHub and npm are reachable. Every row below is marked:
+Written 2026-09-27. **Method and honesty note.** The build environment's egress policy blocks `solana.com`, `colosseum.com`, `x.com`, `solanamobile.com`, `radiant.nexus` and most vendor docs. GitHub and npm are reachable. Every row below is marked:
 
 - **OPENED** — the page or repository was fetched or cloned in this session and read.
 - **SNIPPET** — only a web-search result summary was seen; the page itself was blocked. Treat as unverified.

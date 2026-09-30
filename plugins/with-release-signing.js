@@ -2,8 +2,8 @@
  * Expo config plugin: release signing that survives `expo prebuild --clean`.
  *
  * Wires android/app/build.gradle's `signingConfigs.release` to four Gradle
- * properties, read at build time from ~/.gradle/gradle.properties (written by
- * tools/mac/01-keystore.sh). No value ever enters the repo:
+ * properties, read at build time from ~/.gradle/gradle.properties (written
+ * once, next to the release keystore). No value ever enters the repo:
  *
  *   NUNTIUS_UPLOAD_STORE_FILE, NUNTIUS_UPLOAD_KEY_ALIAS,
  *   NUNTIUS_UPLOAD_STORE_PASSWORD, NUNTIUS_UPLOAD_KEY_PASSWORD
@@ -30,7 +30,7 @@ const SIGNING_BLOCK = `
 const RELEASE_SIGNING = `if (project.hasProperty('NUNTIUS_UPLOAD_STORE_FILE')) {
                 signingConfig signingConfigs.release
             } else {
-                logger.warn("nuntius: NUNTIUS_UPLOAD_* not found in ~/.gradle/gradle.properties. The release APK is signed with the DEBUG key. Run tools/mac/01-keystore.sh.")
+                logger.warn("nuntius: NUNTIUS_UPLOAD_* not found in ~/.gradle/gradle.properties. The release APK is signed with the DEBUG key. Add the four NUNTIUS_UPLOAD_* properties for the release keystore.")
                 signingConfig signingConfigs.debug
             }`
 

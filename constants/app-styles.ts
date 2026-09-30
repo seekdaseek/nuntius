@@ -1,5 +1,5 @@
 /**
- * nuntius design tokens (BRIEF-C1 part C; reference: design/nuntius-mockups-v1.png).
+ * nuntius design tokens (reference: design/nuntius-mockups-v1.png).
  * Every colour, font and radius in the app and the widget comes from here and
  * nowhere else. The one derived value is a circle's radius, half its size.
  */

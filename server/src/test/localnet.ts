@@ -31,7 +31,7 @@ import {
 import { sendWire, signAndSend, waitFor, type Landed, type Rpc } from '../tx.js'
 
 export const LOCALNET_RPC = process.env.LOCALNET_RPC ?? ''
-export const skipLocalnet = LOCALNET_RPC ? false : 'LOCALNET_RPC not set — run scripts/localnet.sh (see STATUS.md)'
+export const skipLocalnet = LOCALNET_RPC ? false : 'LOCALNET_RPC not set — run scripts/localnet.sh (see README.md)'
 
 export function requireLocal(): Rpc {
   const u = new URL(LOCALNET_RPC)

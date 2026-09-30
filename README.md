@@ -12,8 +12,7 @@ Built for the Solana Seeker. Android only: Mobile Wallet Adapter and Seed Vault 
 | ---------------------------- | -------------------------------------------------------------------- |
 | Judges, start here           | [JUDGE_GUIDE.md](JUDGE_GUIDE.md): install and verify in five minutes |
 | Threat model                 | [SECURITY.md](SECURITY.md): what the cap bounds and what it does not |
-| Build state                  | [STATUS.md](STATUS.md)                                               |
-| Why this, not something else | [RESEARCH.md](RESEARCH.md), [PLAN.md](PLAN.md)                       |
+| Why this, not something else | [RESEARCH.md](RESEARCH.md)                                           |
 
 ---
 
@@ -96,7 +95,7 @@ Cap was 10,000 base units (0.01 USDC) per 60-second period. 17,000 base units mo
 
 **On localnet — the real program, built from source (2026-09-27)**
 
-The build environment cannot reach devnet or mainnet. Instead, `scripts/localnet.sh` builds `solana-foundation/subscriptions` at **`364a419`**, the commit the program's CHANGELOG names as the mainnet release, and loads it at its canonical address in `solana-test-validator` (Agave 3.1.10). Binary sha256: `31309d4202746b1af2040b792c127cde51cd549b5738096603e4504a30974648`. Whether this binary is byte-identical to mainnet is **not measured** yet (see MAC-RUN.md §7).
+The build environment cannot reach devnet or mainnet. Instead, `scripts/localnet.sh` builds `solana-foundation/subscriptions` at **`364a419`**, the commit the program's CHANGELOG names as the mainnet release, and loads it at its canonical address in `solana-test-validator` (Agave 3.1.10). Binary sha256: `31309d4202746b1af2040b792c127cde51cd549b5738096603e4504a30974648`. Whether this binary is byte-identical to mainnet is **not measured** yet. The check: `solana-verify get-program-hash` on mainnet against `solana-verify build --library-name subscriptions_program` at `364a419`.
 
 ```
 $ LOCALNET_RPC=http://127.0.0.1:8899 npm --prefix server test
@@ -132,7 +131,7 @@ nuntius offers **SKR next to USDC**: recurring SKR payments, approved once in Se
 - **Server.** `MANDATE_MINTS=SYMBOL:mint:decimals[:maxPerPeriod],…`. Each mint has its own beta ceiling per period. Mainnet defaults to USDC plus SKR, with an SKR ceiling of 55 SKR per period: about 1 USD at 0.0181 USD per SKR, the price read on 30 Sep 2026. `SKR_CEILING=<n>` on the deploy overrides it only if the price moves a lot.
 - **Two uses, one tap each.** When the server offers SKR, New permission shows two starters above the sentence. **Back a Seeker builder** fills 25 SKR every week for 90 days; **Allowance in SKR** fills 50 SKR every week for 30 days. A starter fills the sentence only: the payee is always entered by hand, and Approve stays off until it is. `core/core.test.ts` tests the starters; `docs/screens/web/02b-new-permission-skr-starter.png` shows one tapped.
 - **App.** The token choice on New permission shows only what the server offers. Receipts, the widget, the digest and the home sentence carry each mint's own symbol and decimals.
-- **Evidence.** `server/src/mints.localnet.test.ts` runs two test mints against the real program: per-mint ceilings, one authority per mint (each granted with one signature), the executor pulling both, and receipts and widget rows with the right symbols. SKR on mainnet from the Seeker is **UNTESTED** until the device checklist runs (MAC-RUN.md).
+- **Evidence.** `server/src/mints.localnet.test.ts` runs two test mints against the real program: per-mint ceilings, one authority per mint (each granted with one signature), the executor pulling both, and receipts and widget rows with the right symbols. SKR on mainnet from the Seeker is **UNTESTED** until the device checklist runs.
 
 ## Architecture
 
@@ -182,7 +181,7 @@ Listens on `127.0.0.1:8787`, loopback only. Configuration comes from `server/.en
 
 ### App
 
-The app needs a real Android device. Mobile Wallet Adapter uses Kotlin native modules, so **Expo Go will not work**. See [MAC-RUN.md](MAC-RUN.md) and `tools/mac/03-apk.sh` for the exact build.
+The app needs a real Android device. Mobile Wallet Adapter uses Kotlin native modules, so **Expo Go will not work**. A release build needs `EXPO_PUBLIC_API_BASE` set to the backend's HTTPS URL, and the four `NUNTIUS_UPLOAD_*` Gradle properties for the release key (see [`plugins/with-release-signing.js`](plugins/with-release-signing.js)); without them it is signed with the debug key.
 
 ```bash
 npm ci
