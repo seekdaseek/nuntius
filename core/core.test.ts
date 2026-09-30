@@ -179,3 +179,37 @@ test('SKR starters: only when SKR is offered; they fill the sentence, never the 
   assert.ok(!isStarter(allowance, 'SKR', 'USDC', SKR_STARTERS[1]!), 'token changed')
   assert.ok(!isStarter({ ...allowance, amount: '49' }, 'SKR', 'SKR', SKR_STARTERS[1]!), 'amount edited')
 })
+
+test('approve note: the token approval in plain words, with the exact total', async () => {
+  const { approveNote, delegateLine } = await import('./allowance-copy.ts')
+  const own = approveNote({ symbol: 'USDC', lifetimeTotal: '0.35', allowanceTotal: '0.35' })
+  assert.match(own, /^Seed Vault may warn that this lets a third party spend your USDC in the future\./)
+  assert.match(own, /caps it at 0\.35 USDC in total: the most this permission can take in its whole life\.$/)
+  const all = approveNote({ symbol: 'USDC', lifetimeTotal: '0.35', allowanceTotal: '0.42' })
+  assert.match(
+    all,
+    /caps it at 0\.42 USDC in total: what all your live USDC permissions can still take, this one included\.$/,
+  )
+  assert.match(
+    approveNote({ symbol: 'SKR', lifetimeTotal: '325', allowanceTotal: null }),
+    /cannot be capped: another app's permission on SKR has no end date/,
+  )
+  assert.match(
+    approveNote({ symbol: 'SKR', lifetimeTotal: '325', allowanceTotal: undefined }),
+    /this one can take at most 325 SKR in all\.$/,
+  )
+  for (const s of [own, all]) assert.doesNotMatch(s, /·|→|UNLIMITED/)
+  const short = (a: string) => `${a.slice(0, 4)}…`
+  assert.equal(delegateLine([{ symbol: 'USDC', delegate: null }], short), 'Token account delegate: none')
+  assert.equal(
+    delegateLine(
+      [
+        { symbol: 'USDC', delegate: 'LaV5xyz', allowance: '0.35' },
+        { symbol: 'SKR', delegate: null },
+      ],
+      short,
+    ),
+    "USDC token account delegate: LaV5…, the Subscriptions program's authority, allowed 0.35 USDC in total",
+  )
+  assert.match(delegateLine([{ symbol: 'SKR', delegate: 'Abcdefg', allowance: null }], short), /with no cap$/)
+})

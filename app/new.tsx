@@ -20,6 +20,7 @@ import {
 } from '@/core/mandate-form'
 import { shortAddr, tzOffsetMin } from '@/core/format'
 import { untilWords } from '@/core/home-model'
+import { approveNote } from '@/core/allowance-copy'
 
 const PERIOD_WORD: Record<PeriodKey, string> = { hour: 'hour', day: 'day', week: 'week', '30days': '30 days' }
 
@@ -37,7 +38,13 @@ export default function NewPermissionScreen() {
   const mints = mintsParam.split(',').filter(Boolean)
   const [symbol, setSymbol] = useState(mints[0] ?? 'USDC')
   const [form, setForm] = useState<MandateForm>({ label: '', payee: '', amount: '', period: 'day', untilDays: 30 })
-  const [preview, setPreview] = useState<{ text: MandateText; allowed: boolean; upgrade: string | null } | null>(null)
+  const [preview, setPreview] = useState<{
+    text: MandateText
+    allowed: boolean
+    upgrade: string | null
+    lifetimeTotal?: string | null
+    allowanceTotal?: string | null
+  } | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [step, setStep] = useState<GrantStep | null>(null)
   const grant = useGrantMandate(auth, setStep)
@@ -228,6 +235,15 @@ export default function NewPermissionScreen() {
       {previewError ? <Note tone="refused">{previewError}</Note> : null}
       {preview ? <Note tone="moved">{preview.text.enforce}</Note> : null}
       {preview ? <Muted>{preview.text.schedule}</Muted> : null}
+      {preview && !grant.isSuccess ? (
+        <Muted>
+          {approveNote({
+            symbol,
+            lifetimeTotal: preview.lifetimeTotal ?? null,
+            allowanceTotal: preview.allowanceTotal,
+          })}
+        </Muted>
+      ) : null}
       {preview && !preview.allowed ? <Note tone="foreign">{preview.upgrade ?? 'Limit reached.'}</Note> : null}
 
       {grant.isSuccess ? (

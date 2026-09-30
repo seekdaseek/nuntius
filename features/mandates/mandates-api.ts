@@ -77,6 +77,13 @@ export interface ListResponse {
   mine: MandateView[]
   others: OtherDelegation[]
   tokenAccount: { delegate: string | null; delegatedAmount: string | null; balance: string | null }
+  tokenAccounts?: {
+    symbol: string
+    exists: boolean
+    delegate: string | null
+    balance: string | null
+    allowance?: string | null
+  }[]
 }
 
 export interface Receipt {
@@ -121,7 +128,15 @@ export interface TermsInput {
 export const api = {
   list: (session: string) => post<ListResponse>('/api/mandates/list', { session }),
   preview: (session: string, t: TermsInput) =>
-    post<{ text: MandateText; allowed: boolean; upgrade: string | null; tier: string }>('/api/mandates/preview', {
+    post<{
+      text: MandateText
+      allowed: boolean
+      upgrade: string | null
+      tier: string
+      symbol: string
+      lifetimeTotal?: string | null
+      allowanceTotal?: string | null
+    }>('/api/mandates/preview', {
       session,
       ...t,
     }),

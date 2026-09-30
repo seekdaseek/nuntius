@@ -23,6 +23,7 @@ import { usePushRegistration } from '@/features/push/use-push-registration'
 import { useDemoOverCap, useMandateList, useReceipts, useRevoke } from '@/features/mandates/use-mandates'
 import { ApiError, type MandateView, type OtherDelegation } from '@/features/mandates/mandates-api'
 import { shortAddr } from '@/core/format'
+import { delegateLine } from '@/core/allowance-copy'
 import { initial, meter, nextMovement, perWords, span, summaryLine, windowWords } from '@/core/home-model'
 import { ReceiptRow } from '@/components/receipt-row'
 import { refreshWidget } from '@/features/widget/refresh-widget'
@@ -146,10 +147,10 @@ function SignedIn() {
                 data.others.map((o) => <OtherCard key={o.delegationPda} o={o} now={now} />)
               )}
               <Muted style={{ fontSize: 13 }}>
-                Token account delegate:{' '}
-                {data.tokenAccount.delegate
-                  ? `${shortAddr(data.tokenAccount.delegate)}, the Subscriptions program's authority`
-                  : 'none'}
+                {delegateLine(
+                  data.tokenAccounts ?? [{ symbol: data.mints[0] ?? '', delegate: data.tokenAccount.delegate }],
+                  shortAddr,
+                )}
               </Muted>
             </>
           ) : null}
