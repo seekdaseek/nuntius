@@ -1,3 +1,9 @@
+// react-native-android-widget calls these components as plain functions, outside
+// any React tree. The React Compiler (app.json experiments.reactCompiler) would
+// add a memo-cache hook to them, which fails there ("Invalid Hook Call") and
+// leaves the widget blank. This file opts out; keep it a pure function of props.
+'use no memo'
+
 import React from 'react'
 import { FlexWidget, TextWidget } from 'react-native-android-widget'
 import { color as C, radius } from '@/constants/app-styles'

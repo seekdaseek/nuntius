@@ -42,9 +42,16 @@ function share(remaining: string, cap: string): number {
   return Math.min(1, Math.max(0, (c - r) / c))
 }
 
-export function widgetView(snap: WidgetSnapshot | null, signedIn: boolean, nowMs: number): WidgetView {
+export function widgetView(
+  snap: WidgetSnapshot | null,
+  signedIn: boolean,
+  nowMs: number,
+  /** The last load failed (network, server or storage). */
+  error = false,
+): WidgetView {
   const base = { title: 'nuntius', badge: '', rows: [], footerTone: 'muted' as const, url: '/', stale: false }
   if (!signedIn) return { ...base, footer: 'Sign in to see your permissions' }
+  if (!snap && error) return { ...base, footer: 'Could not load. Tap to open nuntius', stale: true }
   if (!snap) return { ...base, footer: 'Open nuntius to load', stale: true }
 
   const stale = nowMs - snap.fetchedAt > STALE_MS
