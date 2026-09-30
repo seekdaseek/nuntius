@@ -124,6 +124,15 @@ These tests cover:
 
 ---
 
+## SKR payments
+
+nuntius offers **SKR next to USDC**: recurring SKR payments, approved once in Seed Vault and capped by the chain. It is the same Subscriptions program and the same one-transaction grant. Each `(user, mint)` pair gets its own Subscription Authority, so an SKR permission and a USDC permission are separate delegations on separate token accounts, and each can be revoked on its own. This is not staking; SKR moves as a payment.
+
+- **Mint.** `SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3`, SPL Token program, 6 decimals (read on mainnet on 30 Sep 2026).
+- **Server.** `MANDATE_MINTS=SYMBOL:mint:decimals[:maxPerPeriod],…`. Each mint has its own beta ceiling per period. Mainnet defaults to USDC plus SKR, with an SKR ceiling of 100 that is re-set to about 1 USD of SKR at deploy time.
+- **App.** The token choice on New permission shows only what the server offers. Receipts, the widget, the digest and the home sentence carry each mint's own symbol and decimals.
+- **Evidence.** `server/src/mints.localnet.test.ts` runs two test mints against the real program: per-mint ceilings, one authority per mint (each granted with one signature), the executor pulling both, and receipts and widget rows with the right symbols. SKR on mainnet from the Seeker is **UNTESTED** until the device checklist runs (MAC-RUN.md).
+
 ## Architecture
 
 ```
