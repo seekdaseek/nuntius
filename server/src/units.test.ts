@@ -241,6 +241,6 @@ test('MANDATE_MINTS: optional per-mint ceiling; mainnet offers USDC and SKR by d
     ['USDC', 'SKR'],
   )
   assert.equal(cfg.mints[1]!.mint, S)
-  assert.equal(SKR_MAINNET.maxPerPeriodUi, '100')
+  assert.equal(SKR_MAINNET.maxPerPeriodUi, '55', 'about 1 USD of SKR')
   assert.equal(SKR_MAINNET.decimals, 6)
 })

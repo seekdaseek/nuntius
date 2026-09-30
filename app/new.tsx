@@ -8,9 +8,12 @@ import { isUserCancellation, useNuntiusAuth } from '@/features/account/use-nunti
 import { useGrantMandate, type GrantStep } from '@/features/mandates/use-mandates'
 import { api, type MandateText } from '@/features/mandates/mandates-api'
 import {
+  applyStarter,
   checkForm,
+  isStarter,
   PERIOD_OPTIONS,
   sanitizeAmount,
+  startersFor,
   UNTIL_OPTIONS,
   type MandateForm,
   type PeriodKey,
@@ -41,6 +44,8 @@ export default function NewPermissionScreen() {
   const check = checkForm(form, auth?.address ?? null)
   const set = <K extends keyof MandateForm>(k: K, v: MandateForm[K]) => setForm((f) => ({ ...f, [k]: v }))
   const amountRef = useRef<TextInput>(null)
+  // One-tap SKR starters; empty unless the server offers SKR.
+  const starters = startersFor(mints)
 
   useEffect(() => {
     if (!auth || !check.ok) {
@@ -100,6 +105,30 @@ export default function NewPermissionScreen() {
   return (
     <Screen back footer={footer}>
       <Title style={{ marginTop: 6 }}>New permission</Title>
+
+      {starters.length > 0 ? (
+        <View style={s.starters} accessibilityLabel="SKR starters">
+          {starters.map(({ starter, symbol: sym, line }) => {
+            const on = isStarter(form, sym, symbol, starter)
+            return (
+              <Pressable
+                key={starter.key}
+                testID={`starter-${starter.key}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                onPress={() => {
+                  setForm((f) => applyStarter(f, starter))
+                  setSymbol(sym)
+                }}
+                style={[s.starter, on ? s.starterOn : null]}
+              >
+                <Text style={s.starterTitle}>{starter.title}</Text>
+                <Text style={s.starterLine}>{line}</Text>
+              </Pressable>
+            )
+          })}
+        </View>
+      ) : null}
 
       <View style={s.sentence} accessibilityLabel="Permission sentence">
         <Text style={s.word}>Let </Text>
@@ -235,6 +264,20 @@ function slotWidth(text: string): number {
 const SENT = { fontFamily: font.display, fontSize: 30, lineHeight: 40, letterSpacing: -0.5 }
 
 const s = StyleSheet.create({
+  starters: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  starter: {
+    flex: 1,
+    backgroundColor: color.card,
+    borderRadius: radius.panel,
+    borderWidth: 1.5,
+    borderColor: color.line,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 2,
+  },
+  starterOn: { borderColor: color.signal, backgroundColor: color.signal50 },
+  starterTitle: { fontFamily: font.semibold, fontSize: 14, color: color.ink },
+  starterLine: { fontFamily: font.medium, fontSize: 12.5, color: color.ink2 },
   sentence: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', rowGap: 6, marginTop: 10, marginBottom: 4 },
   word: { ...SENT, color: color.ink },
   slot: { backgroundColor: color.signal50, borderRadius: radius.slot, paddingHorizontal: 8 },

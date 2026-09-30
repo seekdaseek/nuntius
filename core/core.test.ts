@@ -17,7 +17,7 @@ import {
   whenWords,
   windowWords,
 } from './home-model.ts'
-import { checkForm, sanitizeAmount } from './mandate-form.ts'
+import { applyStarter, checkForm, isStarter, sanitizeAmount, SKR_STARTERS, startersFor } from './mandate-form.ts'
 
 const NOW = Date.UTC(2026, 9, 1, 12)
 const nowS = NOW / 1000
@@ -147,4 +147,35 @@ test('mandate form checks', () => {
   assert.equal(sanitizeAmount('1.2.3'), '1.23')
   assert.equal(sanitizeAmount('$12a'), '12')
   assert.equal(sanitizeAmount('0.12345678'), '0.123456')
+})
+
+test('SKR starters: only when SKR is offered; they fill the sentence, never the payee', () => {
+  assert.deepEqual(startersFor(['USDC']), [], 'no SKR, no starters')
+  assert.deepEqual(startersFor([]), [])
+  const s = startersFor(['USDC', 'SKR'])
+  assert.deepEqual(
+    s.map((x) => [x.starter.title, x.symbol, x.line]),
+    [
+      ['Back a Seeker builder', 'SKR', '25 SKR every week, for 90 days'],
+      ['Allowance in SKR', 'SKR', '50 SKR every week, for 30 days'],
+    ],
+  )
+  assert.equal(startersFor(['tUSDC', 'tSKR'])[0]!.symbol, 'tSKR', 'the localnet stand-in')
+  for (const { starter } of s) {
+    assert.ok(Number(starter.amount) <= 55, `${starter.key} fits the 55 SKR ceiling`)
+    assert.doesNotMatch(`${starter.title} ${starter.label}`, /·|→|mandate/i)
+  }
+
+  const empty = { label: '', payee: '', amount: '', period: 'day' as const, untilDays: 30 }
+  const builder = applyStarter(empty, SKR_STARTERS[0]!)
+  assert.deepEqual(builder, { label: 'Seeker builder', payee: '', amount: '25', period: 'week', untilDays: 90 })
+  assert.equal(checkForm(builder, null).field, 'payee', 'the payee is still to be entered')
+  const payee = 'ASCQRp616JVQKMpynYfcPVdKPext719WUf7CuFcnnatX'
+  const allowance = applyStarter({ ...builder, payee }, SKR_STARTERS[1]!)
+  assert.equal(allowance.payee, payee, 'a typed payee survives a starter tap')
+  assert.deepEqual([allowance.amount, allowance.period, allowance.untilDays], ['50', 'week', 30])
+  assert.ok(checkForm(allowance, null).ok)
+  assert.ok(isStarter(allowance, 'SKR', 'SKR', SKR_STARTERS[1]!))
+  assert.ok(!isStarter(allowance, 'SKR', 'USDC', SKR_STARTERS[1]!), 'token changed')
+  assert.ok(!isStarter({ ...allowance, amount: '49' }, 'SKR', 'SKR', SKR_STARTERS[1]!), 'amount edited')
 })

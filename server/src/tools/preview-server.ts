@@ -64,7 +64,7 @@ const cfg = {
   rpcUrl: LOCALNET_RPC,
   mints: [
     { symbol: 'tUSDC', mint, decimals: 6, maxPerPeriodUi: '1' },
-    { symbol: 'tSKR', mint: skrMint, decimals: 6, maxPerPeriodUi: '100' },
+    { symbol: 'tSKR', mint: skrMint, decimals: 6, maxPerPeriodUi: '55' },
   ],
   maxPerPeriodUi: '100',
   delegateePath: null,

@@ -5,7 +5,7 @@
  * - MANDATE_CLUSTER       'mainnet' | 'localnet'. Absent = mandates disabled.
  * - MANDATE_RPC           RPC URL. Mainnet falls back to HELIUS_RPC; localnet must be loopback.
  * - MANDATE_MINTS         SYMBOL:mint:decimals[:maxPerPeriod][,…] the app offers.
- *                         Mainnet default: USDC and SKR (SKR ceiling 100).
+ *                         Mainnet default: USDC and SKR (SKR ceiling 55).
  * - MANDATE_MAX_PER_PERIOD  beta ceiling for mints without their own, in UI units
  *                         (default 100). A second, server-side bound on top of the chain's.
  * - MANDATE_DELEGATEE     path to the executor keypair file (never committed).
@@ -37,8 +37,8 @@ export const SKR_MAINNET: MintInfo = {
   symbol: 'SKR',
   mint: 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3',
   decimals: 6,
-  // Placeholder ceiling; re-set to about 1 USD of SKR at deploy time (STATUS.md).
-  maxPerPeriodUi: '100',
+  // About 1 USD of SKR at 0.0181 USD per SKR (read 30 Sep 2026): 55 x 0.0181 = 0.9955.
+  maxPerPeriodUi: '55',
 }
 const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
 
