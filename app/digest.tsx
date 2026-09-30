@@ -1,11 +1,11 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { Button, Muted, Note, Screen, Section, Title, color, font } from '@/components/ui'
 import { radius } from '@/constants/app-styles'
 import { useNuntiusAuth } from '@/features/account/use-nuntius-auth'
 import { useClockIn, useDigest, useDigestPrefs } from '@/features/mandates/use-mandates'
 import { count, tzOffsetMin } from '@/core/format'
-import { lineTone, longDate, weekSlots, type SlotState } from '@/core/home-model'
+import { digestPicker, lineTone, longDate, weekSlots, type SlotState } from '@/core/home-model'
 
 /**
  * Clock in. A punch card of the week, the last 24 hours as a short list, and
@@ -19,6 +19,7 @@ export default function ClockInScreen() {
   const prefs = useDigestPrefs(auth)
   const seeker = Boolean(auth?.sgtMint)
   const opened = useRef(false)
+  const [draft, setDraft] = useState<number | null>(null)
 
   // Arriving from the morning push or the widget is itself the clock-in.
   useEffect(() => {
@@ -41,7 +42,7 @@ export default function ClockInScreen() {
   const days = clockIn.data?.days ?? d?.days ?? []
   const today = d?.today ?? new Date(Date.now() + tzOffsetMin() * 60_000).toISOString().slice(0, 10)
   const slots = weekSlots(days, today)
-  const hour = d?.prefs?.hour ?? 8
+  const picker = digestPicker(d?.prefs?.hour ?? null, draft)
   const done = streak?.clockedInToday ?? false
 
   const footer = seeker ? (
@@ -100,21 +101,22 @@ export default function ClockInScreen() {
         <>
           <Section>Morning digest</Section>
           <View style={s.hourRow}>
-            <Button
-              title="Earlier"
-              kind="outline"
-              onPress={() => prefs.mutate({ hour: (hour + 23) % 24, enabled: true })}
-            />
+            <Button title="Earlier" kind="outline" onPress={() => setDraft(picker.earlier)} testID="digest-earlier" />
             <View style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={s.hour}>{`${String(hour).padStart(2, '0')}:00`}</Text>
-              <Muted style={{ fontSize: 13 }}>{d?.prefs ? 'every day, your time' : 'not set yet'}</Muted>
+              <Text style={s.hour}>{picker.label}</Text>
+              <Muted style={{ fontSize: 13 }}>{picker.sub}</Muted>
             </View>
-            <Button
-              title="Later"
-              kind="outline"
-              onPress={() => prefs.mutate({ hour: (hour + 1) % 24, enabled: true })}
-            />
+            <Button title="Later" kind="outline" onPress={() => setDraft(picker.later)} testID="digest-later" />
           </View>
+          {picker.save ? (
+            <Button
+              title={picker.save}
+              busy={prefs.isPending}
+              onPress={() => prefs.mutate({ hour: picker.hour, enabled: true }, { onSuccess: () => setDraft(null) })}
+              testID="digest-save"
+            />
+          ) : null}
+          {prefs.isError ? <Note tone="refused">Not saved: {prefs.error.message}</Note> : null}
         </>
       ) : null}
     </Screen>

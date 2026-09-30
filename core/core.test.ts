@@ -5,6 +5,7 @@ import { ago, count, explorerTx, remainingShare, resetsIn, shortAddr, tzOffsetMi
 import { widgetView, type WidgetSnapshot } from './widget-model.ts'
 import {
   basicTierLine,
+  digestPicker,
   initial,
   lineTone,
   longDate,
@@ -367,4 +368,20 @@ test('revoke: a Seed Vault failure says nothing was sent; a later one says it ma
   const server = Object.assign(new Error('That permission is already gone.'), { code: 'no_delegation', status: 404 })
   assert.equal(revokeFailureText(server), 'That permission is already gone.')
   assert.match(revokeFailureText(new Error('still_live')), /^Sent to the chain but not confirmed yet/)
+})
+
+test('digest picker: presses stay local, one save, and it never says "not set yet"', () => {
+  const unset = digestPicker(null, null)
+  assert.equal(unset.label, '08:00')
+  assert.equal(unset.save, 'Send it at 08:00')
+  assert.doesNotMatch(unset.sub, /not set/)
+  const picking = digestPicker(8, 19)
+  assert.equal(picking.save, 'Send it at 19:00')
+  assert.equal(picking.sub, 'now 08:00, not saved')
+  const saved = digestPicker(19, 19)
+  assert.equal(saved.save, null)
+  assert.equal(saved.sub, 'every day, your time')
+  assert.equal(digestPicker(19, null).label, '19:00')
+  assert.equal(digestPicker(0, 0).earlier, 23)
+  assert.equal(digestPicker(23, 23).later, 0)
 })

@@ -204,3 +204,26 @@ export function basicTierLine(atLimit: boolean, max: number): string {
     ? `Basic tier holds ${holds}. Verify Seeker ownership below to hold up to 10.`
     : `Basic tier: you can hold ${holds}. Verify Seeker ownership below to hold up to 10.`
 }
+
+/**
+ * The digest hour picker. Earlier and Later change a local draft at once; one
+ * Save sends it (device check 10: every press was a ~2 s server round trip,
+ * and each saved hour counted as the digest time).
+ */
+export function digestPicker(saved: number | null, draft: number | null) {
+  const hour = draft ?? saved ?? 8
+  const dirty = saved === null || hour !== saved
+  const hh = `${String(hour).padStart(2, '0')}:00`
+  return {
+    hour,
+    label: hh,
+    sub: !dirty
+      ? 'every day, your time'
+      : saved === null
+        ? 'your time, once you save'
+        : `now ${String(saved).padStart(2, '0')}:00, not saved`,
+    save: dirty ? `Send it at ${hh}` : null,
+    earlier: (hour + 23) % 24,
+    later: (hour + 1) % 24,
+  }
+}
