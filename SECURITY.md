@@ -20,6 +20,13 @@ Measured on a local validator running the program built from release commit `364
 - After the grant, the token account reads `delegate = <authority PDA>` and `delegatedAmount = ` the lifetime total (240000 for 10000 an hour for a day), not `18446744073709551615`. The test asserts both.
 - `server/src/allowance.localnet.test.ts`: pulls succeed up to the total and the delegate clears itself at zero; once the allowance is short, SPL Token refuses a pull the program allows (error 1); a second permission raises the allowance by exactly its total; revoking one of two lowers it; every revoke path ends `delegate: none`.
 
+Measured on mainnet from the Seeker, 30 Sep – 1 Oct 2026 (README, _What is proven_, with the signatures):
+
+- **Seed Vault shows the cap.** natX's grant of 0.01 USDC a day for 7 days: the grant sheet showed **0.07 USDC** (it used to say "Unlimited"), and the token account read `delegatedAmount` **0.07** right after.
+- **One approval covers every live permission on the token.** With a 0.05 USDC a day and a 0.01 USDC an hour permission live, cj7's USDC allowance read **1.97** after the first hourly pull: 0.30 the daily one can still take plus 1.67 for the hourly one. The approve screen now gives both numbers: what this permission alone can take, and what Seed Vault will show for all of them.
+- **A revoke trims it.** Revoking the hourly permission set the allowance to **0.30**, the daily one's remainder; Seed Vault showed "0.3 USDC" on the revoke sheet. Revoking the daily one left `delegate: none`. At the end, all 65 token accounts of both wallets (SPL Token and Token-2022) read `delegate: null`.
+- **Not captured:** Seed Vault's grant sheet for a permission added while another was live (only the on-chain allowance was read). **UNTESTED on device.**
+
 ## 2. What the cap bounds, and who enforces it
 
 | Guarantee                                                                                                                       | Enforced by                            | Evidence                                                                                                        |
