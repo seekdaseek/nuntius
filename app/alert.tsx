@@ -28,6 +28,7 @@ export default function ReceiptScreen() {
     at?: string
     moved?: string
     per?: string
+    payee?: string
   }>()
 
   // Receipt pushes and the older delegation spike share this screen.
@@ -115,7 +116,11 @@ export default function ReceiptScreen() {
           {kind === 'granted' && byOther
             ? `${who} can now pull ${symbol} from this wallet. It was not created in nuntius. Revoke it from the home screen if you did not mean to grant it.`
             : kind === 'granted'
-              ? `${who} is live. The chain enforces the cap from now on.`
+              ? `${who} is live: at most ${amount ? `${amount} ${symbol}` : 'its cap'} a period, enforced by the chain.${
+                  p.source === 'grant'
+                    ? ` The first payment${p.payee ? ` to ${shortAddr(p.payee)}` : ''} goes out in a moment, and every pull sends a receipt to this phone.`
+                    : ''
+                }`
               : `${who} can no longer take anything.`}
         </Note>
       ) : (

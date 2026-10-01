@@ -99,7 +99,9 @@ export function BackArrow() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Back"
-      onPress={() => router.back()}
+      // A screen opened straight from a notification can have nothing under it:
+      // back then means home, never a dead arrow.
+      onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
       hitSlop={16}
       style={l.back}
     >

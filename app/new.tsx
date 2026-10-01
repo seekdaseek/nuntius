@@ -7,6 +7,7 @@ import { radius } from '@/constants/app-styles'
 import { isUserCancellation, useNuntiusAuth } from '@/features/account/use-nuntius-auth'
 import { useGrantMandate, type GrantStep } from '@/features/mandates/use-mandates'
 import { isBlockhashExpired } from '@/core/grant-errors'
+import { grantedSlipUrl } from '@/core/routes'
 import { api, type MandateText } from '@/features/mandates/mandates-api'
 import {
   applyStarter,
@@ -19,7 +20,7 @@ import {
   type MandateForm,
   type PeriodKey,
 } from '@/core/mandate-form'
-import { shortAddr, tzOffsetMin } from '@/core/format'
+import { tzOffsetMin } from '@/core/format'
 import { untilWords } from '@/core/home-model'
 import { approveLine, approveNote } from '@/core/allowance-copy'
 
@@ -99,16 +100,10 @@ export default function NewPermissionScreen() {
       ? { symbol, lifetimeTotal: preview.lifetimeTotal ?? null, allowanceTotal: preview.allowanceTotal }
       : null
 
-  // The confirmation sits with Done, so it can never be behind it (device check 4, 30 Sep).
-  const footer = grant.isSuccess ? (
-    <>
-      <Note tone="moved">
-        Live. The chain now enforces it. The first payment to {shortAddr(form.payee)} goes out in a moment, and every
-        pull sends a receipt to this phone.
-      </Note>
-      <Button big title="Done" onPress={() => router.back()} />
-    </>
-  ) : (
+  // A finished grant replaces this form with its "Permission live" slip, so the
+  // form is gone from the history: BACK from any receipt after it goes home
+  // (device check 5, 1 Oct). The slip says the first payment is on its way.
+  const footer = grant.isSuccess ? null : (
     <>
       {why && allowance ? (
         <Note tone="foreign">
@@ -139,7 +134,24 @@ export default function NewPermissionScreen() {
                 ? 'Rebuild and approve again'
                 : 'Approve in Seed Vault'
         }
-        onPress={() => grant.mutate({ terms: { ...form, label: name, symbol }, rebuild: expired })}
+        onPress={() =>
+          grant.mutate(
+            { terms: { ...form, label: name, symbol }, rebuild: expired },
+            {
+              onSuccess: ({ mandate }) =>
+                router.replace(
+                  grantedSlipUrl({
+                    label: mandate.label || name,
+                    payee: mandate.payee,
+                    delegationPda: mandate.delegationPda,
+                    cap: mandate.cap,
+                    symbol: mandate.symbol,
+                    atMs: Date.now(),
+                  }) as never,
+                ),
+            },
+          )
+        }
         disabled={!check.ok || !preview || !preview.allowed}
         busy={busy}
       />

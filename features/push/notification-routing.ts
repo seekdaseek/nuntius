@@ -3,6 +3,7 @@ import { AppState, Platform } from 'react-native'
 import { router, useRootNavigationState } from 'expo-router'
 import * as Notifications from 'expo-notifications'
 import { tapTarget } from '@/core/notification-tap'
+import { isSingleScreen } from '@/core/routes'
 import { useTapResponse } from '@/features/push/use-tap-response'
 
 /**
@@ -34,7 +35,10 @@ export function useNotificationTapRouting() {
     const target = tapTarget(response, routedId.current)
     if (!target) return
     routedId.current = target.key
-    router.push(target.url as never)
+    // Clock in, the receipts list and home are single screens: a tap that opens
+    // one already open must not stack a second copy, or BACK lands on the first
+    // (device check 10, 1 Oct). Receipts each get their own screen.
+    router.push(target.url as never, isSingleScreen(target.url) ? { dangerouslySingular: true } : undefined)
     if (Platform.OS !== 'web') Notifications.dismissNotificationAsync(target.id).catch(() => {})
   }, [response, navigationState?.key])
 

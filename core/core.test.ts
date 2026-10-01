@@ -420,3 +420,26 @@ test('approve line: one short line above Approve; the rest behind "Why?"', async
   // With " Why?" after it, one line at 13 px on a 360 dp phone holds about 50 characters.
   for (const c of cases) assert.ok(`${c} Why?`.length <= 50, c)
 })
+
+test('routes: one Clock in and one receipts list in the history; a finished form is replaced', async () => {
+  const { grantedSlipUrl, isSingleScreen } = await import('./routes.ts')
+  assert.equal(isSingleScreen('/digest?source=digest'), true)
+  assert.equal(isSingleScreen('/receipts'), true)
+  assert.equal(isSingleScreen('/'), true)
+  assert.equal(isSingleScreen('/alert?kind=pull&sig=x'), false, 'every receipt is its own screen')
+  const u = grantedSlipUrl({
+    label: 'natXcheck',
+    payee: 'ASCQRp616JVQKMpynYfcPVdKPext719WUf7CuFcnnatX',
+    delegationPda: 'Pda1',
+    cap: '0.05',
+    symbol: 'USDC',
+    atMs: 1,
+  })
+  assert.match(u, /^\/alert\?source=grant&kind=granted&who=natXcheck&payee=ASCQ/)
+  const { tapUrl } = await import('./notification-tap.ts')
+  assert.equal(
+    tapUrl({ notification: { request: { identifier: 'x', content: { data: { url: u } } } } }),
+    u,
+    'an app route',
+  )
+})
