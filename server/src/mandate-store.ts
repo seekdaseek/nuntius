@@ -46,7 +46,23 @@ export interface EventWindow {
   periodLengthS?: number
 }
 
-export type PullState = 'signed' | 'landed' | 'refused' | 'failed'
+/** `skipped`: a buy whose swap missed its minimum-out; nothing moved, it may be tried again this period. */
+export type PullState = 'signed' | 'landed' | 'refused' | 'failed' | 'skipped'
+
+/** A `back` permission: each period's pull buys the launch's token for the backer. */
+export interface Backing {
+  mandateId: string
+  /** The DBC pool of the launch; the route follows it to DAMM v2 after migration. */
+  pool: string
+  route: 'dbc' | 'damm_v2'
+  dammPool: string | null
+  baseMint: string
+  baseSymbol: string
+  baseDecimals: number
+  /** The backer's own token account for the launch token, created by the backer in the grant. */
+  backerBaseAta: string
+  slippageBps: number
+}
 
 export interface PullRow {
   id: number
@@ -167,6 +183,39 @@ export function migrateMandates(db: Database.Database): void {
   // Every receipt belongs to one permission (one mandate), not just to an address:
   // the same address can hold an earlier delegation account.
   if (!cols.has('mandate_id')) db.exec('ALTER TABLE events ADD COLUMN mandate_id TEXT')
+  // Buys: what the backer received (launch token), next to what was paid (amount/symbol).
+  for (const [name, type] of [
+    ['out_amount', 'TEXT'],
+    ['out_decimals', 'INTEGER'],
+    ['out_symbol', 'TEXT'],
+  ] as const) {
+    if (!cols.has(name)) db.exec(`ALTER TABLE events ADD COLUMN ${name} ${type}`)
+  }
+  db.exec(`CREATE TABLE IF NOT EXISTS backings (
+    mandate_id TEXT PRIMARY KEY,
+    pool TEXT NOT NULL,
+    route TEXT NOT NULL,
+    damm_pool TEXT,
+    base_mint TEXT NOT NULL,
+    base_symbol TEXT NOT NULL,
+    base_decimals INTEGER NOT NULL,
+    backer_base_ata TEXT NOT NULL,
+    slippage_bps INTEGER NOT NULL
+  )`)
+  db.exec('CREATE INDEX IF NOT EXISTS idx_backings_pool ON backings (pool)')
+  // Subscription launches created in the app: the metadata JSON is served from here.
+  db.exec(`CREATE TABLE IF NOT EXISTS launches (
+    base_mint TEXT PRIMARY KEY,
+    pool TEXT NOT NULL,
+    config TEXT NOT NULL,
+    creator TEXT NOT NULL,
+    name TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    image TEXT NOT NULL,
+    quote_mint TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`)
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_mandate ON events (mandate_id)')
   attributeEvents(db)
 }
@@ -234,6 +283,43 @@ const toPull = (r: Row): PullRow => ({
   errorCode: r.error_code === null ? null : Number(r.error_code),
   error: r.error === null ? null : String(r.error),
   nextAttemptAt: Number(r.next_attempt_at),
+})
+
+export interface Launch {
+  baseMint: string
+  pool: string
+  config: string
+  creator: string
+  name: string
+  symbol: string
+  image: string
+  quoteMint: string
+  status: 'pending' | 'live'
+  createdAt: number
+}
+const toLaunch = (r: Row): Launch => ({
+  baseMint: String(r.base_mint),
+  pool: String(r.pool),
+  config: String(r.config),
+  creator: String(r.creator),
+  name: String(r.name),
+  symbol: String(r.symbol),
+  image: String(r.image),
+  quoteMint: String(r.quote_mint),
+  status: String(r.status) as Launch['status'],
+  createdAt: Number(r.created_at),
+})
+
+const toBacking = (r: Row): Backing => ({
+  mandateId: String(r.mandate_id),
+  pool: String(r.pool),
+  route: String(r.route) as Backing['route'],
+  dammPool: r.damm_pool == null ? null : String(r.damm_pool),
+  baseMint: String(r.base_mint),
+  baseSymbol: String(r.base_symbol),
+  baseDecimals: Number(r.base_decimals),
+  backerBaseAta: String(r.backer_base_ata),
+  slippageBps: Number(r.slippage_bps),
 })
 
 export class MandateStore {
@@ -333,12 +419,12 @@ export class MandateStore {
   }
 
   /** Replaces an EXPIRED attempt's signature with a new one. Only legal once the old blockhash is dead. */
-  reattemptPull(id: number, signature: string, lastValidBlockHeight: string, nowMs: number): void {
+  reattemptPull(id: number, signature: string, lastValidBlockHeight: string, nowMs: number, amount?: string): void {
     this.db
       .prepare(
-        "UPDATE pulls SET signature = ?, last_valid_block_height = ?, state = 'signed', attempts = attempts + 1, updated_at = ? WHERE id = ?",
+        "UPDATE pulls SET signature = ?, last_valid_block_height = ?, state = 'signed', attempts = attempts + 1, amount = COALESCE(?, amount), updated_at = ? WHERE id = ?",
       )
-      .run(signature, lastValidBlockHeight, nowMs, id)
+      .run(signature, lastValidBlockHeight, amount ?? null, nowMs, id)
   }
 
   finishPull(
@@ -380,14 +466,17 @@ export class MandateStore {
     const r = this.db
       .prepare(
         `INSERT OR IGNORE INTO events (address, kind, at, delegation_pda, delegatee, label, amount, decimals, symbol, signature, actor,
-                                       remaining, cap, reset_ts, period_s, mandate_id)
+                                       remaining, cap, reset_ts, period_s, mandate_id, out_amount, out_decimals, out_symbol)
          VALUES (@address, @kind, @at, @delegationPda, @delegatee, @label, @amountBaseUnits, @decimals, @symbol, @signature, @actor,
-                 @remaining, @cap, @resetTs, @periodS, @mandateId)`,
+                 @remaining, @cap, @resetTs, @periodS, @mandateId, @outBaseUnits, @outDecimals, @outSymbol)`,
       )
       .run({
         address,
         mandateId: mandate?.id ?? null,
         ...e,
+        outBaseUnits: e.outBaseUnits ?? null,
+        outDecimals: e.outDecimals ?? null,
+        outSymbol: e.outSymbol ?? null,
         remaining: w.remainingBaseUnits ?? null,
         cap: w.capBaseUnits ?? null,
         resetTs: w.nextResetTs ?? null,
@@ -422,6 +511,81 @@ export class MandateStore {
       capBaseUnits: r.cap == null ? undefined : String(r.cap),
       nextResetTs: r.reset_ts == null ? undefined : Number(r.reset_ts),
       periodLengthS: r.period_s == null ? undefined : Number(r.period_s),
+      outBaseUnits: r.out_amount == null ? null : String(r.out_amount),
+      outDecimals: r.out_decimals == null ? null : Number(r.out_decimals),
+      outSymbol: r.out_symbol == null ? null : String(r.out_symbol),
+    }))
+  }
+
+  // --- launches ---
+
+  addLaunch(l: Omit<Launch, 'status' | 'createdAt'>, nowMs: number): void {
+    this.db
+      .prepare(
+        `INSERT INTO launches (base_mint, pool, config, creator, name, symbol, image, quote_mint, status, created_at)
+         VALUES (@baseMint, @pool, @config, @creator, @name, @symbol, @image, @quoteMint, 'pending', @now)`,
+      )
+      .run({ ...l, now: nowMs })
+  }
+
+  launchByMint(baseMint: string): Launch | null {
+    const r = this.db.prepare('SELECT * FROM launches WHERE base_mint = ?').get(baseMint) as Row | undefined
+    return r ? toLaunch(r) : null
+  }
+
+  launchByPool(pool: string): Launch | null {
+    const r = this.db.prepare('SELECT * FROM launches WHERE pool = ?').get(pool) as Row | undefined
+    return r ? toLaunch(r) : null
+  }
+
+  setLaunchLive(baseMint: string): void {
+    this.db.prepare("UPDATE launches SET status = 'live' WHERE base_mint = ?").run(baseMint)
+  }
+
+  // --- back permissions ---
+
+  setBacking(b: Backing): void {
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO backings (mandate_id, pool, route, damm_pool, base_mint, base_symbol, base_decimals, backer_base_ata, slippage_bps)
+         VALUES (@mandateId, @pool, @route, @dammPool, @baseMint, @baseSymbol, @baseDecimals, @backerBaseAta, @slippageBps)`,
+      )
+      .run(b)
+  }
+
+  backingOf(mandateId: string): Backing | null {
+    const r = this.db.prepare('SELECT * FROM backings WHERE mandate_id = ?').get(mandateId) as Row | undefined
+    return r ? toBacking(r) : null
+  }
+
+  /** The route follows the token: DBC until the curve fills, then the DAMM v2 pool it migrated to. */
+  setRoute(mandateId: string, route: Backing['route'], dammPool: string | null): void {
+    this.db.prepare('UPDATE backings SET route = ?, damm_pool = ? WHERE mandate_id = ?').run(route, dammPool, mandateId)
+  }
+
+  /** Every live backing of a launch with its mandate's terms: the launch's committed demand. */
+  backingsOfPool(pool: string): {
+    backing: Backing
+    amountPerPeriod: string
+    periodLengthS: number
+    decimals: number
+    symbol: string
+    address: string
+  }[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT b.*, m.amount_per_period, m.period_length_s, m.decimals, m.symbol, m.address FROM backings b
+             JOIN mandates m ON m.id = b.mandate_id WHERE b.pool = ? AND m.status = 'active'`,
+        )
+        .all(pool) as Row[]
+    ).map((r) => ({
+      backing: toBacking(r),
+      amountPerPeriod: String(r.amount_per_period),
+      periodLengthS: Number(r.period_length_s),
+      decimals: Number(r.decimals),
+      symbol: String(r.symbol),
+      address: String(r.address),
     }))
   }
 

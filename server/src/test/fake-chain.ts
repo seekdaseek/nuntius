@@ -7,8 +7,8 @@
  * whose send call still threw. The localnet suite checks the same executor
  * against the real program.
  */
-import type { ChainPort } from '../executor.js'
-import type { Mandate } from '../mandate-store.js'
+import type { ChainPort, PreparedBuy } from '../executor.js'
+import type { Backing, Mandate } from '../mandate-store.js'
 import type { RecurringState } from '../mandate-chain.js'
 import type { Landed, SignedTx, TxStatus } from '../tx.js'
 
@@ -36,6 +36,19 @@ export class FakeChain implements ChainPort {
   readFailures = 0
   sendThrowsAfterApply = 0
   sendDrops = 0
+  /** Back permissions: the buy is pull + swap in one transaction. */
+  buyWait: 'migrating' | 'nothing_left' | null = null
+  buyRoute: 'dbc' | 'damm_v2' = 'dbc'
+  dammPool: string | null = null
+  /** Swaps that miss their minimum-out, consumed one per buy: the whole transaction fails. */
+  swapFailures = 0
+  /** Balances the custody invariant is about: the executor's quote and base accounts, the backer's base. */
+  delegateeQuote = 0n
+  delegateeBase = 0n
+  backerBase = 0n
+  /** Launch tokens per quote base unit, for bought(). */
+  price = 1000n
+  private boughtBy = new Map<string, bigint>()
   /** Runs inside send() before the program logic — lets a test move the chain underneath the executor. */
   beforeApply: ((pda: string) => void) | null = null
   private n = 0
@@ -77,8 +90,64 @@ export class FakeChain implements ChainPort {
     }
   }
 
+  async prepareBuy(m: Mandate, _b: Backing, amount: bigint): Promise<PreparedBuy> {
+    if (this.buyWait) return { kind: 'wait', reason: this.buyWait }
+    const signature = `buy${++this.n}`
+    return {
+      kind: 'buy',
+      signed: {
+        signature,
+        wire: JSON.stringify({ signature, pda: m.delegationPda, amount: amount.toString(), buy: true }),
+        lastValidBlockHeight: this.height + 150n,
+      },
+      amountIn: amount,
+      minimumOut: (amount * this.price * 98n) / 100n,
+      route: this.buyRoute,
+      dammPool: this.dammPool,
+    }
+  }
+
+  async bought(_m: Mandate, _b: Backing, signature: string): Promise<bigint | null> {
+    return this.boughtBy.get(signature) ?? null
+  }
+
   async send(wire: string): Promise<void> {
-    const { signature, pda, amount } = JSON.parse(wire) as { signature: string; pda: string; amount: string }
+    const { signature, pda, amount, buy } = JSON.parse(wire) as {
+      signature: string
+      pda: string
+      amount: string
+      buy?: boolean
+    }
+    if (buy) {
+      this.sends.push(signature)
+      if (this.landed.has(signature)) return
+      if (this.sendDrops > 0) {
+        this.sendDrops--
+        return
+      }
+      // Atomic: a swap that misses its minimum-out fails the transaction; the pull is undone with it.
+      if (this.swapFailures > 0) {
+        this.swapFailures--
+        this.landed.set(signature, {
+          signature,
+          err: '{"InstructionError":[3,{"Custom":6003}]}',
+          customCode: 6003,
+          logs: [],
+        })
+        return
+      }
+      const pull = this.apply(signature, pda, BigInt(amount), 2)
+      if (!pull.err) {
+        this.delegateeQuote += BigInt(amount) // the pull lands in the executor's quote account…
+        this.delegateeQuote -= BigInt(amount) // …and the exact-in swap spends all of it
+        const out = BigInt(amount) * this.price
+        this.backerBase += out
+        this.boughtBy.set(signature, out)
+        this.sent.push({ sig: signature, pda, amount: BigInt(amount) })
+      }
+      this.landed.set(signature, pull)
+      return
+    }
     this.sends.push(signature)
     // Like the real chain: the same signed bytes land at most once.
     if (this.landed.has(signature)) return
@@ -95,8 +164,13 @@ export class FakeChain implements ChainPort {
     }
   }
 
-  private apply(signature: string, pda: string, amount: bigint): Landed {
-    const fail = (code: number | null, err: string): Landed => ({ signature, err, customCode: code, logs: [] })
+  private apply(signature: string, pda: string, amount: bigint, ix = 0): Landed {
+    const fail = (code: number | null, err: string): Landed => ({
+      signature,
+      err: err.replace('[0,', `[${ix},`),
+      customCode: code,
+      logs: [],
+    })
     const d = this.delegations.get(pda)
     if (!d) return fail(null, '{"InstructionError":[0,"InvalidAccountOwner"]}')
     if (d.expiry > 0n && this.nowS >= d.expiry) return fail(128, '{"InstructionError":[0,{"Custom":128}]}')

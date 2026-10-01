@@ -59,6 +59,8 @@ export interface ReceiptExtra {
   /** The permission's period, so the receipt can say "today" or "this hour". */
   periodLengthS?: number
   cluster: 'devnet' | 'mainnet' | 'localnet'
+  /** Skipped buys: the slippage bound that was not met, in percent. */
+  slippagePct?: number
 }
 
 /** Pure: the push a receipt becomes. Tested directly. */
@@ -90,6 +92,9 @@ function receiptBody(e: LedgerEvent, x: ReceiptExtra): { title: string; body: st
   if (x.capBaseUnits !== undefined) q.set('cap', formatUnits(x.capBaseUnits, e.decimals))
   if (x.nextResetTs) q.set('reset', String(x.nextResetTs))
   if (x.periodLengthS) q.set('per', String(x.periodLengthS))
+  const got =
+    e.outBaseUnits && e.outSymbol ? `${formatUnits(BigInt(e.outBaseUnits), e.outDecimals ?? 0)} ${e.outSymbol}` : ''
+  if (got) q.set('got', got)
   const url = `/alert?${q.toString()}`
   switch (e.kind) {
     case 'pull':
@@ -112,6 +117,18 @@ function receiptBody(e: LedgerEvent, x: ReceiptExtra): { title: string; body: st
       return { title: `Revoked: ${who}`, body: 'It can no longer pull anything.', url }
     case 'expired':
       return { title: `Expired: ${who}`, body: 'The chain no longer allows pulls on it.', url }
+    case 'buy':
+      return {
+        title: got ? `Bought ${got} for ${amt}` : `Bought ${who} for ${amt}`,
+        body: `Delivered to your own account. ${left} Tap for the on-chain proof.`.trim(),
+        url,
+      }
+    case 'skipped':
+      return {
+        title: `Skipped: ${who}`,
+        body: `The price moved more than ${x.slippagePct ?? 2}%. Nothing was taken.`,
+        url,
+      }
   }
 }
 

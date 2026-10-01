@@ -5,7 +5,7 @@
  */
 import { formatUnits, shortAddress } from './mandate-text.js'
 
-export type EventKind = 'pull' | 'refused' | 'granted' | 'revoked' | 'expired'
+export type EventKind = 'pull' | 'refused' | 'granted' | 'revoked' | 'expired' | 'buy' | 'skipped'
 
 export interface LedgerEvent {
   kind: EventKind
@@ -19,6 +19,10 @@ export interface LedgerEvent {
   signature: string | null
   /** 'nuntius' when our executor acted; 'other' when another app's delegatee did. */
   actor: 'nuntius' | 'other'
+  /** A buy (back permission): what it bought, delivered to the backer's own account. */
+  outBaseUnits?: string | null
+  outDecimals?: number | null
+  outSymbol?: string | null
 }
 
 export interface LiveMandate {

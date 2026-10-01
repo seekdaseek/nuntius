@@ -24,7 +24,19 @@
  */
 import type { Address, TransactionSigner } from '@solana/kit'
 import { effectiveWindow, ERR, pullInstruction, readAta, readRecurring, type RecurringState } from './mandate-chain.js'
-import type { Mandate, MandateStore, PullRow } from './mandate-store.js'
+import type { Backing, Mandate, MandateStore, PullRow } from './mandate-store.js'
+import {
+  budgetInstructions,
+  failedInstruction,
+  PULL_INDEX,
+  quoteDamm,
+  quoteDbc,
+  readLaunch,
+  swapInstruction,
+  SWAP_INDEX,
+  type Route,
+} from './meteora.js'
+import type { Connection } from '@solana/web3.js'
 import type { Receipts } from './receipts.js'
 import type { Logger } from './log.js'
 import { safeError } from './log.js'
@@ -47,11 +59,27 @@ export interface ChainPort {
   /** Receiver must exist, hold the mandate's mint, and belong to the payee. */
   receiverOk(m: Mandate): Promise<boolean>
   signPull(m: Mandate, amount: bigint): Promise<SignedTx>
+  /**
+   * Back permissions: one buy for this period — pull and swap in one signed transaction —
+   * or why not now (the curve is migrating, or has nothing left to sell).
+   */
+  prepareBuy?(m: Mandate, b: Backing, amount: bigint): Promise<PreparedBuy>
+  /** Back permissions: how much of the launch token a landed buy delivered to the backer. */
+  bought?(m: Mandate, b: Backing, signature: string): Promise<bigint | null>
   send(wire: string): Promise<void>
   status(signature: string, lastValidBlockHeight: bigint): Promise<TxStatus>
 }
 
-export function rpcChain(rpc: Rpc, delegatee: TransactionSigner, budget: ComputeBudget = PULL_BUDGET): ChainPort {
+export type PreparedBuy =
+  | { kind: 'buy'; signed: SignedTx; amountIn: bigint; minimumOut: bigint; route: Route; dammPool: string | null }
+  | { kind: 'wait'; reason: 'migrating' | 'nothing_left' }
+
+export function rpcChain(
+  rpc: Rpc,
+  delegatee: TransactionSigner,
+  budget: ComputeBudget = PULL_BUDGET,
+  conn?: Connection,
+): ChainPort {
   return {
     read: (pda) => readRecurring(rpc, pda as Address),
     async receiverOk(m) {
@@ -69,6 +97,57 @@ export function rpcChain(rpc: Rpc, delegatee: TransactionSigner, budget: Compute
         amount,
       })
       return signOnly(delegatee, [...computeBudgetInstructions(budget), ix], await latestBlockhash(rpc))
+    },
+    async prepareBuy(m, b, amount) {
+      if (!conn) throw new Error('back permissions need a web3 connection')
+      const L = await readLaunch(conn, b.pool, b.dammPool)
+      if (L.quoteMint !== m.mint) throw new Error('the launch is not priced in this permission’s token')
+      if (L.route === 'migrating' || !L.swap) return { kind: 'wait', reason: 'migrating' }
+      const nowS = Math.floor(Date.now() / 1000)
+      const slot = await conn.getSlot('confirmed')
+      const q =
+        L.route === 'dbc'
+          ? quoteDbc(L.raw.dbc!.pool, L.raw.dbc!.config, amount, b.slippageBps, nowS, slot)
+          : quoteDamm(conn, L.raw.damm!, L.quoteMint, amount, b.slippageBps, nowS, slot)
+      if (q.kind === 'wait') return q
+      const pull = await pullInstruction({
+        delegatee,
+        delegationPda: m.delegationPda as Address,
+        delegator: m.address as Address,
+        delegatorAta: m.userAta as Address,
+        receiverAta: m.receiverAta as Address, // the executor's own quote account, emptied by the swap
+        mint: m.mint as Address,
+        amount: q.amountIn,
+      })
+      const swap = await swapInstruction(conn, L.swap, {
+        delegatee: delegatee.address,
+        backerBaseAta: b.backerBaseAta,
+        amountIn: q.amountIn,
+        minimumOut: q.minimumOut,
+      })
+      const signed = await signOnly(delegatee, [...budgetInstructions(), pull, swap], await latestBlockhash(rpc))
+      return {
+        kind: 'buy',
+        signed,
+        amountIn: q.amountIn,
+        minimumOut: q.minimumOut,
+        route: L.route,
+        dammPool: L.dammPool,
+      }
+    },
+    async bought(m, b, signature) {
+      const tx = (await rpc
+        .getTransaction(signature as never, {
+          maxSupportedTransactionVersion: 0,
+          encoding: 'json',
+          commitment: 'confirmed',
+        })
+        .send()) as unknown as { meta?: { preTokenBalances?: TokenBal[]; postTokenBalances?: TokenBal[] } } | null
+      const pick = (xs?: TokenBal[]) =>
+        xs?.find((x) => x.mint === b.baseMint && x.owner === m.address)?.uiTokenAmount.amount
+      const after = pick(tx?.meta?.postTokenBalances)
+      if (after === undefined) return null
+      return BigInt(after) - BigInt(pick(tx?.meta?.preTokenBalances) ?? '0')
     },
     send: (wire) => sendWire(rpc, wire),
     status: (sig, lvbh) => statusOf(rpc, sig, lvbh),
@@ -113,6 +192,8 @@ export type Outcome =
   | 'failed'
   | 'claimed_elsewhere'
   | 'error'
+  | 'buy_waiting'
+  | 'skipped'
 
 export class Executor {
   private readonly o: Required<Omit<ExecutorOptions, 'store' | 'chain' | 'receipts' | 'log'>> &
@@ -213,11 +294,16 @@ export class Executor {
     if (w.periodIndex < 0n) return 'not_started'
     const periodStart = Number(w.periodStart)
 
+    const back = this.o.store.backingOf(m.id)
     const existing = this.o.store.getPull(m.delegationPda, periodStart)
     if (existing) {
+      if (existing.state === 'skipped' && back) return this.retryBuy(m, back, existing, w.remaining)
       if (existing.state !== 'signed') return 'period_done'
       return this.resolve(m, existing)
     }
+    // A buy is sent at a jittered moment inside its period, not at the boundary, so its
+    // timing is not a free signal for anyone wanting to trade ahead of it.
+    if (back && Number(nowS) < periodStart + buyJitterS(m.id, periodStart, m.periodLengthS)) return 'not_started'
 
     const amount = BigInt(m.pullAmount)
     if (w.remaining < amount) {
@@ -232,13 +318,20 @@ export class Executor {
       throw new Error('receiver account missing or not the payee’s account for this mint')
     }
 
-    const signed = await this.o.chain.signPull(m, amount)
+    let signed: SignedTx
+    let claimAmount = amount
+    if (back) {
+      const p = await this.prepareBuy(m, back, amount)
+      if (p.kind === 'wait') return 'buy_waiting'
+      signed = p.signed
+      claimAmount = p.amountIn
+    } else signed = await this.o.chain.signPull(m, amount)
     const claimed = this.o.store.claimPull(
       {
         mandateId: m.id,
         delegationPda: m.delegationPda,
         periodStart,
-        amount: amount.toString(),
+        amount: claimAmount.toString(),
         signature: signed.signature,
         lastValidBlockHeight: signed.lastValidBlockHeight.toString(),
       },
@@ -287,8 +380,20 @@ export class Executor {
         this.o.log.error('executor_gave_up', { mandate: m.id, periodStart: row.periodStart, attempts: row.attempts })
         return 'failed'
       }
-      const signed = await this.o.chain.signPull(m, BigInt(row.amount))
-      this.o.store.reattemptPull(row.id, signed.signature, signed.lastValidBlockHeight.toString(), this.o.now())
+      const back = this.o.store.backingOf(m.id)
+      let signed: SignedTx
+      let amount: string | undefined
+      if (back) {
+        // A fresh quote: the old one is as stale as the blockhash.
+        const p = await this.prepareBuy(m, back, BigInt(row.amount))
+        if (p.kind === 'wait') {
+          this.o.store.finishPull(row.id, 'skipped', null, `buy_${p.reason}`, this.o.now())
+          return 'buy_waiting'
+        }
+        signed = p.signed
+        amount = p.amountIn.toString()
+      } else signed = await this.o.chain.signPull(m, BigInt(row.amount))
+      this.o.store.reattemptPull(row.id, signed.signature, signed.lastValidBlockHeight.toString(), this.o.now(), amount)
       this.o.log.warn('executor_reattempt', {
         mandate: m.id,
         old: row.signature,
@@ -300,10 +405,12 @@ export class Executor {
     }
 
     const landed = st.landed
+    const back = this.o.store.backingOf(m.id)
     if (!landed.err) {
       this.o.store.finishPull(row.id, 'landed', null, null, this.o.now())
       const after = await this.o.chain.read(m.delegationPda)
       const w = after.exists ? effectiveWindow(after, BigInt(Math.floor(this.o.now() / 1000))) : null
+      const got = back ? await this.o.chain.bought?.(m, back, landed.signature).catch(() => null) : null
       await this.o.receipts.emit(
         m.address,
         {
@@ -317,6 +424,14 @@ export class Executor {
           symbol: m.symbol,
           signature: landed.signature,
           actor: 'nuntius',
+          ...(back
+            ? {
+                kind: 'buy' as const,
+                outBaseUnits: got == null ? null : got.toString(),
+                outDecimals: back.baseDecimals,
+                outSymbol: back.baseSymbol,
+              }
+            : {}),
         },
         {
           remainingBaseUnits: w?.remaining,
@@ -328,7 +443,37 @@ export class Executor {
       return 'landed'
     }
 
-    if (landed.customCode === ERR.AmountExceedsPeriodLimit) {
+    // A buy whose swap missed its minimum-out: the whole transaction failed, so nothing was
+    // pulled. One receipt per period; tried again later in the period with a fresh quote.
+    if (back && failedInstruction(landed.err) === SWAP_INDEX) {
+      this.o.store.finishPull(row.id, 'skipped', landed.customCode, 'swap_minimum_out', this.o.now())
+      const delay = Math.min(this.o.backoffBaseMs * 2 ** row.attempts, this.o.backoffMaxMs)
+      this.o.store.backoffPull(
+        row.id,
+        this.o.now() + Math.round(delay * (0.5 + this.o.random() / 2)),
+        'swap_minimum_out',
+        this.o.now(),
+      )
+      await this.o.receipts.emit(
+        m.address,
+        {
+          kind: 'skipped',
+          at: this.o.now(),
+          delegationPda: m.delegationPda,
+          delegatee: m.delegatee,
+          label: m.label || null,
+          amountBaseUnits: row.amount,
+          decimals: m.decimals,
+          symbol: m.symbol,
+          signature: `skipped:${m.delegationPda}:${row.periodStart}`,
+          actor: 'nuntius',
+        },
+        { slippagePct: back.slippageBps / 100 },
+      )
+      return 'skipped'
+    }
+
+    if (landed.customCode === ERR.AmountExceedsPeriodLimit && (!back || failedInstruction(landed.err) === PULL_INDEX)) {
       this.o.store.finishPull(row.id, 'refused', landed.customCode, 'AmountExceedsPeriodLimit', this.o.now())
       await this.refusalReceipt(m, landed.signature, BigInt(row.amount))
       return 'refused'
@@ -344,6 +489,43 @@ export class Executor {
     const still = await this.o.chain.read(m.delegationPda)
     if (!still.exists) return this.end(m, 'revoked')
     return 'failed'
+  }
+
+  /** Compose and sign a buy; the route follows the token and is remembered when it moves. */
+  private async prepareBuy(m: Mandate, b: Backing, amount: bigint): Promise<PreparedBuy> {
+    if (!this.o.chain.prepareBuy) throw new Error('this chain port cannot buy')
+    const p = await this.o.chain.prepareBuy(m, b, amount)
+    if (p.kind === 'buy' && (p.route !== b.route || p.dammPool !== b.dammPool)) {
+      this.o.store.setRoute(m.id, p.route, p.dammPool)
+      this.o.log.info('executor_route_switch', {
+        mandate: m.id,
+        from: b.route,
+        to: p.route,
+        pool: p.dammPool ?? b.pool,
+      })
+    }
+    if (p.kind === 'wait') this.o.log.info('executor_buy_waiting', { mandate: m.id, pool: b.pool, reason: p.reason })
+    return p
+  }
+
+  /** A skipped buy, tried again later in its period with a fresh quote, up to maxAttempts. */
+  private async retryBuy(m: Mandate, b: Backing, row: PullRow, remaining: bigint): Promise<Outcome> {
+    if (row.attempts >= this.o.maxAttempts) return 'period_done'
+    if (this.o.now() < row.nextAttemptAt) return 'skipped'
+    const amount = BigInt(m.pullAmount) < remaining ? BigInt(m.pullAmount) : remaining
+    if (amount <= 0n) return 'period_done'
+    const p = await this.prepareBuy(m, b, amount)
+    if (p.kind === 'wait') return 'buy_waiting'
+    this.o.store.reattemptPull(
+      row.id,
+      p.signed.signature,
+      p.signed.lastValidBlockHeight.toString(),
+      this.o.now(),
+      p.amountIn.toString(),
+    )
+    this.o.log.info('executor_buy_retry', { mandate: m.id, sig: p.signed.signature, attempt: row.attempts + 1 })
+    await this.o.chain.send(p.signed.wire)
+    return this.settle(m, this.o.store.getPull(m.delegationPda, row.periodStart)!, p.signed.wire)
   }
 
   private async refusalReceipt(m: Mandate, signature: string, amount: bigint): Promise<void> {
@@ -409,6 +591,23 @@ export class Executor {
       await this.o.sleep(500)
     }
   }
+}
+
+interface TokenBal {
+  mint: string
+  owner?: string
+  uiTokenAmount: { amount: string }
+}
+
+/**
+ * Seconds after a period starts before its buy is sent: up to a tenth of the period, at
+ * most 10 minutes. Fixed per (permission, period), so every tick agrees on it.
+ */
+export function buyJitterS(mandateId: string, periodStart: number, periodLengthS: number): number {
+  let h = 2166136261
+  for (const c of `${mandateId}:${periodStart}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0
+  const span = Math.min(Math.floor(periodLengthS / 10), 600)
+  return span > 0 ? h % span : 0
 }
 
 /** Runs tick() on an interval. Returns stop(). */
