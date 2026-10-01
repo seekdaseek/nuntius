@@ -11,7 +11,7 @@ Built for the Solana Seeker. Android only: Mobile Wallet Adapter and Seed Vault 
 |                              |                                                                      |
 | ---------------------------- | -------------------------------------------------------------------- |
 | Judges, start here           | [JUDGE_GUIDE.md](JUDGE_GUIDE.md): install and verify in five minutes |
-| The APK                      | {{RELEASE_URL}}, sha256 `{{APK_SHA256}}`                             |
+| The APK                      | https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0, sha256 `474aef66b1646419957164ea57653f3360b5936d2d13f8e52d589a626e00f9de`                             |
 | Demo video (1:45)            | https://youtu.be/rXs5zppcYKs                                         |
 | Pitch video (1:33)           | https://youtu.be/Zq1veG63Snw                                         |
 | Threat model                 | [SECURITY.md](SECURITY.md): what the cap bounds and what it does not |
@@ -73,7 +73,7 @@ The program account is **upgradeable** (upgrade authority `DXtFpbPjcn2hxPnw79x1P
 
 Nothing below is claimed from a successful build. Each line was executed and the result observed on the Seeker (`SM02E4060327059`), on chain with a signature, or against the real program on a local validator. Anything not seen on the phone is marked **UNTESTED**.
 
-**The release:** APK `nuntius-1.0.0.apk` at {{RELEASE_URL}}, sha256 `{{APK_SHA256}}`, signed with the release key (certificate `71:70:5E:DD…35:F8`, the one `assetlinks.json` names).
+**The release:** APK `nuntius-1.0.0.apk` at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0, sha256 `474aef66b1646419957164ea57653f3360b5936d2d13f8e52d589a626e00f9de`, signed with the release key (certificate `71:70:5E:DD…35:F8`, the one `assetlinks.json` names).
 
 ### On the Seeker, on mainnet: round 4, 1 October 2026 (build `57eb4e1`)
 
