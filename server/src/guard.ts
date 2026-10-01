@@ -16,7 +16,7 @@
  * signed in is not replayed as a burst of pushes.
  */
 import type { Address } from '@solana/kit'
-import { effectiveWindow, listDelegations, type DelegationView } from './mandate-chain.js'
+import { effectiveWindow, listDelegations, type DelegationScans, type DelegationView } from './mandate-chain.js'
 import type { MandateStore } from './mandate-store.js'
 import type { Receipts } from './receipts.js'
 import type { Logger } from './log.js'
@@ -42,9 +42,10 @@ export interface GuardChain {
   effect(signature: string, owner: string, mint: string, pda: string): Promise<TxEffect>
 }
 
-export function rpcGuardChain(rpc: Rpc): GuardChain {
+/** With `scans`, every good scan also refreshes the permission list's last good copy. */
+export function rpcGuardChain(rpc: Rpc, scans?: DelegationScans): GuardChain {
   return {
-    list: (owner) => listDelegations(rpc, owner as Address),
+    list: (owner) => (scans ? scans.fresh(owner) : listDelegations(rpc, owner as Address)),
     async signatures(pda, until) {
       const r = await rpc
         .getSignaturesForAddress(pda as Address, {

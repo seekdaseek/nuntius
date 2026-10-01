@@ -15,6 +15,8 @@ import { Executor, rpcChain, startExecutor } from './executor.js'
 import { Guard, rpcGuardChain, startGuard } from './guard.js'
 import { runDigests } from './digest-scheduler.js'
 import { liveMandatesFor } from './mandates-api.js'
+import { DelegationScans } from './mandate-chain.js'
+import { pageConnection, withPagedProgramAccounts } from './program-accounts.js'
 import { createLogger } from './log.js'
 import { bootLines } from './boot-log.js'
 
@@ -100,7 +102,9 @@ async function loadMandateDelegatee(path: string | null, cluster: 'mainnet' | 'l
 
 let mandateDeps: Parameters<typeof createApp>[4]
 if (mandateConfig) {
-  const rpc = createSolanaRpc(mandateConfig.rpcUrl)
+  // Helius deprioritizes unpaginated getProgramAccounts: both clients page with getProgramAccountsV2 there.
+  const rpc = withPagedProgramAccounts(createSolanaRpc(mandateConfig.rpcUrl), mandateConfig.rpcUrl)
+  const scans = new DelegationScans(rpc)
   const delegatee = await loadMandateDelegatee(mandateConfig.delegateePath, mandateConfig.cluster)
   const mandates = new MandateStore(db)
   const push: PushPort | null = fcm
@@ -119,11 +123,11 @@ if (mandateConfig) {
     : null
   const receipts = new Receipts(mandates, push, log, mandateConfig.cluster)
   // The Meteora SDKs speak web3.js: one connection to the same RPC, for back permissions and launches.
-  const conn = new Connection(mandateConfig.rpcUrl, 'confirmed')
+  const conn = pageConnection(new Connection(mandateConfig.rpcUrl, 'confirmed'))
   const executor = new Executor({ store: mandates, chain: rpcChain(rpc, delegatee, PULL_BUDGET, conn), receipts, log })
   const guard = new Guard({
     store: mandates,
-    chain: rpcGuardChain(rpc),
+    chain: rpcGuardChain(rpc, scans),
     receipts,
     log,
     addresses: () => [...new Set([...store.pushAddresses(), ...mandates.activeMandates().map((m) => m.address)])],
@@ -151,6 +155,7 @@ if (mandateConfig) {
     executor,
     conn,
     origin: `https://${config.domain}`,
+    scans,
   }
   log.info('mandates_enabled', {
     cluster: mandateConfig.cluster,

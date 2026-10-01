@@ -10,6 +10,7 @@ import type { Address } from '@solana/kit'
 import {
   buildGrantTx,
   buildRevokeTx,
+  DelegationScans,
   ERR,
   listDelegations,
   pullInstruction,
@@ -17,11 +18,13 @@ import {
   readRecurring,
 } from './mandate-chain.js'
 import { signAndSend } from './tx.js'
+import { withPagedProgramAccounts } from './program-accounts.js'
 import {
   assertOk,
   ataFor,
   deviceSignAndSend,
   funded,
+  LOCALNET_RPC,
   mintTo,
   requireLocal,
   requiredSigners,
@@ -124,6 +127,12 @@ test('mandate life cycle on the real program', { skip: skipLocalnet, timeout: 12
     assert.equal(all.length, 2)
     assert.deepEqual(new Set(all.map((d) => d.delegatee)), new Set([delegatee.address, merchant.address]))
     assert.ok(all.every((d) => d.kind === 'recurring'))
+    // Localnet keeps the plain getProgramAccounts (V2 paging is Helius only): same client, same answer.
+    const plain = withPagedProgramAccounts(rpc, LOCALNET_RPC)
+    assert.equal(plain, rpc)
+    const scan = await new DelegationScans(plain).orLast(owner.address)
+    assert.equal(scan.stale, false)
+    assert.deepEqual(new Set(scan.list.map((d) => d.address)), new Set(all.map((d) => d.address)))
   })
 
   await t.test('revoke one of two: delegation closed, authority kept for the other', async () => {

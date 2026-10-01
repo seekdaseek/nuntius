@@ -28,6 +28,7 @@ import {
   buildGrantTx,
   buildRevokeTx,
   effectiveWindow,
+  DelegationScans,
   listDelegations,
   readAta,
   readRecurring,
@@ -65,6 +66,8 @@ export interface MandateApiDeps {
   /** Subscription launches (Meteora): a web3 connection for the SDKs, and the public origin for metadata. */
   conn?: Connection
   origin?: string
+  /** The last good delegation scan per wallet, shared with the guard. */
+  scans?: DelegationScans
 }
 
 class HttpError extends Error {
@@ -88,6 +91,7 @@ export function freshNonce(): number {
 export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps): void {
   const now = deps.now ?? Date.now
   const { mandates, cfg, rpc } = deps
+  const scans = deps.scans ?? new DelegationScans(rpc, now)
 
   const auth = (body: Body) => {
     const session = typeof body.session === 'string' && SESSION_TOKEN_RE.test(body.session) ? body.session : null
@@ -452,7 +456,9 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
 
   route('/api/mandates/list', async (body) => {
     const a = auth(body)
-    const onChain = await listDelegations(rpc, a.address as Address)
+    // A failed chain read shows the last good list and its time, never an empty one.
+    const scan = await scans.orLast(a.address)
+    const onChain = scan.list
     const byPda = new Map(onChain.map((d) => [d.address as string, d]))
     const own = mandates.listMandates(a.address).filter((m) => m.status === 'active' || m.status === 'pending')
     const ownPdas = new Set(own.map((m) => m.delegationPda))
@@ -517,6 +523,8 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       demo: cfg.demoEndpoints,
       mine,
       others,
+      asOf: scan.asOfMs,
+      stale: scan.stale,
       tokenAccount: { delegate: ata.delegate, balance: ata.balance },
       tokenAccounts,
     }

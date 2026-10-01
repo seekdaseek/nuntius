@@ -287,7 +287,8 @@ export interface DelegationView {
 /**
  * Every delegation the wallet has granted through the program, to anyone.
  * This is the guard's source of truth: it is not limited to delegations
- * nuntius created. Uses getProgramAccounts with a delegator memcmp.
+ * nuntius created. Uses getProgramAccounts with a delegator memcmp (paged on Helius:
+ * see program-accounts.ts).
  */
 export async function listDelegations(rpc: Rpc, owner: Address): Promise<DelegationView[]> {
   const all = await fetchDelegationsByDelegator(rpc as never, owner, PROGRAM_ID as Address)
@@ -309,6 +310,39 @@ export async function listDelegations(rpc: Rpc, owner: Address): Promise<Delegat
       amount: d.kind === 'fixed' ? s('amount') : null,
     }
   })
+}
+
+/**
+ * The last good delegation scan per wallet, with its time. A failed scan (an RPC refusing or
+ * timing out) must never read as "no permissions": the permission list falls back to the
+ * last good list and says how old it is. Every successful scan, the guard's included,
+ * refreshes it. Kept in memory; the guard rescans every wallet within a minute of a start.
+ */
+export class DelegationScans {
+  private readonly last = new Map<string, { list: DelegationView[]; atMs: number }>()
+  constructor(
+    private readonly rpc: Rpc,
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  /** A fresh scan, or the error: for anything that acts on the result (grants, revokes, the guard). */
+  async fresh(owner: string): Promise<DelegationView[]> {
+    const list = await listDelegations(this.rpc, owner as Address)
+    this.last.set(owner, { list, atMs: this.now() })
+    return list
+  }
+
+  /** A fresh scan, else the last good one marked stale; throws only when there never was one. */
+  async orLast(owner: string): Promise<{ list: DelegationView[]; asOfMs: number; stale: boolean }> {
+    try {
+      const list = await this.fresh(owner)
+      return { list, asOfMs: this.last.get(owner)!.atMs, stale: false }
+    } catch (e) {
+      const l = this.last.get(owner)
+      if (!l) throw e
+      return { list: l.list, asOfMs: l.atMs, stale: true }
+    }
+  }
 }
 
 export interface RecurringState {
