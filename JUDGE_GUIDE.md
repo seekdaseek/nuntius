@@ -74,6 +74,15 @@ Things worth reading in the output:
 
 `npm test` without a validator passes 43 tests and reports the 6 localnet suites as skipped. At the repo root, `npm run test:core` runs the app's 27 logic tests, and `npm run test:e2e` runs 10 tests on the web build (cold-start tap, fonts, layout, BACK).
 
+## 4. Subscription launches (Meteora DBC)
+
+- **On the phone:** New permission → **Back a Seeker builder** → paste a DBC pool → one Seed Vault approval. The first buy comes within about 10 minutes. Its receipt reads "Bought … for … USDC/SKR" and opens on Explorer, where the bought tokens are in the backer's own account.
+- **Launching:** **Launch your own token** (Seeker-verified wallets only) creates a DBC pool priced in SKR or USDC with one signature.
+- **Without a phone:**
+  - `GET https://<server>/api/launch/<pool>` returns the curve's progress, the route and the committed recurring demand.
+  - The buy composer and its tests are `server/src/meteora.ts` and `server/src/meteora.test.ts`.
+  - The executor tests are `server/src/executor-back.test.ts`: custody, skip, route switch, idempotency.
+
 ## Where to look in the code
 
 | Question                                | File                                                              |

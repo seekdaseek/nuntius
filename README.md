@@ -229,6 +229,49 @@ nuntius offers **SKR next to USDC**: recurring SKR payments, approved once in Se
 - **App.** The token choice on New permission shows only what the server offers. Receipts, the widget, the digest and the home sentence carry each mint's own symbol and decimals.
 - **Evidence.** `server/src/mints.localnet.test.ts` runs two test mints against the real program: per-mint ceilings, one authority per mint (each granted with one signature), the executor pulling both, and receipts and widget rows with the right symbols. On mainnet from the Seeker (1 Oct): a 25 SKR a week grant, its first pull 5 s later at 5,961 compute units, the receipt "25 SKR · 0 of 25 left this week", and the revoke.
 
+## Subscription launches (Meteora)
+
+A builder launches a token on a Meteora **Dynamic Bonding Curve** (DBC), priced in SKR or USDC. Backers grant a capped recurring permission in one Seed Vault approval: _"Back NATX: 5 USDC every week, for 90 days."_ Every period, one executor transaction:
+
+1. pulls the backer's amount through the Subscriptions program, which enforces the cap, into nuntius's own quote account;
+2. buys the launch token with exactly that amount: a `swap2` exact-in with a 2% minimum-out;
+3. writes the bought tokens straight into the **backer's own token account**, which the backer created in the grant transaction.
+
+If the swap cannot meet its minimum-out, the whole transaction fails and nothing is pulled. The receipt then reads _"Skipped: the price moved more than 2%. Nothing was taken."_ and the buy is tried again later in the period. When backers fill the curve, the pool migrates to **DAMM v2** and the buy follows the token there. A permission waits rather than buying while the curve is migrating.
+
+**Custody invariant.** The executor's quote and base balances are the same after every buy as before it: the pull lands and the exact-in swap spends all of it in the same transaction, and the output goes to the backer. Exact-in either fills completely or fails; it never part-fills. Near the end of the curve the buy is cut to what the curve still takes, so the last buy does not fail forever. Asserted in `server/src/executor-back.test.ts`; on mainnet, in the 1 October simulations (below).
+
+**What the cap still bounds, and what it does not.** The Subscriptions program bounds how much quote leaves the backer per period and over the permission's life (the finite allowance Seed Vault shows). It does not bound the price: the 2% minimum-out bounds slippage per buy, and a curve's price rises as it fills. A backer who wants out revokes with one approval; the tokens already bought are in their own wallet.
+
+**The launch preset** (`server/src/meteora.ts`, `launchPreset`) is made for many small, regular buys:
+
+| Choice                                                       | Why                                                                                                                                      |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Flat 1% fee from the first buy                               | No launch fee scheduler, so a weekly backer pays what a day-one buyer pays, and there is no early window to front-run                    |
+| Fees collected in the quote token                            | The creator's 50% share accrues in SKR or USDC, not in the launched token                                                                |
+| 1 billion supply, 6 decimals, 20% kept for the migrated pool | A plain, readable supply                                                                                                                 |
+| Migration to DAMM v2 at a small threshold                    | 50,000 SKR or 1,000 USDC, so a launch backed by a few people's weekly buys reaches its regular pool                                      |
+| All LP permanently locked at migration                       | Liquidity cannot be pulled                                                                                                               |
+| Metadata immutable                                           | The metadata JSON is served at `/m/<mint>.json`. The URI is kept under 100 characters, so the launch transaction stays under 1,232 bytes |
+
+**In the app:**
+
+- **Back a launch:** paste a pool. The "Back a Seeker builder" starter opens this flow.
+- **Launch a token:** verified Seekers only, one signature.
+- **The permission card:** what it buys, what it has bought, and the curve's progress.
+- **Receipts:** "Bought 1234 NATX for 5 USDC" with an Explorer link, and skip receipts.
+
+`GET /api/launch/:pool` is public and read-only. It serves curve progress, the route, and the launch's committed recurring demand: active backing caps, per week, and the number of backers.
+
+**Proven on mainnet by simulation, 1 October.** Read-only, from the Mac, with no signature: `tools/mac/09-spike-dbc.sh` on the ops branch.
+
+| Transaction             | Size                               | Compute                             | Result                                                                                  |
+| ----------------------- | ---------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------- |
+| Buy on a live DBC pool  | 858 B                              | 38,869 CU (pull 8,661, swap 29,908) | Executor's quote account 0 before and after; tokens with the backer                     |
+| Buy on a DAMM v2 pool   | 825 B                              | 25,611 CU                           | The same                                                                                |
+| Grant + ATA instruction | 580 B                              | 29,566 CU                           | Allowance finite (5,000,000 base units, not u64::MAX)                                   |
+| Launch                  | 1,093 B, signed once by the device | —                                   | Stopped on rent: the account had 0.0228 SOL. Proven on the device with a funded account |
+
 ## Architecture
 
 ```
@@ -318,7 +361,7 @@ The full threat model is in [SECURITY.md](SECURITY.md). In short:
 - **In the window.** From `819382d` (22 September) onward: the mainnet delegation path and the landed mainnet proof (22 September), then everything in _What this build adds_ above.
 - **Hashes and history.** Measure the split with `git log --before=2026-09-14 --oneline | wc -l`. Commit history up to `f25a9e9` is unrewritten. Later commits keep their original timestamps (author and committer dates) and are published under the repository owner's name.
 - **No reused code.** Everything in this repository was written for these two events. **No code was reused** from any earlier project.
-- **Third-party components.** The vendored component is `.agents/skills/solana-dev`, the Solana Foundation's published development skill, included under its own MIT licence and pinned by hash in `skills-lock.json`. The on-chain program is the Foundation's Subscriptions program, used as deployed. Its source is only fetched and built for local tests by `scripts/localnet.sh`; nothing of it is vendored here.
+- **Third-party components.** The vendored component is `.agents/skills/solana-dev`, the Solana Foundation's published development skill, included under its own MIT licence and pinned by hash in `skills-lock.json`. The on-chain program is the Foundation's Subscriptions program, used as deployed. Its source is only fetched and built for local tests by `scripts/localnet.sh`; nothing of it is vendored here. Meteora's DBC and DAMM v2 are reached through their MIT SDKs, `@meteora-ag/dynamic-bonding-curve-sdk` 1.5.13 and `@meteora-ag/cp-amm-sdk` 1.5.1 (both MIT on npm, re-checked 1 Oct 2026). Meteora's programs are used as deployed; none of their source is fetched, built or vendored. Through those SDKs the server also depends on `@solana/web3.js` 1.x. That brings in `rpc-websockets` (LGPL-3.0-only), used unmodified as a library, and `chain` (MIT), which cp-amm-sdk lists but never imports.
 
 ---
 

@@ -80,6 +80,17 @@ State these plainly to any user:
 | Open-ended permissions                                             | Every nuntius mandate has an expiry of at most 365 days. There is a server-side beta ceiling per period (`MANDATE_MAX_PER_PERIOD`, default 100).                                                                                                                                                                                       | API localnet test `bad_until`, `over_beta_ceiling`                                                                                         |
 | Fee drain through many hourly mandates                             | Tier limits cap mandates at 1 (basic) or 10 (Seeker). The minimum period is 1 hour. The executor pays 7,000 lamports per pull: the 5,000 base fee plus a 2,000-lamport priority fee (40,000-unit limit at 50,000 micro-lamports a unit; `PULL_BUDGET` in `server/src/tx.ts`).                                                          | Documented; no per-wallet fee budget: **NOT BUILT**                                                                                        |
 
+## 4a. Subscription launches: predictable buys
+
+A back permission buys the same amount every period, so its buys are **predictable**, and predictable buys can be sandwiched: someone buys just before, sells just after, and the backer pays a worse price. What limits that:
+
+- **Minimum-out.** Every buy carries a minimum-out of 98% of a fresh quote. A sandwich that moves the price more than 2% makes the whole transaction fail, and the pull fails with it: nothing is taken, the backer gets a "Skipped" receipt, and the buy is tried again later in the period with a fresh quote.
+- **Jitter.** A buy is not sent at the period boundary. It waits a fixed but unpredictable delay, up to a tenth of the period and at most 10 minutes, derived from the permission and the period.
+- **Priority fee.** The transaction carries a compute-unit price, so it is scheduled promptly once sent.
+- **Atomicity.** Pull and swap are one transaction. The executor never holds a backer's quote or token between them: its balances are the same after every buy. The tokens go to the backer's own token account, which the backer creates in the grant.
+
+What is **not** bounded: the price. The cap bounds how much quote leaves the backer, not what it buys; a bonding curve's price rises as it fills. Within 2% per buy, a sandwich is possible; the backer accepts that bound in the sentence they approve.
+
 ## 5. Dependencies
 
 - **Server**: `npm audit` → **0 vulnerabilities** (measured 2026-09-27). Versions are pinned exactly.
