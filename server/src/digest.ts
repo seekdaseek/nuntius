@@ -44,12 +44,20 @@ export interface Digest {
 const who = (e: { label: string | null; delegatee: string }) => e.label ?? shortAddress(e.delegatee)
 
 /**
- * Summarises the last 24 hours. The title is the one line a lock screen shows,
- * so it leads with anything that needs attention: a refusal or a new grant the
- * user may not have made.
+ * Summarises what happened since `sinceMs`: the previous digest when there was
+ * one, else the last 24 hours. The title is the one line a lock screen shows,
+ * so it leads with anything that needs attention, and it names its window
+ * truthfully (device check 10, 1 Oct: "2 pulls refused … overnight" counted a
+ * refusal from before the previous digest).
  */
-export function buildDigest(events: LedgerEvent[], live: LiveMandate[], nowMs: number): Digest {
-  const since = nowMs - 24 * 3600 * 1000
+export function buildDigest(
+  events: LedgerEvent[],
+  live: LiveMandate[],
+  nowMs: number,
+  sinceMs: number | null = null,
+): Digest {
+  const since = sinceMs ?? nowMs - 24 * 3600 * 1000
+  const window = sinceMs === null ? 'in the last 24 hours' : 'since your last digest'
   const recent = events.filter((e) => e.at >= since && e.at <= nowMs).sort((a, b) => a.at - b.at)
   const pulls = recent.filter((e) => e.kind === 'pull')
   const refused = recent.filter((e) => e.kind === 'refused')
@@ -92,10 +100,10 @@ export function buildDigest(events: LedgerEvent[], live: LiveMandate[], nowMs: n
 
   let title: string
   if (refused.length > 0)
-    title = `${refused.length} pull${refused.length > 1 ? 's' : ''} refused by the chain overnight`
+    title = `${refused.length} pull${refused.length > 1 ? 's' : ''} refused by the chain ${window}`
   else if (granted.some((g) => g.actor === 'other')) title = 'A new permission appeared on your wallet'
-  else if (pulls.length > 0) title = `${pulls.length} pull${pulls.length > 1 ? 's' : ''} overnight: ${movedText} moved`
-  else title = 'Quiet night, nothing moved'
+  else if (pulls.length > 0) title = `${pulls.length} pull${pulls.length > 1 ? 's' : ''} ${window}: ${movedText} moved`
+  else title = `Nothing moved ${window}`
 
   const capsLeft =
     live.length === 0

@@ -225,7 +225,7 @@ test('mandatum API end to end on the real program', { skip: skipLocalnet, timeou
     assert.equal(c.json.days.length, 1, 'punch-card days returned')
     assert.equal((await call('/api/clock-in', { tzOffsetMin: 180 })).json.firstToday, false)
     const g = await call('/api/digest', { tzOffsetMin: 180 })
-    assert.equal(g.json.digest.title, '1 pull refused by the chain overnight')
+    assert.equal(g.json.digest.title, '1 pull refused by the chain in the last 24 hours')
     assert.equal(g.json.digest.totals.moved.TUSD, '2.5')
     assert.equal(g.json.streak.clockedInToday, true)
     const p = await call('/api/digest/prefs', { hour: 8, tzOffsetMin: 180 })
@@ -321,8 +321,36 @@ test('digest scheduler sends once per local day, Seeker tier only', async () => 
   assert.deepEqual(await runDigests(deps, at8 - 3600_000), [], 'before the hour')
   assert.deepEqual(await runDigests(deps, at8), ['Seeker1111111111111111111111111111111111111'])
   assert.deepEqual(await runDigests(deps, at8 + 60_000), [], 'once per day')
-  assert.equal(sent[0], 'Seeker1111111111111111111111111111111111111:Quiet night, nothing moved')
+  assert.equal(sent[0], 'Seeker1111111111111111111111111111111111111:Nothing moved in the last 24 hours')
   assert.deepEqual(await runDigests(deps, at8 + 24 * 3600_000), ['Seeker1111111111111111111111111111111111111'])
+  assert.equal(sent[1], 'Seeker1111111111111111111111111111111111111:Nothing moved since your last digest')
+  // A refusal before a digest is in that digest only; the next counts from it.
+  const refusal = (at: number, sig: string) =>
+    mandates.addEvent('Seeker1111111111111111111111111111111111111', {
+      kind: 'refused',
+      at,
+      delegationPda: 'ForeignPda',
+      delegatee: 'D',
+      label: 'Gym',
+      amountBaseUnits: null,
+      decimals: 6,
+      symbol: 'USDC',
+      signature: sig,
+      actor: 'other',
+    })
+  refusal(at8 + 30 * 3600_000, 'r1') // between the 2nd and 3rd digest
+  assert.deepEqual(await runDigests(deps, at8 + 48 * 3600_000), ['Seeker1111111111111111111111111111111111111'])
+  assert.equal(
+    sent[2],
+    'Seeker1111111111111111111111111111111111111:1 pull refused by the chain since your last digest',
+  )
+  refusal(at8 + 60 * 3600_000, 'r2')
+  assert.deepEqual(await runDigests(deps, at8 + 72 * 3600_000), ['Seeker1111111111111111111111111111111111111'])
+  assert.equal(
+    sent[3],
+    'Seeker1111111111111111111111111111111111111:1 pull refused by the chain since your last digest',
+    'r1, 42 hours old, is not counted again',
+  )
 })
 
 test('digest: a UTC+3 user who sets 19:00 at 18:39 gets one digest at 19:00, none before', async () => {

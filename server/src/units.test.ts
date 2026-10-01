@@ -170,7 +170,7 @@ test('digest leads with refusals, sums exactly, and lists caps left', () => {
     ],
     now,
   )
-  assert.equal(d.title, '1 pull refused by the chain overnight')
+  assert.equal(d.title, '1 pull refused by the chain in the last 24 hours')
   assert.equal(d.totals.pulls, 2)
   assert.equal(d.totals.moved.USDC, '7.4')
   assert.deepEqual(d.expiringSoon, ['Rent'])
@@ -178,14 +178,23 @@ test('digest leads with refusals, sums exactly, and lists caps left', () => {
   assert.match(d.body, /Tap to clock in/)
 
   const quiet = buildDigest([], [], now)
-  assert.equal(quiet.title, 'Quiet night, nothing moved')
+  assert.equal(quiet.title, 'Nothing moved in the last 24 hours')
   assert.match(quiet.body, /^No live permissions\./)
   const pulled = buildDigest(
     [ev({ amountBaseUnits: '50000' }), ev({ amountBaseUnits: '25000000', symbol: 'SKR', label: 'Club' })],
     [],
     now,
   )
-  assert.equal(pulled.title, '2 pulls overnight: 0.05 USDC and 25 SKR moved')
+  assert.equal(pulled.title, '2 pulls in the last 24 hours: 0.05 USDC and 25 SKR moved')
+  // Since the previous digest: a refusal from before it is not counted again.
+  const sinceLast = buildDigest(
+    [ev({ kind: 'refused', at: now - 29 * 3_600_000 }), ev({ kind: 'refused', at: now - 3_600_000 })],
+    [],
+    now,
+    now - 24 * 3_600_000,
+  )
+  assert.equal(sinceLast.title, '1 pull refused by the chain since your last digest')
+  assert.equal(sinceLast.totals.refused, 1)
   const foreign = buildDigest([ev({ kind: 'granted', actor: 'other', label: null })], [], now)
   assert.equal(foreign.title, 'A new permission appeared on your wallet')
   assert.match(foreign.lines[0]!, /granted outside nuntius/)
@@ -337,7 +346,7 @@ test('push: one tray tag per permission, the digest on its own channel, the url 
   })
   assert.equal(body.message.data.url, pulled.url, 'the tap target rides in data for every app state')
   const digest = fcmParts({
-    title: 'Quiet night, nothing moved',
+    title: 'Nothing moved in the last 24 hours',
     body: 'x',
     url: '/digest?source=digest',
     channel: 'digest',

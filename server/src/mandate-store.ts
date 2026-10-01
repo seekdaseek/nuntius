@@ -162,6 +162,8 @@ export function migrateMandates(db: Database.Database): void {
     (db.prepare('PRAGMA table_info(digest_prefs)').all() as { name: string }[]).map((c) => c.name),
   )
   if (!prefCols.has('saved_at')) db.exec('ALTER TABLE digest_prefs ADD COLUMN saved_at INTEGER')
+  // When the last digest went out: the next one counts from there.
+  if (!prefCols.has('last_sent_at')) db.exec('ALTER TABLE digest_prefs ADD COLUMN last_sent_at INTEGER')
   // Every receipt belongs to one permission (one mandate), not just to an address:
   // the same address can hold an earlier delegation account.
   if (!cols.has('mandate_id')) db.exec('ALTER TABLE events ADD COLUMN mandate_id TEXT')
@@ -468,6 +470,7 @@ export class MandateStore {
     tzOffsetMin: number
     lastSentDay: string | null
     savedAtMs: number | null
+    lastSentAtMs: number | null
   }[] {
     return (this.db.prepare('SELECT * FROM digest_prefs WHERE enabled = 1').all() as Row[]).map((r) => ({
       address: String(r.address),
@@ -475,11 +478,14 @@ export class MandateStore {
       tzOffsetMin: Number(r.tz_offset_min),
       lastSentDay: r.last_sent_day === null ? null : String(r.last_sent_day),
       savedAtMs: r.saved_at === null || r.saved_at === undefined ? null : Number(r.saved_at),
+      lastSentAtMs: r.last_sent_at === null || r.last_sent_at === undefined ? null : Number(r.last_sent_at),
     }))
   }
 
-  markDigestSent(address: string, day: string): void {
-    this.db.prepare('UPDATE digest_prefs SET last_sent_day = ? WHERE address = ?').run(day, address)
+  markDigestSent(address: string, day: string, nowMs: number): void {
+    this.db
+      .prepare('UPDATE digest_prefs SET last_sent_day = ?, last_sent_at = ? WHERE address = ?')
+      .run(day, nowMs, address)
   }
 
   // --- guard cursor ---

@@ -1,6 +1,6 @@
 /**
- * Sends each Seeker-tier wallet its morning digest once per local day, at the
- * hour it chose. The digest is built from recorded receipts plus live chain
+ * Sends each Seeker-tier wallet its digest once per local day, at the hour it
+ * chose, covering what happened since the previous one. The digest is built from recorded receipts plus live chain
  * state, so what it says is what the receipts list and the chain say.
  */
 import type { Store } from './db.js'
@@ -25,10 +25,13 @@ export async function runDigests(d: DigestDeps, nowMs: number): Promise<string[]
     // Tier is re-checked at send time: a wallet that lost Seeker verification stops getting it.
     if (!d.store.sgtForAddress(pref.address)) continue
     try {
+      // Everything since the previous digest; the first one covers 24 hours.
+      const since = pref.lastSentAtMs ?? null
       const digest = buildDigest(
-        d.mandates.events(pref.address, nowMs - 24 * 3600_000),
+        d.mandates.events(pref.address, since ?? nowMs - 24 * 3600_000),
         await d.live(pref.address),
         nowMs,
+        since,
       )
       await d.push.toAddress(pref.address, {
         title: digest.title,
@@ -36,7 +39,7 @@ export async function runDigests(d: DigestDeps, nowMs: number): Promise<string[]
         url: '/digest?source=digest',
         channel: 'digest',
       })
-      d.mandates.markDigestSent(pref.address, localDay(nowMs, pref.tzOffsetMin))
+      d.mandates.markDigestSent(pref.address, localDay(nowMs, pref.tzOffsetMin), nowMs)
       d.log.info('digest_sent', { address: pref.address, pulls: digest.totals.pulls, refused: digest.totals.refused })
       sent.push(pref.address)
     } catch (e) {

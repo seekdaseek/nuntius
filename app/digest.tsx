@@ -94,7 +94,7 @@ export default function ClockInScreen() {
         <Note tone="foreign">The streak and the morning digest come with Seeker verification.</Note>
       )}
 
-      <Section>Since yesterday</Section>
+      <Section>Last 24 hours</Section>
       {digest.isLoading ? <Muted>Reading the chain…</Muted> : null}
       {d ? (
         <View style={s.list}>
