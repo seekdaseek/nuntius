@@ -14,19 +14,20 @@ export interface AllowancePreview {
 }
 
 export function approveNote(p: AllowancePreview): string {
-  const lead = `Seed Vault may warn that this lets a third party spend your ${p.symbol} in the future. That third party is the Subscriptions program`
+  const sym = p.symbol
+  const own = p.lifetimeTotal ? `This permission can take at most ${p.lifetimeTotal} ${sym} in total.` : ''
+  const warning = `Seed Vault may also warn that a third party can spend your ${sym} in the future: that is the Subscriptions program, held to the terms above.`
   if (p.allowanceTotal === null) {
-    return `${lead}, and it cannot be capped: another app's permission on ${p.symbol} has no end date. The program still holds this permission to the terms above.`
+    return `${own} Seed Vault will show no limit, because another app's permission on ${sym} has no end date and one approval covers them all. ${warning}`.trim()
   }
-  if (p.allowanceTotal === undefined) {
-    return p.lifetimeTotal
-      ? `${lead}. This approval caps what it can move from your ${p.symbol} at the total of your live permissions; this one can take at most ${p.lifetimeTotal} ${p.symbol} in all.`
-      : `${lead}. The program holds this permission to the terms above.`
-  }
+  if (p.allowanceTotal === undefined) return `${own} ${warning}`.trim()
+  // One token account has one delegate, so the approval is the sum of every live
+  // permission on it. Say which part is this permission's (device check 2, 1 Oct:
+  // "caps it at 1.98 USDC" when this one could take 1.68 and another 0.30).
   if (p.allowanceTotal === p.lifetimeTotal) {
-    return `${lead}, and this approval caps it at ${p.allowanceTotal} ${p.symbol} in total: the most this permission can take in its whole life.`
+    return `${own} Seed Vault will show ${p.allowanceTotal} ${sym}. ${warning}`.trim()
   }
-  return `${lead}, and this approval caps it at ${p.allowanceTotal} ${p.symbol} in total: what all your live ${p.symbol} permissions can still take, this one included.`
+  return `${own} Seed Vault will show ${p.allowanceTotal} ${sym}, because one approval covers all your live ${sym} permissions. ${warning}`.trim()
 }
 
 export interface TokenAccountView {

@@ -195,21 +195,22 @@ test('SKR starters: only when SKR is offered; they fill the sentence, never the 
 
 test('approve note: the token approval in plain words, with the exact total', async () => {
   const { approveNote, delegateLine } = await import('./allowance-copy.ts')
-  const own = approveNote({ symbol: 'USDC', lifetimeTotal: '0.35', allowanceTotal: '0.35' })
-  assert.match(own, /^Seed Vault may warn that this lets a third party spend your USDC in the future\./)
-  assert.match(own, /caps it at 0\.35 USDC in total: the most this permission can take in its whole life\.$/)
-  const all = approveNote({ symbol: 'USDC', lifetimeTotal: '0.35', allowanceTotal: '0.42' })
+  const own = approveNote({ symbol: 'USDC', lifetimeTotal: '0.07', allowanceTotal: '0.07' })
+  assert.match(own, /^This permission can take at most 0\.07 USDC in total\. Seed Vault will show 0\.07 USDC\./)
+  // Two permissions share one allowance: both numbers, each where it belongs.
+  const all = approveNote({ symbol: 'USDC', lifetimeTotal: '1.68', allowanceTotal: '1.98' })
   assert.match(
     all,
-    /caps it at 0\.42 USDC in total: what all your live USDC permissions can still take, this one included\.$/,
+    /^This permission can take at most 1\.68 USDC in total\. Seed Vault will show 1\.98 USDC, because one approval covers all your live USDC permissions\./,
   )
+  assert.doesNotMatch(all, /caps it at 1\.98/)
   assert.match(
     approveNote({ symbol: 'SKR', lifetimeTotal: '325', allowanceTotal: null }),
-    /cannot be capped: another app's permission on SKR has no end date/,
+    /Seed Vault will show no limit, because another app's permission on SKR has no end date/,
   )
   assert.match(
     approveNote({ symbol: 'SKR', lifetimeTotal: '325', allowanceTotal: undefined }),
-    /this one can take at most 325 SKR in all\.$/,
+    /^This permission can take at most 325 SKR in total\. Seed Vault may also warn/,
   )
   for (const s of [own, all]) assert.doesNotMatch(s, /·|→|UNLIMITED/)
   const short = (a: string) => `${a.slice(0, 4)}…`
