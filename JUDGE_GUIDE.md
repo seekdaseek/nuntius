@@ -1,5 +1,7 @@
 # JUDGE_GUIDE — install and verify in five minutes
 
+**Demo video (1:45):** https://youtu.be/rXs5zppcYKs, the whole flow on a Seeker before you install anything.
+
 Three things to check, in order of how little they ask of you:
 
 1. **The mainnet proof** — open links, no install (1 minute).
