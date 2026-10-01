@@ -229,7 +229,14 @@ test('approve note: the token approval in plain words, with the exact total', as
 })
 
 test('push tap: the receipt url is found for every app state and push type', async () => {
-  const { tapTarget, tapUrl } = await import('./notification-tap.ts')
+  const { decideTap, TapLedger, tapUrl } = await import('./notification-tap.ts')
+  const tapTarget = (r: Parameters<typeof decideTap>[0] | null, routedKey: string | null) => {
+    if (!r) return null
+    const ledger = new TapLedger()
+    if (routedKey) ledger.add(routedKey)
+    const d = decideTap(r, ledger)
+    return 'routed' in d ? d.routed : null
+  }
   const received = '/alert?source=receipt&kind=pull&who=natXcheck&amount=0.05&symbol=USDC&remaining=0&cap=0.05'
   const refused = '/alert?source=receipt&kind=refused&who=natXcheck&amount=0.000001&symbol=USDC'
   const res = (id: string, data: Record<string, unknown> | null, remote?: Record<string, unknown>) => ({
@@ -269,6 +276,66 @@ test('push tap: the receipt url is found for every app state and push type', asy
   for (const bad of ['https://evil.example/x', '//evil.example', '/somewhere-else', 'alert']) {
     assert.equal(tapUrl(res('g', { url: bad })), null, bad)
   }
+})
+
+test('push tap: each tap routes once per process, and never a second tap is dropped', async () => {
+  const { routeDeliveries, TapLedger, tapLogLine } = await import('./notification-tap.ts')
+  type Source = 'launch' | 'listener' | 'resume'
+  const push = (tag: string, kind: string, at: number) => ({
+    notification: {
+      request: {
+        identifier: tag,
+        content: { data: { url: `/alert?source=receipt&kind=${kind}&pda=${tag.slice(11)}&at=${at}`, tag } },
+      },
+    },
+  })
+  const run = (ledger: InstanceType<typeof TapLedger>, ...ds: [Source, ReturnType<typeof push>][]) =>
+    routeDeliveries(
+      ds.map(([source, response]) => ({ source, response })),
+      ledger,
+    ).map(({ decision }) => ('routed' in decision ? 'routed' : decision.skipped))
+
+  // Cold start: the launch response and the listener event are one tap.
+  const ledger = new TapLedger()
+  const cold = push('permission:Hb7m', 'pull', 1)
+  assert.deepEqual(run(ledger, ['launch', cold], ['listener', cold]), ['routed', 'already-routed'])
+  // App open: the forwarder event and onNewIntent are one tap.
+  const open = push('permission:5H3x', 'pull', 2)
+  assert.deepEqual(run(ledger, ['listener', open], ['listener', open]), ['routed', 'already-routed'])
+  // "Permission live" then "received" on one permission: two taps, both route.
+  const live = push('permission:AAAA', 'granted', 3)
+  const received = push('permission:AAAA', 'pull', 4)
+  assert.deepEqual(run(ledger, ['listener', live], ['listener', received]), ['routed', 'routed'])
+  // Two refused pushes on one permission (one tray tag), sent at 05:38 and 05:40: two taps.
+  const refused1 = push('permission:Hb7m', 'refused', 5)
+  const refused2 = push('permission:Hb7m', 'refused', 6)
+  assert.deepEqual(run(ledger, ['listener', refused1], ['listener', refused2]), ['routed', 'routed'])
+  // A tap whose listener event never came is picked up on return to the front.
+  const lost = push('permission:5H3x', 'refused', 7)
+  assert.deepEqual(run(ledger, ['resume', lost]), ['routed'])
+  // Remount after BACK in the same process: the old tap is held but not routed again.
+  assert.deepEqual(run(ledger, ['launch', received], ['resume', received]), ['already-routed', 'already-routed'])
+  // A group summary or a push without a url: logged, not routed, not remembered.
+  const bare = { notification: { request: { identifier: 'g', content: { data: {} } } } }
+  assert.deepEqual(
+    routeDeliveries([{ source: 'listener', response: bare }], ledger).map(({ decision }) => decision),
+    [{ skipped: 'no-url', key: 'g|' }],
+  )
+  // The ledger is bounded: the oldest keys go first.
+  const small = new TapLedger(2)
+  small.add('a')
+  small.add('b')
+  small.add('c')
+  assert.deepEqual([small.has('a'), small.has('b'), small.has('c')], [false, true, true])
+  // One line per delivery.
+  assert.equal(
+    tapLogLine({ source: 'resume', response: lost }, { routed: { id: 'x', key: 'k', url: 'u' } }),
+    '[tap] resume permission:5H3x /alert?source=receipt&kind=refused&pda=5H3x&at=7 -> routed',
+  )
+  assert.equal(
+    tapLogLine({ source: 'listener', response: bare }, { skipped: 'no-url', key: 'g|' }),
+    '[tap] listener g - -> skipped(no-url)',
+  )
 })
 
 test('receipt slip meter: what the receipt recorded, in the mockup words', async () => {

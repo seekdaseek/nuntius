@@ -1,10 +1,13 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { AppState, Platform } from 'react-native'
 import { router, useRootNavigationState } from 'expo-router'
 import * as Notifications from 'expo-notifications'
-import { tapTarget } from '@/core/notification-tap'
+import { routeDeliveries, TapLedger, tapLogLine } from '@/core/notification-tap'
 import { isSingleScreen } from '@/core/routes'
-import { useTapResponse } from '@/features/push/use-tap-response'
+import { useTapDeliveries } from '@/features/push/use-tap-response'
+
+/** Taps routed in this process. Module scope: a remount must not route an old tap again. */
+const routed = new TapLedger()
 
 /**
  * Tap-through: every notification carries a `url` in its data; tapping must land
@@ -26,21 +29,26 @@ import { useTapResponse } from '@/features/push/use-tap-response'
  * replaces an older one whether Android or the open app draws it.
  */
 export function useNotificationTapRouting() {
-  const response = useTapResponse()
+  const { queue, tick } = useTapDeliveries()
   const navigationState = useRootNavigationState()
-  const routedId = useRef<string | null>(null)
 
   useEffect(() => {
     if (!navigationState?.key) return
-    const target = tapTarget(response, routedId.current)
-    if (!target) return
-    routedId.current = target.key
-    // Clock in, the receipts list and home are single screens: a tap that opens
-    // one already open must not stack a second copy, or BACK lands on the first
-    // (device check 10, 1 Oct). Receipts each get their own screen.
-    router.push(target.url as never, isSingleScreen(target.url) ? { dangerouslySingular: true } : undefined)
-    if (Platform.OS !== 'web') Notifications.dismissNotificationAsync(target.id).catch(() => {})
-  }, [response, navigationState?.key])
+    for (const { delivery, decision } of routeDeliveries(queue.current.splice(0), routed)) {
+      console.log(tapLogLine(delivery, decision))
+      // Handled either way: the OS must not hand this response back on the next
+      // mount or return to the front (device check, 1 Oct: BACK, then the
+      // launcher, reopened the last receipt).
+      if (Platform.OS !== 'web') Notifications.clearLastNotificationResponse()
+      if (!('routed' in decision)) continue
+      const target = decision.routed
+      // Clock in, the receipts list and home are single screens: a tap that opens
+      // one already open must not stack a second copy, or BACK lands on the first
+      // (device check 10, 1 Oct). Receipts each get their own screen.
+      router.push(target.url as never, isSingleScreen(target.url) ? { dangerouslySingular: true } : undefined)
+      if (Platform.OS !== 'web') Notifications.dismissNotificationAsync(target.id).catch(() => {})
+    }
+  }, [queue, tick, navigationState?.key])
 
   useEffect(() => {
     if (Platform.OS === 'web') return

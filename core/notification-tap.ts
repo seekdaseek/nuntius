@@ -39,14 +39,78 @@ export function tapKey(response: TapResponse): string {
   return `${response.notification.request.identifier}|${tapUrl(response) ?? ''}`
 }
 
-/** The screen to open for a tap, or null when there is nothing (new) to open. */
-export function tapTarget(
-  response: TapResponse | null | undefined,
-  alreadyRouted: string | null,
-): { id: string; key: string; url: string } | null {
-  if (!response) return null
+/**
+ * How a tap reached the app. One tap often arrives twice: on a cold start as
+ * the launch response and again as a listener event; with the app open as the
+ * forwarder activity's event and again through onNewIntent. `resume` is the
+ * response the OS still holds when the app comes to the front, which catches a
+ * tap whose listener event never arrived.
+ */
+export type TapSource = 'launch' | 'listener' | 'resume'
+
+export interface TapDelivery {
+  source: TapSource
+  response: TapResponse
+}
+
+/**
+ * Tap keys already routed in this process, oldest dropped first. It lives at
+ * module scope so it outlasts a remount: after BACK finishes the activity and
+ * the launcher starts it again in the same process, the old tap is not routed
+ * a second time (device check, 1 Oct).
+ */
+export class TapLedger {
+  private readonly max: number
+  private readonly keys: string[] = []
+
+  constructor(max = 64) {
+    this.max = max
+  }
+
+  has(key: string): boolean {
+    return this.keys.includes(key)
+  }
+
+  add(key: string): void {
+    if (this.has(key)) return
+    this.keys.push(key)
+    if (this.keys.length > this.max) this.keys.shift()
+  }
+}
+
+export type TapDecision =
+  { routed: { id: string; key: string; url: string } } | { skipped: 'already-routed' | 'no-url'; key: string }
+
+/**
+ * What to do with one delivery. Only a key routed before is a repeat: each push
+ * carries its own event in the url (kind, time, signature), so a second tap on
+ * a later push about the same permission has a new key even though the tray id
+ * is the same.
+ */
+export function decideTap(response: TapResponse, routed: Pick<TapLedger, 'has'>): TapDecision {
   const key = tapKey(response)
-  if (key === alreadyRouted) return null
+  if (routed.has(key)) return { skipped: 'already-routed', key }
   const url = tapUrl(response)
-  return url ? { id: response.notification.request.identifier, key, url } : null
+  if (!url) return { skipped: 'no-url', key }
+  return { routed: { id: response.notification.request.identifier, key, url } }
+}
+
+/** Decides each delivery in order, recording every routed key in the ledger. */
+export function routeDeliveries(
+  deliveries: TapDelivery[],
+  routed: TapLedger,
+): { delivery: TapDelivery; decision: TapDecision }[] {
+  return deliveries.map((delivery) => {
+    const decision = decideTap(delivery.response, routed)
+    if ('routed' in decision) routed.add(decision.routed.key)
+    return { delivery, decision }
+  })
+}
+
+/** One logcat line per delivery: "[tap] source id url -> routed|skipped(reason)". */
+export function tapLogLine(delivery: TapDelivery, decision: TapDecision): string {
+  const id = delivery.response.notification.request.identifier
+  const url = tapUrl(delivery.response) ?? '-'
+  const outcome = 'routed' in decision ? 'routed' : `skipped(${decision.skipped})`
+  return `[tap] ${delivery.source} ${id} ${url} -> ${outcome}`
 }
