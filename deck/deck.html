@@ -276,10 +276,9 @@
           </div>
         </div>
         <div style="text-align: center">
-          <img class="phone" style="height: 580px" src="img/02-permissions.png" />
+          <img class="phone" style="height: 580px" src="img/device-home.png" />
           <div class="cap">
-            Permissions screen. Web build of the app against a local validator running the real program; test mint
-            tUSDC.
+            Home on the Seeker, mainnet, 30 Sep: a 25 SKR a week and a 0.01 USDC an hour permission.
           </div>
         </div>
       </div>
@@ -291,21 +290,23 @@
       <h2>What the user sees</h2>
       <div class="row" style="justify-content: space-between">
         <div style="text-align: center">
-          <img class="phone" style="height: 560px" src="img/03-new-mandate.png" />
-          <div class="cap">The sentence is the server's parse of the exact terms the transaction carries.</div>
+          <img class="phone" style="height: 560px" src="img/device-form.png" />
+          <div class="cap">
+            The sentence, and the chain's terms in green. The explainer is now one line above Approve.
+          </div>
         </div>
         <div style="text-align: center">
-          <img class="phone" style="height: 560px" src="img/07-pull-receipt.png" />
-          <div class="cap">Pull receipt: what moved, what is left, the reset, the transaction.</div>
+          <img class="phone" style="height: 560px" src="img/device-receipt-meter.png" />
+          <div class="cap">Pull receipt with its cap meter: 0 of 0.05 left today, resets in 23h 58m.</div>
         </div>
         <div style="text-align: center">
-          <img class="phone" style="height: 560px" src="img/06-refused-receipt.png" />
-          <div class="cap">Refused by the chain: 0x190. One base unit over is enough to be refused.</div>
+          <img class="phone" style="height: 560px" src="img/device-refused.png" />
+          <div class="cap">Refused by the chain: 0x190 on mainnet. One base unit over is enough.</div>
         </div>
       </div>
       <p class="muted" style="font-size: 18px; margin-top: 14px">
-        All three are the real app screens, rendered from its web build against a local validator (test mint tUSDC).
-        On-device recording: see the demo video.
+        Screenshots from Seeker SM02E4060327059 on mainnet, 30 Sep 2026, release build 7fcd047. The explainer on the
+        form was shortened after this run (1a44abf).
       </p>
     </section>
 
@@ -343,69 +344,101 @@
         <div class="card chain" style="flex: 1">
           <h3>Measured</h3>
           <p>
-            The localnet test asserts the grant's required signers are <code>[owner]</code>, the delegation carries the
-            exact terms, and the token account delegate is the authority at <code>18446744073709551615</code>.
+            Four grants on mainnet from the Seeker, 30 Sep: each one Seed Vault sheet, each transaction signed by the
+            owner alone. The localnet tests assert the same, and the exact terms.
           </p>
         </div>
         <div class="card" style="flex: 1">
-          <h3>Not yet measured</h3>
+          <h3>The token approval is capped too</h3>
           <p>
-            Seed Vault signing the one-transaction grant on the Seeker, on mainnet. The two-transaction grant was signed
-            there on 22 Sep. The one-transaction version is still to be recorded (see "Next").
+            A third instruction, SPL <code>approveChecked</code>, lowers the allowance from <code>u64::MAX</code> to the
+            lifetime total of the live permissions on that token. Next slide: what Seed Vault shows.
           </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5b -->
+    <section class="slide">
+      <div class="kicker">The allowance, measured on mainnet, 30 Sep – 1 Oct 2026</div>
+      <h2>Seed Vault shows a number, not "Unlimited"</h2>
+      <div class="row" style="align-items: center">
+        <div style="text-align: center">
+          <img class="phone" style="height: 600px" src="img/device-seedvault-007.png" />
+          <div class="cap">The grant sheet for 0.01 USDC a day for 7 days: 0.07 USDC.</div>
+        </div>
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 20px">
+          <div class="card chain">
+            <h3>Capped at the lifetime total</h3>
+            <p>0.01 a day × 7 days. On chain right after: delegate = the Subscription Authority, 0.07 USDC.</p>
+          </div>
+          <div class="card">
+            <h3>One approval, every live permission</h3>
+            <p>
+              With a daily and an hourly permission live, the USDC allowance read 1.97: 0.30 the daily one can still
+              take plus 1.67 for the hourly one. The app now names both numbers before Seed Vault opens.
+            </p>
+          </div>
+          <div class="card">
+            <h3>A revoke trims it</h3>
+            <p>
+              Revoking the hourly one set it to 0.30 (Seed Vault: "0.3 USDC"); the last revoke left
+              <code>delegate: none</code>. At the end, all 65 token accounts of both wallets had no delegate.
+            </p>
+          </div>
         </div>
       </div>
     </section>
 
     <!-- 6 -->
     <section class="slide">
-      <div class="kicker">Proof on mainnet-beta with real USDC, 22 Sep 2026</div>
-      <h2>It already ran on mainnet from the phone</h2>
+      <div class="kicker">Mainnet, from the Seeker, 30 Sep – 1 Oct 2026 (times UTC)</div>
+      <h2>It runs on mainnet, one approval each</h2>
       <table>
         <tr>
-          <th>Step</th>
+          <th>Event</th>
           <th>Result</th>
           <th>Signature</th>
         </tr>
         <tr>
-          <td>initSubscriptionAuthority and createRecurringDelegation</td>
-          <td>signed by Seed Vault, Seeker SM02E4060327059</td>
-          <td class="mono">bBNbUgwh…qGS2Sks, 5r7YnGrb…FUGinugMw</td>
+          <td>Grant 0.05 USDC a day, 19:31:06</td>
+          <td>one signer, the owner</td>
+          <td class="mono">gPQgHedD…</td>
         </tr>
         <tr>
-          <td>transferRecurring ×4</td>
-          <td class="green">17,000 base units moved; one signer, the delegatee</td>
-          <td class="mono">59Zn57sY… 5kSbpeH6… 3utaq3gm… 41emXYEH…</td>
+          <td>First pull, 19:31:20</td>
+          <td class="green">14 s after the grant (others: 10 s, 11 s, 5 s)</td>
+          <td class="mono">4pdgdnee…</td>
         </tr>
         <tr>
-          <td>Pull of 2× the cap</td>
-          <td class="red">custom program error 0x190, landed</td>
-          <td class="mono">3RpcCkkL…PmaZpWyR7</td>
+          <td>One base unit over the cap, 19:33:02</td>
+          <td class="red">0x190, landed; push and stamped slip on the phone</td>
+          <td class="mono">2M5biryq…</td>
         </tr>
         <tr>
-          <td>One unit after the cap was used</td>
-          <td class="red">0x190, landed</td>
-          <td class="mono">5ryxPMPj…oQ1TKAjsDpd</td>
+          <td>25 SKR pull, 19:41:59</td>
+          <td class="green">5,961 compute units, 7,000 lamports, paid by the delegatee</td>
+          <td class="mono">Ry4tiD6o…</td>
         </tr>
         <tr>
-          <td>Period rolled (60 s)</td>
-          <td class="green">pull allowed again, no new user signature</td>
-          <td class="muted">see README</td>
+          <td>Hourly pull, app killed, 20:35:27</td>
+          <td class="green">push 20:35:33; tap from a cold start opened the receipt</td>
+          <td class="mono">BdBJhbEj…</td>
         </tr>
         <tr>
-          <td>revokeDelegation and revokeSubscriptionAuthority</td>
-          <td>both PDAs closed; <code>delegate: none</code></td>
-          <td class="mono">Vh2yr9VT…, 2doDFNXU…</td>
+          <td>Digest at the chosen hour</td>
+          <td class="green">saved for 00:00 local; sent 21:00:25, nothing before</td>
+          <td class="muted">server log</td>
         </tr>
         <tr>
-          <td>Pull after revocation</td>
-          <td class="red">fails: account gone</td>
-          <td class="mono">cfESoUjx…uSqzEzTtM5GPzm</td>
+          <td>Four revokes, 04:05–04:09</td>
+          <td>one Seed Vault sheet each; <code>delegate: none</code> on every account</td>
+          <td class="mono">4Et21Vw6… ZdLixiQX…</td>
         </tr>
       </table>
       <p class="muted" style="font-size: 18px">
-        Cap 10,000 base units (0.01 USDC) per 60 s. The delegator ended 112,000 lamports down; both rents came back on
-        revoke. Full signatures and Explorer links: README.md and JUDGE_GUIDE.md.
+        The first life cycle ran on mainnet on 22 Sep with two approvals (README). Full signatures with Explorer links:
+        README.md, "What is proven".
       </p>
     </section>
 
@@ -414,7 +447,7 @@
       <div class="kicker">Proof: the real program, built from its release commit</div>
       <div class="row" style="align-items: center; margin-top: 10px">
         <div style="flex: 0 0 520px">
-          <div class="big green">61 / 61</div>
+          <div class="big green">83 / 83</div>
           <p style="margin-top: 14px">
             tests pass against <b>solana-foundation/subscriptions @ 364a419</b>, the commit its CHANGELOG names as the
             mainnet release, in a local validator (Agave 3.1.10).
@@ -434,8 +467,8 @@
             <li>Two mints side by side, the SKR path: a ceiling per mint, one authority each</li>
           </ul>
           <p class="muted" style="font-size: 18px; margin-top: 16px">
-            Also: 10 app-logic tests; 31 of the server tests run without a validator; typecheck, lint and prettier
-            clean. Whether the local binary is byte-identical to mainnet has not been measured yet.
+            Also: 25 app-logic tests, 10 tests on the web build (cold-start tap, fonts, layout, BACK); typecheck, lint
+            and prettier clean. Whether the local binary is byte-identical to mainnet has not been measured yet.
           </p>
         </div>
       </div>
@@ -487,19 +520,19 @@
           <div class="card">
             <h3>Morning clock-in</h3>
             <p>
-              At the hour you choose: what moved overnight, what was refused, what is left. Opening it is the clock-in,
-              and it keeps a streak.
+              At the hour you choose: what moved since the last digest, what was refused, what is left. Opening it is
+              the clock-in, and it keeps a streak.
             </p>
           </div>
           <div class="card">
             <h3>Home-screen widget</h3>
             <p>Cap left and time to reset for each permission.</p>
-            <img src="img/widget.png" style="width: 360px; margin-top: 12px" />
+            <img src="img/device-widget.png" style="width: 300px; margin-top: 12px; border-radius: 16px" />
           </div>
         </div>
         <div style="text-align: center">
-          <img class="phone" style="height: 580px" src="img/04-clock-in.png" />
-          <div class="cap">Clock-in screen, web build against a local validator (test mint).</div>
+          <img class="phone" style="height: 580px" src="img/device-clockin.png" />
+          <div class="cap">Clock in on the Seeker, 30 Sep. The widget above it is on the same phone's home screen.</div>
         </div>
       </div>
     </section>
@@ -561,10 +594,10 @@
           <td><b>nuntius</b></td>
           <td class="green">yes</td>
           <td class="green">yes</td>
-          <td class="green">yes (localnet-proven)</td>
+          <td class="green">yes (mainnet, 30 Sep)</td>
           <td class="green">yes, incl. refused</td>
           <td class="green">yes</td>
-          <td class="green">yes (22 Sep)</td>
+          <td class="green">yes (22 Sep, 30 Sep)</td>
         </tr>
         <tr>
           <td>Veto (Clock In)</td>
@@ -604,9 +637,8 @@
         </tr>
       </table>
       <p class="muted" style="font-size: 18px">
-        From each project's public README, read on 27 Sep 2026 (RESEARCH.md). nuntius "Mainnet" is the 22 Sep life cycle
-        (two approvals). The one-approval grant and receipts are proven on localnet and are still to be recorded on
-        mainnet.
+        From each project's public README, read on 27 Sep 2026 (RESEARCH.md). nuntius on mainnet: the 22 Sep life cycle
+        (two approvals) and the device run of 30 Sep – 1 Oct (one approval per grant, receipts, widget, digest).
       </p>
     </section>
 
@@ -618,16 +650,16 @@
         <div class="card chain" style="flex: 1">
           <h3>Done</h3>
           <p>
-            Mainnet life cycle from the phone (22 Sep). One-approval grant and revoke, executor, guard, and SKR next to
-            USDC, tested against the real program. Tier gate, digest, streak and widget, unit-tested; every screen
-            rendered on web to the design. Docs, threat model, judge guide.
+            Two device runs on mainnet (22 Sep; 30 Sep – 1 Oct, 10 of 11 checks passed): one-approval grants and
+            revokes, the capped allowance, receipts, refusals, SKR, the widget and the digest. Tested against the real
+            program. Docs, threat model, judge guide.
           </p>
         </div>
         <div class="card" style="flex: 1">
           <h3>Before submission</h3>
           <p>
-            Record the one-approval grant on mainnet from the Seeker. Pass the device checklist for the widget, receipts
-            and digest. Publish the APK release.
+            Rerun the checks touched by the last fixes (the open-app push tap, receipts per permission, the explainer
+            line, text after a restart) on the new build. Publish the APK as release v1.0.0.
           </p>
         </div>
         <div class="card" style="flex: 1">
