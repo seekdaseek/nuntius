@@ -15,7 +15,7 @@
     "start": "expo start",
     "web": "expo start --web",
     "test:core": "node --test --test-reporter=spec core/*.test.ts",
-    "test:e2e": "node --test --test-reporter=spec e2e/*.mjs"
+    "test:e2e": "node --test --test-reporter=spec e2e/*.test.mjs"
   },
   "displayName": "Minimal Mobile Kit Expo example",
   "description": "A minimal template for building a Solana mobile app with Expo, React Native, and Solana Kit.",

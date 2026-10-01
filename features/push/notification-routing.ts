@@ -14,7 +14,7 @@ import { useTapResponse } from '@/features/push/use-tap-response'
  * this ran in the root layout while the layout still rendered nothing (fonts
  * loading), router.push() went to a navigator that did not exist yet and React
  * gave up with "Maximum update depth exceeded" (device check 7, 30 Sep;
- * reproduced by e2e/cold-start-tap.mjs). Mounted after the Stack, the first
+ * reproduced by e2e/cold-start-tap.test.mjs). Mounted after the Stack, the first
  * push has somewhere to land.
  *
  * The tray is cleared whenever the app comes to the front. When an app has

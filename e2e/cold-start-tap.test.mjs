@@ -8,51 +8,13 @@
  * before the first render (features/push/use-tap-response.web.ts), and the fonts
  * are taken out of the prerendered page and their files held back, so the app
  * starts exactly as on the phone: tap first, fonts later.
- *
- *   npx expo export -p web --output-dir /tmp/web   # or let this script do it
- *   WEB_DIR=/tmp/web npm run test:e2e
- *
- * Needs a Chromium for playwright-core (npx playwright-core install chromium).
+ * See e2e/harness.mjs for how the web build is served.
  */
-import { execFileSync } from 'node:child_process'
-import { createReadStream, existsSync, mkdtempSync, readFileSync } from 'node:fs'
-import { createServer } from 'node:http'
-import { tmpdir } from 'node:os'
-import path from 'node:path'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { chromium } from 'playwright-core'
+import { lateFonts, startWeb } from './harness.mjs'
 
-let webDir = process.env.WEB_DIR
-if (!webDir) {
-  webDir = mkdtempSync(path.join(tmpdir(), 'nuntius-web-'))
-  execFileSync('npx', ['expo', 'export', '-p', 'web', '--output-dir', webDir], { stdio: 'inherit' })
-}
-
-const TYPES = { '.js': 'text/javascript', '.html': 'text/html', '.css': 'text/css', '.ttf': 'font/ttf' }
-const server = createServer((req, res) => {
-  if (req.url.startsWith('/api/')) {
-    res.writeHead(503, { 'content-type': 'application/json' })
-    return res.end('{"ok":false,"error":"offline"}')
-  }
-  let p = decodeURIComponent(req.url.split('?')[0])
-  if (p === '/') p = '/index.html'
-  let f = path.join(webDir, p)
-  if (!existsSync(f)) f = existsSync(`${f}.html`) ? `${f}.html` : path.join(webDir, 'index.html')
-  res.writeHead(200, { 'content-type': TYPES[path.extname(f)] ?? 'application/octet-stream' })
-  if (f.endsWith('.html')) {
-    // The static export prerenders the page with its fonts inlined. The phone
-    // does neither: render on the client only, and let the fonts load late.
-    const html = readFileSync(f, 'utf8')
-      .replace(/<style id="expo-generated-fonts"[^>]*>[\s\S]*?<\/style>/, '')
-      .replace('__EXPO_ROUTER_HYDRATE__=true', '__EXPO_ROUTER_HYDRATE__=false')
-    return res.end(html)
-  }
-  createReadStream(f).pipe(res)
-})
-await new Promise((r) => server.listen(0, r))
-const base = `http://127.0.0.1:${server.address().port}`
-const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {})
+const { base, browser, close } = await startWeb()
 
 /** Start the app as Android does after a tap on a killed app: the response is already there. */
 async function coldStart(url) {
@@ -60,10 +22,7 @@ async function coldStart(url) {
   const errors = []
   page.on('pageerror', (e) => errors.push(e.message))
   // Fonts arrive a second late, as on a cold phone: the tap is there first.
-  await page.route(/\.(ttf|otf)(\?|$)/, async (route) => {
-    await new Promise((r) => setTimeout(r, 1000))
-    await route.continue()
-  })
+  await lateFonts(page)
   // Every navigation the router makes, in order.
   await page.addInitScript(() => {
     globalThis.__nav = []
@@ -117,7 +76,4 @@ test('a url that is not ours is ignored', async () => {
   assert.equal(r.path, '/')
 })
 
-test.after(async () => {
-  await browser.close()
-  server.close()
-})
+test.after(close)

@@ -205,11 +205,20 @@ export function Mark({ size = 26, tile = color.paper }: { size?: number; tile?: 
   )
 }
 
+/**
+ * The wordmark never gives up width: next to the "✓ Seeker verified" chip it
+ * was cut to "nuntiu" (device check 1, 1 Oct). It takes its full width first
+ * (no shrink, spacing by margin rather than gap), the chip next to it gives
+ * way instead, and a pixel of padding keeps the last glyph of a tightly
+ * tracked word inside its box on Android.
+ */
 export function Wordmark({ light }: { light?: boolean }) {
   return (
-    <View style={l.row}>
+    <View style={l.wordmark} testID="wordmark">
       <Mark />
-      <Text style={[t.word, light ? { color: color.white } : null]}>nuntius</Text>
+      <Text style={[t.word, l.wordText, light ? { color: color.white } : null]} numberOfLines={1}>
+        nuntius
+      </Text>
     </View>
   )
 }
@@ -229,7 +238,9 @@ const CHIP: Record<ChipTone, { bg: string; fg: string }> = {
 export function Chip({ label, tone = 'plain' }: { label: string; tone?: ChipTone }) {
   return (
     <View style={[l.chip, { backgroundColor: CHIP[tone].bg }]}>
-      <Text style={[t.chip, { color: CHIP[tone].fg }]}>{label}</Text>
+      <Text style={[t.chip, { color: CHIP[tone].fg }]} numberOfLines={1}>
+        {label}
+      </Text>
     </View>
   )
 }
@@ -428,10 +439,18 @@ const l = StyleSheet.create({
   heroInner: { paddingHorizontal: space.side, paddingTop: 8, paddingBottom: 24, gap: 8 },
   card: { backgroundColor: color.card, borderRadius: radius.card, padding: 16, gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  wordmark: { flexDirection: 'row', alignItems: 'center', flexShrink: 0 },
+  wordText: { marginLeft: 8, paddingRight: 2, flexShrink: 0 },
   note: { borderRadius: radius.panel, paddingVertical: 14, paddingHorizontal: 16 },
   noteRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   flexShrink: { flexShrink: 1 },
-  chip: { borderRadius: radius.chip, paddingVertical: 7, paddingHorizontal: 12, alignSelf: 'flex-start' },
+  chip: {
+    borderRadius: radius.chip,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    alignSelf: 'flex-start',
+    flexShrink: 1,
+  },
   seg: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   segItem: { borderRadius: radius.chip, paddingVertical: 9, paddingHorizontal: 14, backgroundColor: color.card },
   segOn: { backgroundColor: color.ink },

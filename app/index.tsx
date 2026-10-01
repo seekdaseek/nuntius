@@ -139,7 +139,7 @@ function SignedIn() {
         onScroll={(e) => setScrolled(e.nativeEvent.contentOffset.y > 4)}
       >
         <Hero>
-          <Row style={{ justifyContent: 'space-between' }}>
+          <Row style={{ justifyContent: 'space-between' }} gap={12}>
             <Wordmark light />
             {auth.sgtMint ? (
               <Chip label="✓ Seeker verified" tone="glass" />
