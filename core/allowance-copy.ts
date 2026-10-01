@@ -50,3 +50,15 @@ export function delegateLine(accounts: TokenAccountView[], short: (a: string) =>
     )
     .join('\n')
 }
+
+/**
+ * The one line directly above Approve: what Seed Vault is about to show.
+ * "Why?" opens approveNote (device check 2, 1 Oct: the five-line explainer sat
+ * below the fold).
+ */
+export function approveLine(p: AllowancePreview): string {
+  if (p.allowanceTotal === null) return 'Seed Vault will show no limit.'
+  if (p.allowanceTotal === undefined) return 'One approval in Seed Vault.'
+  if (p.allowanceTotal === p.lifetimeTotal) return `Seed Vault will show ${p.allowanceTotal} ${p.symbol}.`
+  return `Seed Vault will show ${p.allowanceTotal} ${p.symbol} in total.`
+}

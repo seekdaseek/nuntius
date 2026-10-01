@@ -405,3 +405,18 @@ test('receipts: an ended permission is headed by its name and dates', () => {
   assert.equal(endedHeader('cj7check', at(28), at(1, 9), 180), 'cj7check · 28 Sep – 1 Oct')
   assert.equal(endedHeader('Gym', at(30), at(30), 180), 'Gym · 30 Sep')
 })
+
+test('approve line: one short line above Approve; the rest behind "Why?"', async () => {
+  const { approveLine } = await import('./allowance-copy.ts')
+  const cases = [
+    approveLine({ symbol: 'USDC', lifetimeTotal: '0.07', allowanceTotal: '0.07' }),
+    approveLine({ symbol: 'USDC', lifetimeTotal: '1.68', allowanceTotal: '1.98' }),
+    approveLine({ symbol: 'SKR', lifetimeTotal: '325', allowanceTotal: '1000325' }),
+    approveLine({ symbol: 'SKR', lifetimeTotal: '325', allowanceTotal: null }),
+    approveLine({ symbol: 'SKR', lifetimeTotal: '325', allowanceTotal: undefined }),
+  ]
+  assert.equal(cases[0], 'Seed Vault will show 0.07 USDC.')
+  assert.equal(cases[1], 'Seed Vault will show 1.98 USDC in total.')
+  // With " Why?" after it, one line at 13 px on a 360 dp phone holds about 50 characters.
+  for (const c of cases) assert.ok(`${c} Why?`.length <= 50, c)
+})

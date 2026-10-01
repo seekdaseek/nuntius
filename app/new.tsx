@@ -21,7 +21,7 @@ import {
 } from '@/core/mandate-form'
 import { shortAddr, tzOffsetMin } from '@/core/format'
 import { untilWords } from '@/core/home-model'
-import { approveNote } from '@/core/allowance-copy'
+import { approveLine, approveNote } from '@/core/allowance-copy'
 
 const PERIOD_WORD: Record<PeriodKey, string> = { hour: 'hour', day: 'day', week: 'week', '30days': '30 days' }
 
@@ -48,6 +48,7 @@ export default function NewPermissionScreen() {
   } | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [step, setStep] = useState<GrantStep | null>(null)
+  const [why, setWhy] = useState(false)
   const grant = useGrantMandate(auth, setStep)
   const check = checkForm(form, auth?.address ?? null)
   const set = <K extends keyof MandateForm>(k: K, v: MandateForm[K]) => {
@@ -92,6 +93,11 @@ export default function NewPermissionScreen() {
   const cancelled = grant.isError && !expired && isUserCancellation(grant.error)
   const busy = grant.isPending
   const name = form.label.trim()
+  // What Seed Vault will show, from the server's preview: one line above Approve.
+  const allowance =
+    preview && !grant.isSuccess
+      ? { symbol, lifetimeTotal: preview.lifetimeTotal ?? null, allowanceTotal: preview.allowanceTotal }
+      : null
 
   // The confirmation sits with Done, so it can never be behind it (device check 4, 30 Sep).
   const footer = grant.isSuccess ? (
@@ -104,7 +110,23 @@ export default function NewPermissionScreen() {
     </>
   ) : (
     <>
-      <Muted style={s.note}>One approval now. You never sign a payment after this, and one approval ends it.</Muted>
+      {why && allowance ? (
+        <Note tone="foreign">
+          One approval now. You never sign a payment after this, and one approval ends it. {approveNote(allowance)}
+        </Note>
+      ) : null}
+      {allowance ? (
+        <View style={s.lineRow}>
+          <Text style={s.line} numberOfLines={1}>
+            {approveLine(allowance)}
+          </Text>
+          <Pressable onPress={() => setWhy((w) => !w)} hitSlop={12} accessibilityRole="button" testID="why">
+            <Text style={s.why}>{why ? 'Hide' : 'Why?'}</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <Muted style={s.note}>One approval now. You never sign a payment after this, and one approval ends it.</Muted>
+      )}
       <Button
         big
         testID="authorize"
@@ -254,15 +276,6 @@ export default function NewPermissionScreen() {
       {previewError ? <Note tone="refused">{previewError}</Note> : null}
       {preview ? <Note tone="moved">{preview.text.enforce}</Note> : null}
       {preview ? <Muted>{preview.text.schedule}</Muted> : null}
-      {preview && !grant.isSuccess ? (
-        <Muted>
-          {approveNote({
-            symbol,
-            lifetimeTotal: preview.lifetimeTotal ?? null,
-            allowanceTotal: preview.allowanceTotal,
-          })}
-        </Muted>
-      ) : null}
       {preview && !preview.allowed ? <Note tone="foreign">{preview.upgrade ?? 'Limit reached.'}</Note> : null}
 
       {expired ? (
@@ -351,4 +364,7 @@ const s = StyleSheet.create({
   fieldInput: { fontFamily: font.medium, fontSize: 15, color: color.ink, padding: 0, marginTop: 3 },
   paste: { fontFamily: font.semibold, fontSize: 14, color: color.signal },
   note: { textAlign: 'center', fontSize: 13, lineHeight: 18 },
+  lineRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 },
+  line: { fontFamily: font.medium, fontSize: 13, lineHeight: 18, color: color.ink2, flexShrink: 1 },
+  why: { fontFamily: font.semibold, fontSize: 13, lineHeight: 18, color: color.signal },
 })
