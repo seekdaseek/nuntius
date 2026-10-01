@@ -28,24 +28,24 @@ That run used **two** Seed Vault approvals (init, then create). This build cuts 
 
 ## 2. The app on a Seeker
 
-> **APK link: filled in on the Mac when the release is published — the APK is published to a GitHub release after the device checks.** Until that line is replaced with a URL, the APK has not been published.
+**APK:** <https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0> (`nuntius.apk`, signed with the release key).
 
 1. **Install.** On the Seeker, open the release page, download `nuntius.apk`, allow the install. The app talks to mainnet through the nuntius backend.
-2. **Sign in** (about 20 s). Tap **Sign in with Solana** and approve in Seed Vault. The backend verifies the signature with a single-use nonce and checks the Seeker Genesis Token. The pill reads **Seeker verified**.
-3. **Look at Permissions.** This lists every Subscriptions delegation your wallet has granted, to nuntius or to any other app, each with the cap left and a countdown. If there are none, the green card says so. That is the guard.
-4. **Create a mandate** (about 60 s).
-   - Tap **New mandate**.
-   - Name it, paste a payee address that already holds USDC, enter `0.05`, choose **day** and **30 days**.
-   - Read the green sentence. It is the server's parse of the exact terms the transaction carries.
-   - Tap **Authorize with one approval** and approve **once** in Seed Vault.
-   - Within about 30 s the first payment goes out and a push arrives: _"… received 0.05 USDC"_. Tap it to open the receipt with its Explorer link.
-5. **Watch the chain refuse.** Available if the server has `DEMO_ENDPOINTS=1` for judging. On the mandate card tap **Try to take more**. The server asks the program for one base unit more than is left. The push reads _"Refused by the chain"_, and the receipt shows the failed transaction with `0x190`.
-6. **Revoke** (about 20 s). Tap **Revoke** and approve once. The mandate disappears. If it was the last one on USDC, the footer reads **Token account delegate: none**.
-7. **Clock in.** Open the **Clock in** card: the digest of the last 24 hours and your streak. Set the digest hour with − and +. The home-screen widget (long-press the home screen → Widgets → nuntius) shows the cap left and today's clock-in.
+2. **Sign in** (about 20 s). Tap **Sign in with Solana** and approve in Seed Vault. The backend verifies the signature with a single-use nonce and checks the Seeker Genesis Token. A Seeker wallet shows **✓ Seeker verified**; any other wallet shows **Basic tier** and can hold one permission.
+3. **Look at your permissions.** Home lists every Subscriptions delegation your wallet has granted, to nuntius or to any other app, each with the cap left and a countdown. If no other app has one, the green row with the shield says so. That is the guard.
+4. **Grant a permission** (about 60 s).
+   - Tap **+ New permission**.
+   - Fill the sentence: a name, an amount (for example `0.01`), USDC, **day**, **7 days**. Paste a payee address that already holds USDC.
+   - Read the green box: the server's parse of the exact terms the transaction carries.
+   - Above **Approve in Seed Vault**, one line says what Seed Vault will show, for example _"Seed Vault will show 0.07 USDC."_ **Why?** explains it. Approve **once** in Seed Vault; its sheet shows that finite amount, not "Unlimited".
+   - Within about 15 s the first payment goes out and a push arrives: _"… received 0.01 USDC"_. Tap it to open the receipt with its cap meter and Explorer link.
+5. **Watch the chain refuse.** Available if the server has `DEMO_ENDPOINTS=1` for judging. On the permission's card tap **Try to take more**. The server asks the program for one base unit more than is left. The push reads _"Refused by the chain"_, and the receipt shows the failed transaction with `0x190`.
+6. **Revoke** (about 20 s). Tap **Revoke** and approve once. If it was the last permission on USDC, home reads **Token account delegate: none**.
+7. **Clock in.** On a Seeker wallet, open **Clock in**: the last 24 hours and your streak. Pick the digest hour with **Earlier** and **Later**, then **Send it at …**. The home-screen widget (long-press the home screen → Widgets → nuntius) shows the cap left and today's clock-in.
 
-Steps 4–7 on the Seeker are **UNTESTED in this build**. A device checklist records them before submission.
+Steps 1–7 were run on Seeker `SM02E4060327059` on mainnet on 30 Sep – 1 Oct 2026; the signatures are in README.md, _What is proven_. The fixes made after that run are marked there as **UNTESTED on device**.
 
-**Identity check, no install.** `curl -s https://nuntius.ochinimus.app/.well-known/assetlinks.json` shows the package and the release certificate fingerprint that wallets verify the app against. **UNTESTED until the backend is deployed.**
+**Identity check, no install.** `curl -s https://nuntius.ochinimus.app/.well-known/assetlinks.json` shows the package and the release certificate fingerprint that wallets verify the app against. Checked on 30 Sep 2026: it matches the APK's signer.
 
 ## 3. The tests against the real program (any machine)
 
@@ -55,11 +55,11 @@ scripts/localnet.sh &          # fetches Agave 3.1.10, builds the program at rel
 cd server && npm ci && npm run test:localnet
 ```
 
-Measured output (2026-09-27, Linux x86_64):
+Measured output (2026-10-01, Linux x86_64):
 
 ```
-ℹ tests 51
-ℹ pass 51
+ℹ tests 83
+ℹ pass 83
 ℹ fail 0
 ```
 
@@ -70,7 +70,7 @@ Things worth reading in the output:
 - `a lost transaction is replaced only after its blockhash is dead — never doubled`. This is the executor's idempotency.
 - `guard: receipts for delegations nuntius did not create`.
 
-`npm test` without a validator runs 31 tests and reports the 5 localnet suites as skipped. `npm run test:core` at the repo root runs the app's 10 logic tests.
+`npm test` without a validator runs 49 tests and reports the 6 localnet suites as skipped. At the repo root, `npm run test:core` runs the app's 25 logic tests, and `npm run test:e2e` runs 10 tests on the web build (cold-start tap, fonts, layout, BACK).
 
 ## Where to look in the code
 
