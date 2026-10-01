@@ -29,6 +29,7 @@ export default function ReceiptScreen() {
     moved?: string
     per?: string
     payee?: string
+    got?: string
   }>()
 
   // Receipt pushes and the older delegation spike share this screen.
@@ -78,6 +79,43 @@ export default function ReceiptScreen() {
           <KV k="You signed" v="nothing" />
           {p.sig ? <KV k="Transaction" v={shortAddr(p.sig)} /> : null}
           {explorerButton}
+        </Slip>
+      </Screen>
+    )
+  }
+
+  if (kind === 'buy') {
+    // A back permission's buy: the pull and the swap in one transaction, the tokens in the backer's own account.
+    return (
+      <Screen back tint="moved">
+        <Slip>
+          <Chip label="✓ Bought" tone="moved" />
+          <Text style={s.amount}>{p.got || `${amount} ${symbol}`}</Text>
+          <Muted style={{ marginBottom: 12 }}>
+            {p.got ? `for ${amount} ${symbol}, ` : ''}
+            {who}
+            {at ? `, ${at}` : ''}
+          </Muted>
+          <KV k="Delivered to" v="your own token account" />
+          <KV k="Signed by" v="nuntius executor only" />
+          <KV k="You signed" v="nothing" />
+          {p.sig ? <KV k="Transaction" v={shortAddr(p.sig)} /> : null}
+          {explorerButton}
+        </Slip>
+      </Screen>
+    )
+  }
+
+  if (kind === 'skipped') {
+    return (
+      <Screen back>
+        <Slip>
+          <Chip label="Skipped" tone="plain" />
+          <Text style={s.amount}>Nothing taken</Text>
+          <Muted style={{ marginBottom: 12 }}>
+            {who}: the price moved more than 2% before the buy, so the whole transaction failed. nuntius tries again
+            later this period.
+          </Muted>
         </Slip>
       </Screen>
     )

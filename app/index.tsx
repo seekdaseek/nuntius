@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { useIsMutating } from '@tanstack/react-query'
+import { useIsMutating, useQuery } from '@tanstack/react-query'
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import {
@@ -24,7 +24,8 @@ import { useNuntiusAuth, useSignOut, useVerifySeekerMutation } from '@/features/
 import { AccountFeatureSignIn } from '@/features/account/account-feature-sign-in'
 import { usePushRegistration } from '@/features/push/use-push-registration'
 import { useDemoOverCap, useMandateList, useReceipts, useRevoke } from '@/features/mandates/use-mandates'
-import { ApiError, type MandateView, type OtherDelegation } from '@/features/mandates/mandates-api'
+import { api, ApiError, type MandateView, type OtherDelegation } from '@/features/mandates/mandates-api'
+import { routeWords } from '@/core/back-copy'
 import { shortAddr } from '@/core/format'
 import { delegateLine } from '@/core/allowance-copy'
 import { revokeFailureText } from '@/core/wallet-session'
@@ -263,10 +264,14 @@ function PermissionCard({ m, demo, now }: { m: MandateView; demo: boolean; now: 
           {m.cap} {m.symbol} {perWords(m.periodLengthS)}
         </Text>
       </Row>
-      <Muted>
-        {name} can take up to {m.cap} {m.symbol} {everyWords(m.periodLengthS)} until {shortDate(m.expiryTs)}. Anything
-        more is refused by the chain.
-      </Muted>
+      {m.back ? (
+        <BackLines m={m} back={m.back} />
+      ) : (
+        <Muted>
+          {name} can take up to {m.cap} {m.symbol} {everyWords(m.periodLengthS)} until {shortDate(m.expiryTs)}. Anything
+          more is refused by the chain.
+        </Muted>
+      )}
       <CapMeter
         takenShare={mt.takenShare}
         left={`${mt.taken} taken ${windowWords(m.periodLengthS)}`}
@@ -290,6 +295,23 @@ function PermissionCard({ m, demo, now }: { m: MandateView; demo: boolean; now: 
       {overCap.isError ? <Note tone="refused">{overCap.error.message}</Note> : null}
       {revoke.isError ? <RevokeFailed error={revoke.error} onRetry={() => revoke.mutate(m.delegationPda)} /> : null}
     </Card>
+  )
+}
+
+/** A back permission's card lines: what it buys, what it has bought, and where the launch is. */
+function BackLines({ m, back }: { m: MandateView; back: NonNullable<MandateView['back']> }) {
+  const launch = useQuery({ queryKey: ['launch', back.pool], queryFn: () => api.launch(back.pool), staleTime: 60_000 })
+  return (
+    <>
+      <Muted>
+        Buys {back.baseSymbol} with up to {m.cap} {m.symbol} {everyWords(m.periodLengthS)} until {shortDate(m.expiryTs)}
+        , into your own wallet. Anything more is refused by the chain.
+      </Muted>
+      <Muted>
+        Received so far: {back.received} {back.baseSymbol}
+        {launch.data ? ` · ${routeWords(launch.data)}` : ''}
+      </Muted>
+    </>
   )
 }
 

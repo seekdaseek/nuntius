@@ -52,6 +52,27 @@ export interface MandateView {
   status: 'pending' | 'active' | 'revoked' | 'expired'
   delegationPda: string
   text: MandateText
+  /** A back permission (subscription launch): what it buys and what it has bought. */
+  back?: {
+    pool: string
+    route: 'dbc' | 'damm_v2'
+    baseMint: string
+    baseSymbol: string
+    slippagePct: number
+    received: string
+  } | null
+}
+
+/** A subscription launch, read from the chain (GET /api/launch/:pool). */
+export interface LaunchInfo {
+  pool: string
+  route: 'dbc' | 'damm_v2' | 'migrating'
+  dammPool: string | null
+  baseMint: string
+  quoteMint: string
+  symbol: string | null
+  progressPct: number
+  committed: { backers: number; perWeek: string; symbol: string | null }
 }
 
 export interface OtherDelegation {
@@ -90,7 +111,9 @@ export interface Receipt {
   id: number
   /** The permission it belongs to (null for another app's delegation). */
   mandateId?: string | null
-  kind: 'pull' | 'refused' | 'granted' | 'revoked' | 'expired'
+  kind: 'pull' | 'refused' | 'granted' | 'revoked' | 'expired' | 'buy' | 'skipped'
+  /** A buy: what it delivered, e.g. "1234.5 NATX". */
+  got?: string | null
   at: number
   delegationPda: string
   delegatee: string
@@ -140,6 +163,8 @@ export interface TermsInput {
   period: PeriodKey
   untilDays: number
   symbol?: string
+  /** A back permission: the launch's DBC pool. The grant then buys its token each period. */
+  pool?: string
 }
 
 export const api = {
@@ -164,7 +189,21 @@ export const api = {
       delegationPda: string
       createsAuthority: boolean
       text: MandateText
-    }>('/api/mandates/create', { session, ...t }),
+    }>(t.pool ? '/api/mandates/back' : '/api/mandates/create', { session, ...t }),
+  launch: async (pool: string) => {
+    const r = await fetch(`${AppConfig.apiBase}/api/launch/${pool}`)
+    const json = (await r.json()) as { ok: boolean; launch?: LaunchInfo; error?: string; message?: string }
+    if (!r.ok || !json.ok || !json.launch)
+      throw new ApiError(json.error ?? `http_${r.status}`, json.message ?? 'no launch', r.status)
+    return json.launch
+  },
+  launchCreate: (session: string, l: { name: string; symbol: string; image?: string; quote: string }) =>
+    post<{ transactionBase64: string; pool: string; baseMint: string; uri: string }>('/api/launch/create', {
+      session,
+      ...l,
+    }),
+  launchConfirm: (session: string, baseMint: string) =>
+    post<{ launch: LaunchInfo }>('/api/launch/confirm', { session, baseMint }),
   /** The same pending permission with a fresh blockhash. */
   rebuild: (session: string, mandateId: string) =>
     post<{ mandateId: string; transactionBase64: string; delegationPda: string }>('/api/mandates/rebuild', {

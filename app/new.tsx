@@ -173,6 +173,14 @@ export default function NewPermissionScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ selected: on }}
                 onPress={() => {
+                  // Backing a builder is a subscription launch: each week's pull buys their token.
+                  if (starter.key === 'builder') {
+                    router.push({
+                      pathname: '/back',
+                      params: { amount: starter.amount, period: starter.period, untilDays: String(starter.untilDays) },
+                    })
+                    return
+                  }
                   grant.reset()
                   setForm((f) => applyStarter(f, starter))
                   setSymbol(sym)

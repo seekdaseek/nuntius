@@ -5,6 +5,7 @@ import { color, font } from '@/components/ui'
 import { radius, tabular } from '@/constants/app-styles'
 import type { Receipt } from '@/features/mandates/mandates-api'
 import { ago, shortAddr } from '@/core/format'
+import { buyLine } from '@/core/back-copy'
 
 const KIND: Record<Receipt['kind'], { title: string; dot: string }> = {
   pull: { title: 'Moved', dot: color.moved },
@@ -12,6 +13,8 @@ const KIND: Record<Receipt['kind'], { title: string; dot: string }> = {
   granted: { title: 'Permission granted', dot: color.signal },
   revoked: { title: 'Revoked', dot: color.ink2 },
   expired: { title: 'Expired', dot: color.ink2 },
+  buy: { title: 'Bought', dot: color.moved },
+  skipped: { title: 'Skipped', dot: color.ink2 },
 }
 
 export function ReceiptRow({ r, cluster }: { r: Receipt; cluster?: string }) {
@@ -28,6 +31,7 @@ export function ReceiptRow({ r, cluster }: { r: Receipt; cluster?: string }) {
         pda: r.delegationPda,
         sig: r.signature ?? '',
         amount: r.amount ?? '',
+        got: r.got ?? '',
         symbol: r.symbol,
         cap: r.cap ?? '',
         remaining: r.remaining ?? '',
@@ -48,7 +52,8 @@ export function ReceiptRow({ r, cluster }: { r: Receipt; cluster?: string }) {
           </Text>
           <Text style={s.sub} numberOfLines={1}>
             {[
-              r.amount ? `${r.kind === 'refused' ? 'asked for' : ''} ${r.amount} ${r.symbol}`.trim() : null,
+              buyLine(r) ??
+                (r.amount ? `${r.kind === 'refused' ? 'asked for' : ''} ${r.amount} ${r.symbol}`.trim() : null),
               foreign ? 'outside nuntius' : null,
               ago(r.at, Date.now()),
             ]
