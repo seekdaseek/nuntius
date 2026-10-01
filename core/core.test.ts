@@ -253,6 +253,7 @@ test('push tap: the receipt url is found for every app state and push type', asy
     id: 'a',
     key: `a|${received}`,
     url: received,
+    fallback: false,
   })
   assert.deepEqual(tapTarget(res('b', { url: refused, channelId: 'alerts' }), null)?.url, refused)
   // Background and killed: the tray tap's extras (plus FCM's own keys) become content.data.
@@ -271,7 +272,8 @@ test('push tap: the receipt url is found for every app state and push type', asy
   assert.equal(tapTarget(res(tag, { url: received, tag }), first.key)?.url, received)
   // The same tap delivered twice (cold start: last response and the event) routes once.
   assert.equal(tapTarget(res(tag, { url: live, tag }), first.key), null)
-  assert.equal(tapTarget(res('f', {}), null), null)
+  // No url of ours (a collapsed group, or no data): the receipts list, not nothing.
+  assert.deepEqual(tapTarget(res('f', {}), null), { id: 'f', key: 'f|', url: '/receipts', fallback: true })
   assert.equal(tapTarget(null, null), null)
   for (const bad of ['https://evil.example/x', '//evil.example', '/somewhere-else', 'alert']) {
     assert.equal(tapUrl(res('g', { url: bad })), null, bad)
@@ -315,11 +317,30 @@ test('push tap: each tap routes once per process, and never a second tap is drop
   assert.deepEqual(run(ledger, ['resume', lost]), ['routed'])
   // Remount after BACK in the same process: the old tap is held but not routed again.
   assert.deepEqual(run(ledger, ['launch', received], ['resume', received]), ['already-routed', 'already-routed'])
-  // A group summary or a push without a url: logged, not routed, not remembered.
+  // A group summary or a push without a url opens the receipts list, every time:
+  // the summary keeps one id for each tap on it, so it is never remembered.
   const bare = { notification: { request: { identifier: 'g', content: { data: {} } } } }
+  const fallback = { routed: { id: 'g', key: 'g|', url: '/receipts', fallback: true } }
   assert.deepEqual(
-    routeDeliveries([{ source: 'listener', response: bare }], ledger).map(({ decision }) => decision),
-    [{ skipped: 'no-url', key: 'g|' }],
+    routeDeliveries(
+      [
+        { source: 'listener', response: bare },
+        { source: 'listener', response: bare },
+      ],
+      ledger,
+    ).map(({ decision }) => decision),
+    [fallback, fallback],
+  )
+  assert.equal(ledger.has('g|'), false)
+  // A url that is not an app screen is ignored: no fallback, no navigation there.
+  const foreign = { notification: { request: { identifier: 'h', content: { data: { url: 'https://evil.example' } } } } }
+  assert.deepEqual(
+    routeDeliveries([{ source: 'listener', response: foreign }], ledger).map(({ decision }) => decision),
+    [{ skipped: 'not-ours', key: 'h|' }],
+  )
+  assert.equal(
+    tapLogLine({ source: 'launch', response: foreign }, { skipped: 'not-ours', key: 'h|' }),
+    '[tap] launch h - -> skipped(not-ours)',
   )
   // The ledger is bounded: the oldest keys go first.
   const small = new TapLedger(2)
@@ -329,13 +350,28 @@ test('push tap: each tap routes once per process, and never a second tap is drop
   assert.deepEqual([small.has('a'), small.has('b'), small.has('c')], [false, true, true])
   // One line per delivery.
   assert.equal(
-    tapLogLine({ source: 'resume', response: lost }, { routed: { id: 'x', key: 'k', url: 'u' } }),
+    tapLogLine({ source: 'resume', response: lost }, { routed: { id: 'x', key: 'k', url: 'u', fallback: false } }),
     '[tap] resume permission:5H3x /alert?source=receipt&kind=refused&pda=5H3x&at=7 -> routed',
   )
+  assert.equal(tapLogLine({ source: 'listener', response: bare }, fallback), '[tap] listener g - -> routed(fallback)')
   assert.equal(
-    tapLogLine({ source: 'listener', response: bare }, { skipped: 'no-url', key: 'g|' }),
-    '[tap] listener g - -> skipped(no-url)',
+    tapLogLine({ source: 'launch', response: received }, { skipped: 'already-routed', key: 'k' }),
+    `[tap] launch permission:AAAA ${received.notification.request.content.data.url} -> skipped(already-routed)`,
   )
+})
+
+test('push tray: a new push with the app open leaves only itself in the tray', async () => {
+  const { staleTrayIds } = await import('./notification-tap.ts')
+  // Three permissions' pushes showing, then a refused push for the first one (same tag).
+  assert.deepEqual(staleTrayIds(['permission:A', 'permission:B', 'permission:C'], 'permission:A'), [
+    'permission:B',
+    'permission:C',
+  ])
+  // The newest is not presented yet when the listener runs: everything else goes.
+  assert.deepEqual(staleTrayIds(['permission:B', 'digest'], 'permission:A'), ['permission:B', 'digest'])
+  // Alone in the tray: nothing to dismiss.
+  assert.deepEqual(staleTrayIds(['permission:A'], 'permission:A'), [])
+  assert.deepEqual(staleTrayIds([], 'permission:A'), [])
 })
 
 test('receipt slip meter: what the receipt recorded, in the mockup words', async () => {

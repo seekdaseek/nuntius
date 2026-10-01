@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { AppState, Platform } from 'react-native'
 import { router, useRootNavigationState } from 'expo-router'
 import * as Notifications from 'expo-notifications'
-import { routeDeliveries, TapLedger, tapLogLine } from '@/core/notification-tap'
+import { routeDeliveries, staleTrayIds, TapLedger, tapLogLine } from '@/core/notification-tap'
 import { isSingleScreen } from '@/core/routes'
 import { useTapDeliveries } from '@/features/push/use-tap-response'
 
@@ -57,7 +57,26 @@ export function useNotificationTapRouting() {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') clear()
     })
-    return () => sub.remove()
+    // With the app open, a new push leaves the tray holding only itself, so
+    // Android never folds two of ours into a group whose tap carries no url.
+    const received = Notifications.addNotificationReceivedListener((n) => {
+      if (AppState.currentState !== 'active') return
+      const newest = n.request.identifier
+      Notifications.getPresentedNotificationsAsync()
+        .then((shown) => {
+          const stale = staleTrayIds(
+            shown.map((s) => s.request.identifier),
+            newest,
+          )
+          console.log(`[tray] ${newest} newest, dismissed ${stale.length}`)
+          for (const id of stale) Notifications.dismissNotificationAsync(id).catch(() => {})
+        })
+        .catch(() => {})
+    })
+    return () => {
+      sub.remove()
+      received.remove()
+    }
   }, [])
 }
 
