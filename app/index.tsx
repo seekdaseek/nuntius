@@ -36,6 +36,7 @@ import {
   nextMovement,
   perWords,
   span,
+  staleLine,
   summaryLine,
   windowWords,
 } from '@/core/home-model'
@@ -158,6 +159,9 @@ function SignedIn() {
 
         <View style={s.body}>
           {list.isError && !expired ? <Note tone="refused">Could not load: {list.error.message}</Note> : null}
+          {data && staleLine(data.stale, data.asOf, now) ? (
+            <Note tone="foreign">{staleLine(data.stale, data.asOf, now)}</Note>
+          ) : null}
 
           {auth.sgtMint ? (
             <Pressable onPress={() => router.push('/digest')} accessibilityRole="button">

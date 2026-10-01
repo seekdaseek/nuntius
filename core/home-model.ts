@@ -105,6 +105,21 @@ export function summaryLine(liveCount: number, refusedToday: number, foreignCoun
   return `${live}${other} ${refused}`
 }
 
+/** When the server could not read the chain and sent its last good list instead. */
+export function staleLine(stale: boolean | undefined, asOfMs: number | undefined, nowMs: number): string | null {
+  if (!stale || !asOfMs) return null
+  const m = Math.max(0, Math.floor((nowMs - asOfMs) / 60_000))
+  const age =
+    m < 1
+      ? 'a moment ago'
+      : m < 60
+        ? `${m}m ago`
+        : m < 1440
+          ? `${Math.floor(m / 60)}h ago`
+          : `${Math.floor(m / 1440)}d ago`
+  return `The chain did not answer just now. This is your list as of ${age}.`
+}
+
 export type SlotState = 'punched' | 'today' | 'todayPunched' | 'missed' | 'future'
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 

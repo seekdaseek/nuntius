@@ -97,6 +97,9 @@ export interface ListResponse {
   demo: boolean
   mine: MandateView[]
   others: OtherDelegation[]
+  /** When the chain was last read; `stale` when this is the last good list after a failed read. */
+  asOf?: number
+  stale?: boolean
   tokenAccount: { delegate: string | null; delegatedAmount: string | null; balance: string | null }
   tokenAccounts?: {
     symbol: string

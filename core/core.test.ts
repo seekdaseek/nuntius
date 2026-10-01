@@ -15,6 +15,7 @@ import {
   perWords,
   span,
   summaryLine,
+  staleLine,
   untilWords,
   weekSlots,
   whenWords,
@@ -118,6 +119,11 @@ test('home model: meter, rate words, hero sentence, summary', () => {
   assert.equal(nextMovement([{ ...live[0]!, remaining: '0.05' }], NOW), 'Ana gets 0.05 USDC now.')
   assert.match(nextMovement([], NOW), /^Grant your first permission/)
   assert.equal(summaryLine(2, 0, 0), 'Two permissions live. Nothing refused today.')
+  assert.equal(staleLine(false, NOW, NOW), null)
+  assert.equal(
+    staleLine(true, NOW - 5 * 60_000, NOW),
+    'The chain did not answer just now. This is your list as of 5m ago.',
+  )
   assert.equal(
     summaryLine(1, 1, 1),
     'One permission live. One held by other apps. One pull refused by the chain today.',
