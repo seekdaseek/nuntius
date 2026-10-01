@@ -38,11 +38,17 @@ export function fcmParts(msg: PushMessage): {
   tag: string | undefined
 } {
   const channelId = msg.channel ?? 'alerts'
+  const tag = msg.tag ?? (channelId === 'digest' ? 'digest' : undefined)
   return {
     notification: { title: msg.title, body: msg.body },
     channelId,
-    data: { url: msg.url, channelId },
-    tag: msg.tag ?? (channelId === 'digest' ? 'digest' : undefined),
+    // The tag rides in data too. With the app in the background Android draws
+    // the push and uses android.notification.tag; with the app open,
+    // expo-notifications draws it and takes its id from data.tag. Without it,
+    // "Permission live" and "received" sat side by side, Android grouped them,
+    // and a tap on the group opened nothing (device check 5, 1 Oct, 05a).
+    data: { url: msg.url, channelId, ...(tag ? { tag } : {}) },
+    tag,
   }
 }
 

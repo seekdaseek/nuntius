@@ -20,8 +20,9 @@ import { useTapResponse } from '@/features/push/use-tap-response'
  * The tray is cleared whenever the app comes to the front. When an app has
  * several notifications showing, Android folds them into one collapsed group,
  * and a tap on the group opens the app with no notification's data, so it
- * cannot land anywhere (device checks 5 and 8, 30 Sep). The server also tags
- * pushes per permission, so a newer one replaces an older.
+ * cannot land anywhere (device check 5, 30 Sep and 1 Oct). The server tags
+ * pushes per permission, in the Android payload and in data, so a newer one
+ * replaces an older one whether Android or the open app draws it.
  */
 export function useNotificationTapRouting() {
   const response = useTapResponse()
@@ -32,7 +33,7 @@ export function useNotificationTapRouting() {
     if (!navigationState?.key) return
     const target = tapTarget(response, routedId.current)
     if (!target) return
-    routedId.current = target.id
+    routedId.current = target.key
     router.push(target.url as never)
     if (Platform.OS !== 'web') Notifications.dismissNotificationAsync(target.id).catch(() => {})
   }, [response, navigationState?.key])

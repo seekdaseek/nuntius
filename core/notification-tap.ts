@@ -30,14 +30,23 @@ export function tapUrl(response: TapResponse): string | null {
   return null
 }
 
+/**
+ * What identifies one tap. The notification id alone does not: pushes about
+ * one permission share an id (the tray tag), so "Permission live" and a later
+ * "received" have the same id and different urls.
+ */
+export function tapKey(response: TapResponse): string {
+  return `${response.notification.request.identifier}|${tapUrl(response) ?? ''}`
+}
+
 /** The screen to open for a tap, or null when there is nothing (new) to open. */
 export function tapTarget(
   response: TapResponse | null | undefined,
   alreadyRouted: string | null,
-): { id: string; url: string } | null {
+): { id: string; key: string; url: string } | null {
   if (!response) return null
-  const id = response.notification.request.identifier
-  if (id === alreadyRouted) return null
+  const key = tapKey(response)
+  if (key === alreadyRouted) return null
   const url = tapUrl(response)
-  return url ? { id, url } : null
+  return url ? { id: response.notification.request.identifier, key, url } : null
 }

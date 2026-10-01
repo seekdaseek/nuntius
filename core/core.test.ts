@@ -240,8 +240,12 @@ test('push tap: the receipt url is found for every app state and push type', asy
     },
   })
   // Open: expo shows it and hands over the FCM data as content.data.
-  assert.deepEqual(tapTarget(res('a', { url: received, channelId: 'alerts' }), null), { id: 'a', url: received })
-  assert.deepEqual(tapTarget(res('b', { url: refused, channelId: 'alerts' }), null), { id: 'b', url: refused })
+  assert.deepEqual(tapTarget(res('a', { url: received, channelId: 'alerts' }), null), {
+    id: 'a',
+    key: `a|${received}`,
+    url: received,
+  })
+  assert.deepEqual(tapTarget(res('b', { url: refused, channelId: 'alerts' }), null)?.url, refused)
   // Background and killed: the tray tap's extras (plus FCM's own keys) become content.data.
   const extras = { url: received, channelId: 'alerts', 'google.message_id': '0:1', from: '123' }
   assert.equal(tapUrl(res('c', extras)), received)
@@ -250,7 +254,14 @@ test('push tap: the receipt url is found for every app state and push type', asy
   // The digest and the widget targets.
   assert.equal(tapUrl(res('e', { url: '/digest?source=digest' })), '/digest?source=digest')
   // Already routed, no url, or not an app screen: nothing to open.
-  assert.equal(tapTarget(res('a', { url: received }), 'a'), null)
+  assert.equal(tapTarget(res('a', { url: received }), `a|${received}`), null)
+  // One permission, one tray id: "received" after "Permission live" is a new tap.
+  const tag = 'permission:Pda1'
+  const live = '/alert?source=receipt&kind=granted&who=natXcheck'
+  const first = tapTarget(res(tag, { url: live, tag }), null)!
+  assert.equal(tapTarget(res(tag, { url: received, tag }), first.key)?.url, received)
+  // The same tap delivered twice (cold start: last response and the event) routes once.
+  assert.equal(tapTarget(res(tag, { url: live, tag }), first.key), null)
   assert.equal(tapTarget(res('f', {}), null), null)
   assert.equal(tapTarget(null, null), null)
   for (const bad of ['https://evil.example/x', '//evil.example', '/somewhere-else', 'alert']) {

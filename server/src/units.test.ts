@@ -326,7 +326,10 @@ test('push: one tray tag per permission, the digest on its own channel, the url 
   assert.equal(granted.tag, pulled.tag, '"Permission live" is replaced by the first "received"')
   for (const m of [pulled, refused, granted]) assert.match(m.url, /^\/alert\?/)
   const p = fcmParts(pulled)
-  assert.deepEqual(p.data, { url: pulled.url, channelId: 'alerts' })
+  assert.deepEqual(p.data, { url: pulled.url, channelId: 'alerts', tag: pulled.tag })
+  // With the app open, expo-notifications takes the notification's id from
+  // data.tag: "received" must replace "Permission live" there as well.
+  assert.equal(fcmParts(granted).data.tag, p.data.tag)
   const body = fcmMessage('tok', p.notification, p.channelId, p.data, p.tag)
   assert.deepEqual(body.message.android, {
     priority: 'HIGH',
@@ -341,6 +344,7 @@ test('push: one tray tag per permission, the digest on its own channel, the url 
   })
   assert.equal(digest.channelId, 'digest', 'the digest goes to its own quiet channel')
   assert.equal(digest.tag, 'digest')
+  assert.equal(digest.data.tag, 'digest')
 })
 
 test('receipts record the window after the pull; old databases gain the columns in place', async () => {
