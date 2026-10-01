@@ -28,9 +28,9 @@ That run used **two** Seed Vault approvals (init, then create). This build cuts 
 
 ## 2. The app on a Seeker
 
-**APK:** <https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0> (`nuntius.apk`, signed with the release key).
+**APK:** {{RELEASE_URL}} (`nuntius-1.0.0.apk`, sha256 `{{APK_SHA256}}`, signed with the release key).
 
-1. **Install.** On the Seeker, open the release page, download `nuntius.apk`, allow the install. The app talks to mainnet through the nuntius backend.
+1. **Install.** On the Seeker, open the release page, download `nuntius-1.0.0.apk`, allow the install. The app talks to mainnet through the nuntius backend.
 2. **Sign in** (about 20 s). Tap **Sign in with Solana** and approve in Seed Vault. The backend verifies the signature with a single-use nonce and checks the Seeker Genesis Token. A Seeker wallet shows **✓ Seeker verified**; any other wallet shows **Basic tier** and can hold one permission.
 3. **Look at your permissions.** Home lists every Subscriptions delegation your wallet has granted, to nuntius or to any other app, each with the cap left and a countdown. If no other app has one, the green row with the shield says so. That is the guard.
 4. **Grant a permission** (about 60 s).
@@ -38,12 +38,12 @@ That run used **two** Seed Vault approvals (init, then create). This build cuts 
    - Fill the sentence: a name, an amount (for example `0.01`), USDC, **day**, **7 days**. Paste a payee address that already holds USDC.
    - Read the green box: the server's parse of the exact terms the transaction carries.
    - Above **Approve in Seed Vault**, one line says what Seed Vault will show, for example _"Seed Vault will show 0.07 USDC."_ **Why?** explains it. Approve **once** in Seed Vault; its sheet shows that finite amount, not "Unlimited".
-   - Within about 15 s the first payment goes out and a push arrives: _"… received 0.01 USDC"_. Tap it to open the receipt with its cap meter and Explorer link.
+   - Within about 15 s (4–14 s on the Seeker) the first payment goes out and a push arrives: _"… received 0.01 USDC"_. Tap it, with the app open or closed, to open the receipt with its cap meter and Explorer link.
 5. **Watch the chain refuse.** Available if the server has `DEMO_ENDPOINTS=1` for judging. On the permission's card tap **Try to take more**. The server asks the program for one base unit more than is left. The push reads _"Refused by the chain"_, and the receipt shows the failed transaction with `0x190`.
 6. **Revoke** (about 20 s). Tap **Revoke** and approve once. If it was the last permission on USDC, home reads **Token account delegate: none**.
 7. **Clock in.** On a Seeker wallet, open **Clock in**: the last 24 hours and your streak. Pick the digest hour with **Earlier** and **Later**, then **Send it at …**. The home-screen widget (long-press the home screen → Widgets → nuntius) shows the cap left and today's clock-in.
 
-Steps 1–7 were run on Seeker `SM02E4060327059` on mainnet on 30 Sep – 1 Oct 2026; the signatures are in README.md, _What is proven_. The fixes made after that run are marked there as **UNTESTED on device**.
+Steps 1–7 were run on Seeker `SM02E4060327059` on mainnet in four rounds between 30 Sep and 1 Oct 2026; the last, on build `57eb4e1`, is the release. The signatures are in README.md, _What is proven_.
 
 **Identity check, no install.** `curl -s https://nuntius.ochinimus.app/.well-known/assetlinks.json` shows the package and the release certificate fingerprint that wallets verify the app against. Checked on 30 Sep 2026: it matches the APK's signer.
 
@@ -70,7 +70,7 @@ Things worth reading in the output:
 - `a lost transaction is replaced only after its blockhash is dead — never doubled`. This is the executor's idempotency.
 - `guard: receipts for delegations nuntius did not create`.
 
-`npm test` without a validator runs 49 tests and reports the 6 localnet suites as skipped. At the repo root, `npm run test:core` runs the app's 25 logic tests, and `npm run test:e2e` runs 10 tests on the web build (cold-start tap, fonts, layout, BACK).
+`npm test` without a validator passes 43 tests and reports the 6 localnet suites as skipped. At the repo root, `npm run test:core` runs the app's 27 logic tests, and `npm run test:e2e` runs 10 tests on the web build (cold-start tap, fonts, layout, BACK).
 
 ## Where to look in the code
 
