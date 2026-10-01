@@ -278,7 +278,8 @@
         <div style="text-align: center">
           <img class="phone" style="height: 580px" src="img/device-home.png" />
           <div class="cap">
-            Home on the Seeker, mainnet, 30 Sep: a 25 SKR a week and a 0.01 USDC an hour permission.
+            Home on the Seeker, mainnet, 1 Oct (round 3): the guard, the Seeker tier, and no delegate on the token
+            account.
           </div>
         </div>
       </div>
@@ -292,21 +293,22 @@
         <div style="text-align: center">
           <img class="phone" style="height: 560px" src="img/device-form.png" />
           <div class="cap">
-            The sentence, and the chain's terms in green. The explainer is now one line above Approve.
+            The sentence, the chain's terms in green, and one line above Approve: what Seed Vault will show.
           </div>
         </div>
         <div style="text-align: center">
           <img class="phone" style="height: 560px" src="img/device-receipt-meter.png" />
-          <div class="cap">Pull receipt with its cap meter: 0 of 0.05 left today, resets in 23h 58m.</div>
+          <div class="cap">The "received" push, tapped with the app open, opens this receipt with its cap meter.</div>
         </div>
         <div style="text-align: center">
           <img class="phone" style="height: 560px" src="img/device-refused.png" />
-          <div class="cap">Refused by the chain: 0x190 on mainnet. One base unit over is enough.</div>
+          <div class="cap">
+            Refused by the chain, 0x190 on mainnet: the push, tapped with the app open, opens its own slip.
+          </div>
         </div>
       </div>
       <p class="muted" style="font-size: 18px; margin-top: 14px">
-        Screenshots from Seeker SM02E4060327059 on mainnet, 30 Sep 2026, release build 7fcd047. The explainer on the
-        form was shortened after this run (1a44abf).
+        Screenshots from Seeker SM02E4060327059 on mainnet, 1 Oct 2026 (rounds 3 and 4; release build 57eb4e1).
       </p>
     </section>
 
@@ -360,23 +362,27 @@
 
     <!-- 5b -->
     <section class="slide">
-      <div class="kicker">The allowance, measured on mainnet, 30 Sep – 1 Oct 2026</div>
+      <div class="kicker">The allowance, measured on mainnet, 30 Sep – 1 Oct 2026 (rounds 2–3)</div>
       <h2>Seed Vault shows a number, not "Unlimited"</h2>
       <div class="row" style="align-items: center">
         <div style="text-align: center">
-          <img class="phone" style="height: 600px" src="img/device-seedvault-007.png" />
-          <div class="cap">The grant sheet for 0.01 USDC a day for 7 days: 0.07 USDC.</div>
+          <img class="phone" style="height: 600px" src="img/device-seedvault.png" />
+          <div class="cap">The third USDC permission: the app said 2.04 USDC, and so does Seed Vault.</div>
         </div>
         <div style="flex: 1; display: flex; flex-direction: column; gap: 20px">
           <div class="card chain">
             <h3>Capped at the lifetime total</h3>
-            <p>0.01 a day × 7 days. On chain right after: delegate = the Subscription Authority, 0.07 USDC.</p>
+            <p>
+              0.01 a day × 7 days: Seed Vault shows 0.07 USDC, not "Unlimited". On chain: delegate = the Subscription
+              Authority, 0.07.
+            </p>
           </div>
           <div class="card">
             <h3>One approval, every live permission</h3>
             <p>
-              With a daily and an hourly permission live, the USDC allowance read 1.97: 0.30 the daily one can still
-              take plus 1.67 for the hourly one. The app now names both numbers before Seed Vault opens.
+              With two USDC permissions live, the third grant's line said "Seed Vault will show 2.04 USDC in total", the
+              sheet showed 2.04, and the chain read 2.03 after its first pull. "Why?" splits it: what this one can take,
+              and the rest.
             </p>
           </div>
           <div class="card">
@@ -392,8 +398,8 @@
 
     <!-- 6 -->
     <section class="slide">
-      <div class="kicker">Mainnet, from the Seeker, 30 Sep – 1 Oct 2026 (times UTC)</div>
-      <h2>It runs on mainnet, one approval each</h2>
+      <div class="kicker">Mainnet, from the Seeker: round 4 on the release build 57eb4e1, 1 Oct 2026 (UTC)</div>
+      <h2>Every tap lands, in every app state</h2>
       <table>
         <tr>
           <th>Event</th>
@@ -401,44 +407,46 @@
           <th>Signature</th>
         </tr>
         <tr>
-          <td>Grant 0.05 USDC a day, 19:31:06</td>
+          <td>Grant natXone 0.01 USDC a day, 08:16:29</td>
           <td>one signer, the owner</td>
-          <td class="mono">gPQgHedD…</td>
+          <td class="mono">2ibgJK5z…</td>
         </tr>
         <tr>
-          <td>First pull, 19:31:20</td>
-          <td class="green">14 s after the grant (others: 10 s, 11 s, 5 s)</td>
-          <td class="mono">4pdgdnee…</td>
+          <td>First pull, 08:16:40</td>
+          <td class="green">11 s after the grant; one push in the tray</td>
+          <td class="mono">4PSMS6nc…</td>
         </tr>
         <tr>
-          <td>One base unit over the cap, 19:33:02</td>
-          <td class="red">0x190, landed; push and stamped slip on the phone</td>
-          <td class="mono">2M5biryq…</td>
+          <td>Refused, tapped with the app open ×3, 08:20–08:23</td>
+          <td class="red">0x190 each; every tap opened its own slip</td>
+          <td class="mono">4R8U6a5M… 2nbMHaUi… 5Nam7Lma…</td>
         </tr>
         <tr>
-          <td>25 SKR pull, 19:41:59</td>
-          <td class="green">5,961 compute units, 7,000 lamports, paid by the delegatee</td>
-          <td class="mono">Ry4tiD6o…</td>
+          <td>Refused, tapped in the background, 08:23:46</td>
+          <td class="red">0x190; the slip opened</td>
+          <td class="mono">4ZLE3GQF…</td>
         </tr>
         <tr>
-          <td>Hourly pull, app killed, 20:35:27</td>
-          <td class="green">push 20:35:33; tap from a cold start opened the receipt</td>
-          <td class="mono">BdBJhbEj…</td>
+          <td>Refused, tapped from a cold start, 08:25:03</td>
+          <td class="red">0x190; the slip opened, no crash</td>
+          <td class="mono">3uotigam…</td>
         </tr>
         <tr>
-          <td>Digest at the chosen hour</td>
-          <td class="green">saved for 00:00 local; sent 21:00:25, nothing before</td>
-          <td class="muted">server log</td>
+          <td>Relaunch from the launcher</td>
+          <td>home, 3 of 3, also after a cold-start tap</td>
+          <td class="mono">—</td>
         </tr>
         <tr>
-          <td>Four revokes, 04:05–04:09</td>
-          <td>one Seed Vault sheet each; <code>delegate: none</code> on every account</td>
-          <td class="mono">4Et21Vw6… ZdLixiQX…</td>
+          <td>Two revokes, 08:28:56 and 08:30:29</td>
+          <td>one sheet each; all 61 token accounts: no delegate</td>
+          <td class="mono">DZa2Vyzt… 2zZDAhNH…</td>
         </tr>
       </table>
       <p class="muted" style="font-size: 18px">
-        The first life cycle ran on mainnet on 22 Sep with two approvals (README). Full signatures with Explorer links:
-        README.md, "What is proven".
+        Round 3 (same day): first pulls 4–7 s after their grants; the explainer matched Seed Vault at 2.04 USDC; no
+        clipped text after a reboot; receipts per permission; four revokes, one sheet each. Round 2 (30 Sep): the SKR
+        pull at 5,961 compute units and 7,000 lamports. Full signatures with Explorer links: README.md, "What is
+        proven".
       </p>
     </section>
 
@@ -467,7 +475,7 @@
             <li>Two mints side by side, the SKR path: a ceiling per mint, one authority each</li>
           </ul>
           <p class="muted" style="font-size: 18px; margin-top: 16px">
-            Also: 25 app-logic tests, 10 tests on the web build (cold-start tap, fonts, layout, BACK); typecheck, lint
+            Also: 27 app-logic tests, 10 tests on the web build (cold-start tap, fonts, layout, BACK); typecheck, lint
             and prettier clean. Whether the local binary is byte-identical to mainnet has not been measured yet.
           </p>
         </div>
@@ -532,7 +540,10 @@
         </div>
         <div style="text-align: center">
           <img class="phone" style="height: 580px" src="img/device-clockin.png" />
-          <div class="cap">Clock in on the Seeker, 30 Sep. The widget above it is on the same phone's home screen.</div>
+          <div class="cap">
+            Clock in on the Seeker, 1 Oct: an unsaved hour turns the bottom bar into "Send it at 01:00". The widget
+            (left) is from 30 Sep.
+          </div>
         </div>
       </div>
     </section>
@@ -597,7 +608,7 @@
           <td class="green">yes (mainnet, 30 Sep)</td>
           <td class="green">yes, incl. refused</td>
           <td class="green">yes</td>
-          <td class="green">yes (22 Sep, 30 Sep)</td>
+          <td class="green">yes (22 Sep – 1 Oct)</td>
         </tr>
         <tr>
           <td>Veto (Clock In)</td>
@@ -638,7 +649,8 @@
       </table>
       <p class="muted" style="font-size: 18px">
         From each project's public README, read on 27 Sep 2026 (RESEARCH.md). nuntius on mainnet: the 22 Sep life cycle
-        (two approvals) and the device run of 30 Sep – 1 Oct (one approval per grant, receipts, widget, digest).
+        (two approvals) and four device rounds, 30 Sep – 1 Oct (one approval per grant, receipts, refusals, widget,
+        digest).
       </p>
     </section>
 
@@ -650,16 +662,16 @@
         <div class="card chain" style="flex: 1">
           <h3>Done</h3>
           <p>
-            Two device runs on mainnet (22 Sep; 30 Sep – 1 Oct, 10 of 11 checks passed): one-approval grants and
-            revokes, the capped allowance, receipts, refusals, SKR, the widget and the digest. Tested against the real
-            program. Docs, threat model, judge guide.
+            Four device rounds on mainnet, the last on the release build: one-approval grants and revokes, the capped
+            allowance matching Seed Vault, receipts and refusals tapped in every app state, SKR, the widget and the
+            digest. 83 tests against the real program. Docs, threat model, judge guide.
           </p>
         </div>
         <div class="card" style="flex: 1">
           <h3>Before submission</h3>
           <p>
-            Rerun the checks touched by the last fixes (the open-app push tap, receipts per permission, the explainer
-            line, text after a restart) on the new build. Publish the APK as release v1.0.0.
+            The digest on the release build (due 1 Oct, 21:00 UTC), then the APK as GitHub release v1.0.0, and the demo
+            video cut from the round-3 and round-4 recordings.
           </p>
         </div>
         <div class="card" style="flex: 1">
