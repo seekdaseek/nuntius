@@ -115,6 +115,23 @@ export function describeMandate(m: MandateWords): {
   }
 }
 
+/** The sentence of a back permission: each period's pull buys the launch token for the backer. */
+export function describeBacking(
+  m: MandateWords & { baseSymbol: string; slippagePct: number },
+): ReturnType<typeof describeMandate> {
+  const amount = `${formatUnits(m.amountBaseUnits, m.decimals)} ${m.symbol}`
+  const until = m.expiryTs > 0 ? `, until ${dateWords(m.expiryTs)}` : ''
+  return {
+    headline: `Back ${m.baseSymbol}: buy it with up to ${amount} ${periodWords(m.periodLengthS)}${until}.`,
+    schedule: `nuntius buys right after you approve, then once ${periodWords(m.periodLengthS)} at a varied moment. The ${m.baseSymbol} goes straight to your own wallet.`,
+    guarantee: `Anything above ${amount} in a period is refused by the Solana program itself. If the price moves more than ${m.slippagePct}% before a buy, that buy is skipped and nothing is taken.`,
+    exit: 'Revoke any time with one approval. Nothing is taken without a receipt on this phone.',
+    enforce: `The chain will enforce this: at most ${amount} ${perWords(m.periodLengthS)}${
+      m.expiryTs > 0 ? `, until ${shortDate(m.expiryTs)}` : ''
+    }, each spent on ${m.baseSymbol} in the same transaction. A pull above that fails with error 0x190.`,
+  }
+}
+
 const LABEL_RE = /^[\p{L}\p{N} .,'&()\-]{1,40}$/u
 export function cleanLabel(raw: unknown): string {
   if (raw === undefined || raw === null || raw === '') return ''

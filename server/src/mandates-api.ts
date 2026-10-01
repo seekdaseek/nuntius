@@ -34,6 +34,10 @@ import {
   userAtaOf,
   type DelegationView,
 } from './mandate-chain.js'
+import type { Connection } from '@solana/web3.js'
+import { backerAccountInstruction, registerLaunchRoutes } from './launch-api.js'
+import { describeBacking } from './mandate-text.js'
+import { RateLimiter } from './rate-limit.js'
 import { cleanLabel, describeMandate, formatUnits, parseUnits, PERIODS, type PeriodKey } from './mandate-text.js'
 import { canCreateMandate, LIMITS, tierOf } from './tier.js'
 import { buildDigest, computeStreak, localDay, type LiveMandate } from './digest.js'
@@ -58,6 +62,9 @@ export interface MandateApiDeps {
   executor: Executor | null
   limits?: Pick<Limits, 'demoPerIp' | 'demoPerMandate'>
   now?: () => number
+  /** Subscription launches (Meteora): a web3 connection for the SDKs, and the public origin for metadata. */
+  conn?: Connection
+  origin?: string
 }
 
 class HttpError extends Error {
@@ -196,6 +203,23 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     }
   })
 
+  // Subscription launches (Meteora): back permissions, launches, and the public read-out.
+  if (deps.conn) {
+    registerLaunchRoutes(app, {
+      mandates,
+      rpc,
+      conn: deps.conn,
+      delegatee: deps.delegatee,
+      origin: deps.origin ?? '',
+      auth: (b) => auth(b),
+      parseTerms: (b, owner) => parseTerms(b, owner),
+      gate: (a) => gate(a as ReturnType<typeof auth>),
+      freshNonce,
+      publicLimiter: new RateLimiter(60, 60_000),
+      now,
+    })
+  }
+
   route('/api/mandates/create', async (body) => {
     const a = auth(body)
     gate(a)
@@ -274,16 +298,21 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     if (m.status !== 'pending') throw new HttpError(409, 'not_pending', 'This permission is already live or ended.')
     if ((await readRecurring(rpc, m.delegationPda as Address)).exists)
       throw new HttpError(409, 'already_on_chain', 'The first approval landed after all. Nothing to redo.')
-    const grant = await buildGrantTx(rpc, {
-      owner: a.address as Address,
-      mint: m.mint as Address,
-      delegatee: m.delegatee as Address,
-      nonce: BigInt(m.nonce),
-      amountPerPeriod: BigInt(m.amountPerPeriod),
-      periodLengthS: BigInt(m.periodLengthS),
-      startTs: 0n,
-      expiryTs: BigInt(m.expiryTs),
-    })
+    const back = mandates.backingOf(m.id)
+    const grant = await buildGrantTx(
+      rpc,
+      {
+        owner: a.address as Address,
+        mint: m.mint as Address,
+        delegatee: m.delegatee as Address,
+        nonce: BigInt(m.nonce),
+        amountPerPeriod: BigInt(m.amountPerPeriod),
+        periodLengthS: BigInt(m.periodLengthS),
+        startTs: 0n,
+        expiryTs: BigInt(m.expiryTs),
+      },
+      back ? [(await backerAccountInstruction(a.address, back.baseMint)).ix] : [],
+    )
     if (grant.delegationPda !== m.delegationPda) throw new HttpError(500, 'rebuild_mismatch')
     mandates.touchPending(m.id, now())
     return { mandateId: m.id, transactionBase64: grant.transactionBase64, delegationPda: grant.delegationPda }
@@ -347,7 +376,8 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
   }
 
   const view = async (m: Mandate, live?: DelegationView) => {
-    const text = describeMandate({
+    const back = mandates.backingOf(m.id)
+    const words = {
       label: m.label,
       payee: m.payee,
       amountBaseUnits: BigInt(m.amountPerPeriod),
@@ -355,7 +385,10 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       symbol: m.symbol,
       periodLengthS: m.periodLengthS,
       expiryTs: m.expiryTs,
-    })
+    }
+    const text = back
+      ? describeBacking({ ...words, baseSymbol: back.baseSymbol, slippagePct: back.slippageBps / 100 })
+      : describeMandate(words)
     const d = live
       ? live.amountPerPeriod !== null
         ? {
@@ -396,6 +429,24 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       status: m.status,
       delegationPda: m.delegationPda,
       text,
+      // A back permission: which launch it buys, and where its buys go now.
+      back: back
+        ? {
+            pool: back.pool,
+            route: back.route,
+            baseMint: back.baseMint,
+            baseSymbol: back.baseSymbol,
+            slippagePct: back.slippageBps / 100,
+            // Everything this permission has bought so far, delivered to the backer's account.
+            received: formatUnits(
+              mandates
+                .events(m.address, 0, 500)
+                .filter((e) => e.mandateId === m.id && e.kind === 'buy' && e.outBaseUnits)
+                .reduce((a, e) => a + BigInt(e.outBaseUnits!), 0n),
+              back.baseDecimals,
+            ),
+          }
+        : null,
     }
   }
 
@@ -567,6 +618,11 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       per: e.periodLengthS ?? null,
       amount: e.amountBaseUnits ? formatUnits(BigInt(e.amountBaseUnits), e.decimals) : null,
       signature: e.signature && !e.signature.includes(':') ? e.signature : null,
+      // A buy: what it delivered to the backer, e.g. "1234.5 NATX".
+      got:
+        e.outBaseUnits && e.outSymbol
+          ? `${formatUnits(BigInt(e.outBaseUnits), e.outDecimals ?? 0)} ${e.outSymbol}`
+          : null,
     })
     const feed = receiptFeed(
       mandates.events(a.address, 0, 500),

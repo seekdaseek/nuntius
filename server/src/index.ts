@@ -1,3 +1,5 @@
+import { Connection } from '@solana/web3.js'
+import { PULL_BUDGET } from './tx.js'
 import path from 'node:path'
 import { loadConfig } from './config.js'
 import { openDb, Store } from './db.js'
@@ -116,7 +118,9 @@ if (mandateConfig) {
       }
     : null
   const receipts = new Receipts(mandates, push, log, mandateConfig.cluster)
-  const executor = new Executor({ store: mandates, chain: rpcChain(rpc, delegatee), receipts, log })
+  // The Meteora SDKs speak web3.js: one connection to the same RPC, for back permissions and launches.
+  const conn = new Connection(mandateConfig.rpcUrl, 'confirmed')
+  const executor = new Executor({ store: mandates, chain: rpcChain(rpc, delegatee, PULL_BUDGET, conn), receipts, log })
   const guard = new Guard({
     store: mandates,
     chain: rpcGuardChain(rpc),
@@ -138,7 +142,16 @@ if (mandateConfig) {
       60_000,
     )
   }
-  mandateDeps = { mandates, cfg: mandateConfig, rpc, delegatee: delegatee.address, receipts, executor }
+  mandateDeps = {
+    mandates,
+    cfg: mandateConfig,
+    rpc,
+    delegatee: delegatee.address,
+    receipts,
+    executor,
+    conn,
+    origin: `https://${config.domain}`,
+  }
   log.info('mandates_enabled', {
     cluster: mandateConfig.cluster,
     delegatee: delegatee.address,

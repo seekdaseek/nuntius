@@ -96,6 +96,8 @@ export async function delegationPdaOf(owner: Address, mint: Address, delegatee: 
 export async function grantInstructions(
   rpc: Rpc,
   t: MandateTerms,
+  /** Signed by the owner in the same transaction, after the grant (a back permission's token account). */
+  extra: Instruction[] = [],
 ): Promise<{
   instructions: Instruction[]
   delegationPda: Address
@@ -155,6 +157,7 @@ export async function grantInstructions(
   )
   const instructions: Instruction[] = [init, create]
   if (allowance !== null) instructions.push(capInstruction(userAta, t.mint, authorityPda, owner, allowance, decimals))
+  instructions.push(...extra)
   return { instructions, delegationPda, authorityPda, userAta, createsAuthority, allowance }
 }
 
@@ -171,8 +174,8 @@ function capInstruction(
 }
 
 /** The single transaction the device signs to grant a mandate. */
-export async function buildGrantTx(rpc: Rpc, t: MandateTerms): Promise<GrantTx> {
-  const g = await grantInstructions(rpc, t)
+export async function buildGrantTx(rpc: Rpc, t: MandateTerms, extra: Instruction[] = []): Promise<GrantTx> {
+  const g = await grantInstructions(rpc, t, extra)
   return {
     transactionBase64: await compileUnsigned(rpc, t.owner, g.instructions),
     delegationPda: g.delegationPda,
