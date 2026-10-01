@@ -14,6 +14,7 @@ import { Guard, rpcGuardChain, startGuard } from './guard.js'
 import { runDigests } from './digest-scheduler.js'
 import { liveMandatesFor } from './mandates-api.js'
 import { createLogger } from './log.js'
+import { bootLines } from './boot-log.js'
 
 const config = loadConfig()
 const db = openDb(path.join(import.meta.dirname, '..', 'nuntius.db'))
@@ -152,13 +153,5 @@ const app = createApp(config, store, fcm, delegationSigners, mandateDeps)
 // Loopback only: during development the Seeker reaches this through `adb reverse`,
 // and in production nginx terminates in front. Nothing here belongs on the LAN.
 app.listen(config.port, '127.0.0.1', () => {
-  console.log(
-    `nuntius server on 127.0.0.1:${config.port} · domain ${config.domain} · helius ${config.heliusRpc ? 'configured' : 'NOT configured'} · fcm ${fcm ? 'configured' : 'NOT configured'}`,
-  )
-  // Printed, not assumed: on mainnet these four numbers are the difference
-  // between a capped test and an uncapped one.
-  const d = config.delegation
-  console.log(
-    `delegation · cluster ${d.cluster} · mint ${d.mint ?? '(devnet mints its own)'} · cap ${d.capBaseUnits} base units · period ${d.periodLengthS}s · decimals ${d.decimals} · receiver ${d.receiverAta ?? "(delegatee's own ATA, created on first pull)"}`,
-  )
+  for (const line of bootLines(config, { fcm: Boolean(fcm), spike: Boolean(delegationSigners) })) console.log(line)
 })

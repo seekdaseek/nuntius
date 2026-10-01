@@ -534,3 +534,24 @@ test('receipts belong to a mandate; one from before the mandate at its address i
   assert.equal(store.addEvent('Natx', e('old9', 'pull', Date.UTC(2026, 8, 22))), null)
   assert.notEqual(store.addEvent('Natx', e('new2', 'pull', grantAt + 3_600_000)), null)
 })
+
+test('boot log: nothing about the delegation spike unless SPIKE_ROUTES is on', async () => {
+  const { bootLines } = await import('./boot-log.js')
+  const config = {
+    port: 8787,
+    domain: 'nuntius.ochinimus.app',
+    heliusRpc: 'https://rpc',
+    delegation: {
+      cluster: 'devnet',
+      mint: null,
+      capBaseUnits: 10000n,
+      periodLengthS: 60,
+      decimals: 6,
+      receiverAta: null,
+    },
+  } as never
+  const off = bootLines(config, { fcm: true, spike: false })
+  assert.equal(off.length, 1)
+  assert.doesNotMatch(off.join('\n'), /delegation|devnet/)
+  assert.match(bootLines(config, { fcm: true, spike: true }).join('\n'), /^delegation spike · cluster devnet/m)
+})
