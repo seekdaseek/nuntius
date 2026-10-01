@@ -11,6 +11,7 @@ Built for the Solana Seeker. Android only: Mobile Wallet Adapter and Seed Vault 
 |                              |                                                                      |
 | ---------------------------- | -------------------------------------------------------------------- |
 | Judges, start here           | [JUDGE_GUIDE.md](JUDGE_GUIDE.md): install and verify in five minutes |
+| The APK                      | {{RELEASE_URL}}, sha256 `{{APK_SHA256}}`                             |
 | Threat model                 | [SECURITY.md](SECURITY.md): what the cap bounds and what it does not |
 | Why this, not something else | [RESEARCH.md](RESEARCH.md)                                           |
 
@@ -70,7 +71,54 @@ The program account is **upgradeable** (upgrade authority `DXtFpbPjcn2hxPnw79x1P
 
 Nothing below is claimed from a successful build. Each line was executed and the result observed on the Seeker (`SM02E4060327059`), on chain with a signature, or against the real program on a local validator. Anything not seen on the phone is marked **UNTESTED**.
 
-### On the Seeker, on mainnet: 30 September – 1 October 2026
+**The release:** APK `nuntius-1.0.0.apk` at {{RELEASE_URL}}, sha256 `{{APK_SHA256}}`, signed with the release key (certificate `71:70:5E:DD…35:F8`, the one `assetlinks.json` names).
+
+### On the Seeker, on mainnet: round 4, 1 October 2026 (build `57eb4e1`)
+
+The release candidate. Backend at `4f541fa`. Every grant, revoke and sign-in was the owner's tap in Seed Vault. Times are UTC.
+
+| What                                          | UTC      | Transaction                                                                                                                            | Result                                       |
+| --------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| grant natXone, 0.01 USDC a day                | 08:16:29 | [`2ibgJK5z…`](https://explorer.solana.com/tx/2ibgJK5zJw82DFBbCFeU8dTkP9yMxdtmt95Yiq7zaZBUf3LCmGWMJQfGHeChvcgmwQezyc1guiQNuGQwmokHCUr6) | one signer, cj7                              |
+| first pull                                    | 08:16:40 | [`4PSMS6nc…`](https://explorer.solana.com/tx/4PSMS6nccuJMiThtJwgjZFdYXu87xUgjyzMVXFLerr5ETASeYLZxzfqM1TEPd2zTtsNWWQruoxCXHLck8wepeF1s) | 11 s after the grant; the tray held one push |
+| grant natXtwo, 0.01 USDC a day                | 08:19:42 | [`j2oeAPLj…`](https://explorer.solana.com/tx/j2oeAPLjYEr51MW9Tiw8eZuSvhQwcBCFPnvpq4iEB3CZZDrZatwZAbq5y1Q1h1pu4zTUXoMhxKrsUU8FMa1M3v6)  | one signer, cj7                              |
+| first pull                                    | 08:19:52 | [`4ZtvWLKT…`](https://explorer.solana.com/tx/4ZtvWLKTD9tJvDGrNfqsnUdUoifwQ64XVo6z8wcbbVkWPZowon9i81JvhUEVkzhaoWuS5VgWHJyBLWYJhAx5SxeU) | 10 s after the grant                         |
+| refused #1, natXone, tapped with the app open | 08:20:21 | [`4R8U6a5M…`](https://explorer.solana.com/tx/4R8U6a5MhUQBwYSQnc2XeABHfw6RGGeKrDdE4vYtoooS8JXqo36bUz3JaHEY3LS6hkJgdnYRQBmi8iTsowg8px8M) | `0x190`; its own slip opened                 |
+| refused #2, natXtwo, tapped with the app open | 08:21:16 | [`2nbMHaUi…`](https://explorer.solana.com/tx/2nbMHaUiPSF4bTUxzTzF196cebYDJL7jEdeaoudHh5mrQcMnF5iYuyepKZJwFxw4H5p7zTecsnSVGYYEzu9bJvUi) | `0x190`; its own slip opened                 |
+| refused #3, natXone again, same tray tag      | 08:23:07 | [`5Nam7Lma…`](https://explorer.solana.com/tx/5Nam7LmafyCBNE8t45HoiaSD1EabCwVovoiXsbjVyixVwrEe5ZLxXaK1hPP34dNFxTbm9KAmPHMX1EPegqAE4BnC) | `0x190`; its own slip opened                 |
+| refused, natXtwo, tapped in the background    | 08:23:46 | [`4ZLE3GQF…`](https://explorer.solana.com/tx/4ZLE3GQFcp2GxBV7EpKcdHHm6ZtWGozwt6JQ8dn6uJdfqNc59ebTmnhs3gStHQqnzUDi1gR71hn9VoeqUvvDPTB6) | `0x190`; the slip opened                     |
+| refused, natXone, tapped from a cold start    | 08:25:03 | [`3uotigam…`](https://explorer.solana.com/tx/3uotigamcH61kQtnejNZznp8HxY8y4agrgnBLwBGRZybkEa6okefGhdSDQ8JWfRhHMv4EMhrMyW3jFs3i3s325ug) | `0x190`; the slip opened, no crash           |
+| revoke natXone                                | 08:28:56 | [`DZa2Vyzt…`](https://explorer.solana.com/tx/DZa2VyztDAKTmJZa4o7ARaaKb7Bik2zsh1Qrvr5BzeDPtVxobwj75TEcXGgNdnmQm2t97xU8TdmsZ5bWHvBzhKm)  | one signer, cj7                              |
+| revoke natXtwo                                | 08:30:29 | [`2zZDAhNH…`](https://explorer.solana.com/tx/2zZDAhNHPRwbvrK4F8v7Et8yPnqBeqJ46nyXhMJGJYQV1f8qeuTrypKATtfcsTkSdUsuC1BBcoAADt7bxK2v3pPp) | one signer, cj7; delegate **none**           |
+
+- **Every push tap lands where it says, in every app state.** A refused push tapped with the app open opened its own slip, three times out of three, including a second refusal for the same permission under the same tray tag. A background tap and a tap from a dead process (cold start, crash buffer empty) did too. A "received" push tapped with the app open opened its receipt.
+- **A relaunch from the launcher lands on home**, three times out of three, also right after a cold-start tap: an old receipt is never reopened.
+- **The tray holds one push.** After each grant "Permission live" was replaced by "received" under the same tag, and when another permission's push arrived the app dismissed the rest.
+- **Nothing left behind.** All 61 token accounts of both wallets read `delegate: null` after the revokes.
+
+What changed for round 4 (`df067cd`, `57eb4e1`, `4f541fa`): each notification tap is routed once per process from a ledger that outlives a remount, and a tap whose listener event never arrived is caught when the app comes to the front; a tap with no link (a collapsed group) opens the receipts list; a new push clears the rest of the tray; each digest link carries its send time, so two days' digests are two taps.
+
+### Round 3, 1 October 2026 (build `67e0221`)
+
+| What                                | UTC      | Transaction                                                                                                                            | Result                                                      |
+| ----------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| grant natX → cj7, 0.01 USDC a day   | 05:24:03 | [`3UqTFf5M…`](https://explorer.solana.com/tx/3UqTFf5Mr6fQBFBuNkMeDUzRXRiKp4C7GKpzcqPvLdNPMKUuGaaRhy14JQVFeYgzXUjjpVD9aKnwZaVXJYzo2FEr) | the line above Approve: "Seed Vault will show 0.07 USDC"    |
+| first pull                          | 05:24:08 | [`QhkX14ZC…`](https://explorer.solana.com/tx/QhkX14ZCujPtuJN8JcD9hFYZcWigHj6cHE4L9xhoC1kUyBsaNFJtkuLbZ36JXTWTwvNocRWBetVFyQ8b3R8SiFz)  | 5 s after the grant; 7,461 units, fee 7,000 lamports        |
+| grant natXcheck, 0.05 USDC a day    | 05:33:05 | [`5RQ9Hhvb…`](https://explorer.solana.com/tx/5RQ9Hhvb1GN4rKuKAP26ZahqG96upj8wbLEcoKXaRvQWf2LTphQm8tarhw7kxp8TgA8epqn9CR2hvaEJ2d6ksJis) | one signer, cj7                                             |
+| first pull                          | 05:33:12 | [`5WnHgccV…`](https://explorer.solana.com/tx/5WnHgccV73Tmt7DMuUZykq9D5pyUdy7JqndQk9xLtZfE9xuD76yaXcPFtMzdtdoX3wP2qBaXQ1fjt6uEPi7zYZzs) | 7 s; "received" tapped with the app open opened the receipt |
+| grant natXhourly, 0.01 USDC an hour | 05:35:48 | [`4PpGNhSh…`](https://explorer.solana.com/tx/4PpGNhShokZBYHMkH28QP3vixQjf5LSn6SvtkQZpUQGLKt5PLuyz6okchyYWkpFmeQnWV2XPALbTJLJtzDqCeXfv) | "Seed Vault will show 1.98 USDC in total"; this one 1.68    |
+| grant natXthird, 0.01 USDC a day    | 05:37:22 | [`2LvREVHY…`](https://explorer.solana.com/tx/2LvREVHYtmS2MtFkUh2ZTtP9eLNuRtS7mCSNg43q6ejyYmUkqBJHFn17BnvHuSHxePQ6PzXdzkLZut4C6maZ6gMa) | the line said 2.04 USDC; **Seed Vault showed 2.04 USDC**    |
+| hourly pull #2, app killed          | 06:35:49 | [`2yBvMP4j…`](https://explorer.solana.com/tx/2yBvMP4jWtxBUyt9eq6Luufbv13kPwJjVvyPktfKotJwvTqGKzEWZZvVvfdmaZ6W2BCbFtDG2Sn5n5VNb8GhajiJ) | 9,046 units, fee 7,000; cold-start tap opened the receipt   |
+| last of four revokes                | 06:48:40 | [`2SWgna8v…`](https://explorer.solana.com/tx/2SWgna8vdtdxNWeDN5ckTEQwnLJ1dWXMGzguodQkCUS1ZbQBQ5Hf9sKLgC8Pz17pcnqb6Bvv3MSnivtFGPR8ppxq) | one sheet each; all 61 token accounts delegate null         |
+
+- **The explainer is one line above Approve and names both amounts**, and it matched Seed Vault: with two USDC permissions live the third grant's line said 2.04 USDC and the Seed Vault sheet showed **2.04 USDC**. On chain right after its first pull: 2.03.
+- **First pulls in 4–7 s** (5, 7, 7 and 4 s).
+- **Receipts belong to their permission.** After natX's new grant, home listed only its own receipts; "See all" showed the ended `cj7check` permissions as dated sections. The deploy's start-up cleanup removed the six 22 Sep receipts the old guard had replayed.
+- **No clipped text**, including the first open after a reboot; the wordmark is whole next to "✓ Seeker verified".
+- **BACK** after a grant goes home; Clock in's unsaved hour is saved from the bottom bar.
+- **One Seed Vault sheet per revoke** (four revokes), and all 61 token accounts of both wallets with no delegate at the end.
+
+### Round 2, 30 September – 1 October 2026 (build `7fcd047`)
 
 Build: public `main` at `7fcd047`, release APK signed with the release key (sha256 `23213125…9644c57`), backend `https://nuntius.ochinimus.app` on mainnet. Two Seed Vault wallets on one phone, `cj7` (Seeker verified) and `natX` (basic tier). Every grant, revoke and sign-in was approved by the owner in Seed Vault. Times are UTC.
 
@@ -162,8 +210,8 @@ These tests cover:
 
 **Not yet proven**
 
-- **This round's fixes, on the phone.** A "received" push tapped while the app is open, receipts split into live and ended permissions, the one-line explainer above Approve, text drawn only after the fonts load, the wordmark next to the Seeker chip, BACK after a grant and from Clock in, and the digest's "since your last digest" wording are tested in unit, localnet and web tests, but not yet on the Seeker. **UNTESTED on device.**
-- **Seed Vault's grant sheet when one approval covers two permissions.** The allowance on chain was read (1.97 USDC), but the sheet itself was not captured. **UNTESTED on device.**
+- **The digest on the release build.** The round-3 build sent its digest at the chosen hour; on `57eb4e1` the next one is due at 21:00 UTC on 1 October, with the title "since your last digest" and BACK from Clock in opened by its push. **PENDING.**
+- **The widget on builds after round 2.** It rendered on the Seeker on 30 Sep (round 2); rounds 3 and 4 did not recheck it.
 - **The mainnet program binary.** The local tests build the program at `364a419`; whether that is byte-identical to the mainnet deployment is not measured.
 - **Executor limits.** The executor runs as a single process, and the delegatee key is a file, not a KMS (SECURITY.md §4).
 
@@ -208,14 +256,14 @@ Push is sent as **`notification` + `data`**, not data-only. A data-only FCM mess
 ### Tests
 
 ```bash
-npm ci && npm run test:core                 # app logic: widget model, form checks, formatting (node --test)
-npm run test:e2e                            # the web build: cold-start tap, fonts, layout, BACK (playwright-core)
+npm ci && npm run test:core                 # 27 app-logic tests: taps, widget model, form checks, formatting
+npm run test:e2e                            # 10 tests on the web build: cold-start tap, fonts, layout, BACK
 npx tsc --noEmit && npx expo lint && npx prettier --check .
 
 cd server && npm ci
-npm test                                    # unit tests; localnet suites report "skipped"
+npm test                                    # 43 unit tests; the 6 localnet suites report "skipped"
 ../scripts/localnet.sh &                    # validator + the program built from 364a419 (first run builds it)
-npm run test:localnet                       # everything, against the real program
+npm run test:localnet                       # all 83, against the real program
 ```
 
 ### Backend
