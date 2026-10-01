@@ -38,4 +38,19 @@ test('the wordmark and the Seeker chip both fit, at 320 and 360 dp', async () =>
   }
 })
 
+test('Clock in: an unsaved digest hour is saved from the footer, in full view, above Clock in', async () => {
+  const page = await browser.newPage({ viewport: { width: 360, height: 800 } })
+  await page.addInitScript((a) => localStorage.setItem('nuntius-auth-v1', JSON.stringify(a)), SEEKER)
+  await page.goto(`${base}/digest`)
+  await page.waitForSelector('[data-testid=digest-later]', { timeout: 15000 })
+  await page.click('[data-testid=digest-later]')
+  const save = await page.locator('[data-testid=digest-save]').boundingBox()
+  const clock = await page.locator('[data-testid=clock-in]').boundingBox()
+  assert.ok(save, 'Save is drawn')
+  assert.equal(await page.locator('[data-testid=digest-save]').textContent(), 'Send it at 09:00')
+  assert.ok(save.y >= 0 && save.y + save.height <= 800, 'Save is fully on screen without scrolling')
+  if (clock) assert.ok(save.y + save.height <= clock.y, 'and not behind Clock in')
+  await page.close()
+})
+
 test.after(close)

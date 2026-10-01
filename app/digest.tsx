@@ -45,16 +45,32 @@ export default function ClockInScreen() {
   const picker = digestPicker(d?.prefs?.hour ?? null, draft)
   const done = streak?.clockedInToday ?? false
 
-  const footer = seeker ? (
-    <Button
-      big
-      title={done ? 'Clocked in for today' : 'Clock in'}
-      disabled={done}
-      busy={clockIn.isPending}
-      onPress={() => clockIn.mutate()}
-      testID="clock-in"
-    />
-  ) : null
+  // An unsaved hour takes the footer, so its Save can never sit behind the
+  // clock-in button or below the fold (device check 10, 1 Oct).
+  const footer = !seeker ? null : (
+    <>
+      {picker.save ? (
+        <Button
+          big
+          title={picker.save}
+          busy={prefs.isPending}
+          onPress={() => prefs.mutate({ hour: picker.hour, enabled: true }, { onSuccess: () => setDraft(null) })}
+          testID="digest-save"
+        />
+      ) : null}
+      {!picker.save || !done ? (
+        <Button
+          big
+          kind={picker.save ? 'outline' : 'signal'}
+          title={done ? 'Clocked in for today' : 'Clock in'}
+          disabled={done}
+          busy={clockIn.isPending}
+          onPress={() => clockIn.mutate()}
+          testID="clock-in"
+        />
+      ) : null}
+    </>
+  )
 
   return (
     <Screen back footer={footer}>
@@ -108,14 +124,6 @@ export default function ClockInScreen() {
             </View>
             <Button title="Later" kind="outline" onPress={() => setDraft(picker.later)} testID="digest-later" />
           </View>
-          {picker.save ? (
-            <Button
-              title={picker.save}
-              busy={prefs.isPending}
-              onPress={() => prefs.mutate({ hour: picker.hour, enabled: true }, { onSuccess: () => setDraft(null) })}
-              testID="digest-save"
-            />
-          ) : null}
           {prefs.isError ? <Note tone="refused">Not saved: {prefs.error.message}</Note> : null}
         </>
       ) : null}
