@@ -36,7 +36,9 @@ export async function runDigests(d: DigestDeps, nowMs: number): Promise<string[]
       await d.push.toAddress(pref.address, {
         title: digest.title,
         body: digest.body,
-        url: '/digest?source=digest',
+        // Its own send time in the url: the app routes each tap once per process
+        // by url, so two days' digests must not look like one tap.
+        url: `/digest?source=digest&at=${nowMs}`,
         channel: 'digest',
       })
       d.mandates.markDigestSent(pref.address, localDay(nowMs, pref.tzOffsetMin), nowMs)

@@ -305,10 +305,17 @@ test('digest scheduler sends once per local day, Seeker tier only', async () => 
   const store = new Store(db)
   const mandates = new MandateStore(db)
   const sent: string[] = []
+  const urls: string[] = []
   const deps = {
     store,
     mandates,
-    push: { toAddress: async (a: string, m: { title: string }) => (sent.push(`${a}:${m.title}`), [200]) },
+    push: {
+      toAddress: async (a: string, m: { title: string; url: string }) => (
+        sent.push(`${a}:${m.title}`),
+        urls.push(m.url),
+        [200]
+      ),
+    },
     log: createLogger(() => {}),
     live: async () => [],
   }
@@ -324,6 +331,10 @@ test('digest scheduler sends once per local day, Seeker tier only', async () => 
   assert.equal(sent[0], 'Seeker1111111111111111111111111111111111111:Nothing moved in the last 24 hours')
   assert.deepEqual(await runDigests(deps, at8 + 24 * 3600_000), ['Seeker1111111111111111111111111111111111111'])
   assert.equal(sent[1], 'Seeker1111111111111111111111111111111111111:Nothing moved since your last digest')
+  // Each digest's url carries its send time, so the app never takes the second
+  // day's tap for a repeat of the first.
+  assert.deepEqual(urls, [`/digest?source=digest&at=${at8}`, `/digest?source=digest&at=${at8 + 24 * 3600_000}`])
+  assert.notEqual(urls[0], urls[1])
   // A refusal before a digest is in that digest only; the next counts from it.
   const refusal = (at: number, sig: string) =>
     mandates.addEvent('Seeker1111111111111111111111111111111111111', {
