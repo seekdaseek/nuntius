@@ -6,6 +6,7 @@ import { widgetView, type WidgetSnapshot } from './widget-model.ts'
 import {
   basicTierLine,
   digestPicker,
+  endedHeader,
   initial,
   lineTone,
   longDate,
@@ -395,4 +396,11 @@ test('digest picker: presses stay local, one save, and it never says "not set ye
   assert.equal(digestPicker(19, null).label, '19:00')
   assert.equal(digestPicker(0, 0).earlier, 23)
   assert.equal(digestPicker(23, 23).later, 0)
+})
+
+test('receipts: an ended permission is headed by its name and dates', () => {
+  const at = (d: number, m = 8) => Date.UTC(2026, m, d, 12)
+  assert.equal(endedHeader('cj7check', at(22), at(30), 180), 'cj7check · 22–30 Sep')
+  assert.equal(endedHeader('cj7check', at(28), at(1, 9), 180), 'cj7check · 28 Sep – 1 Oct')
+  assert.equal(endedHeader('Gym', at(30), at(30), 180), 'Gym · 30 Sep')
 })

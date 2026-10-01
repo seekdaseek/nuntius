@@ -39,6 +39,7 @@ import { canCreateMandate, LIMITS, tierOf } from './tier.js'
 import { buildDigest, computeStreak, localDay, type LiveMandate } from './digest.js'
 import { safeError } from './log.js'
 import { allowanceFor, newGrantLifetime } from './allowance.js'
+import { receiptFeed } from './receipt-feed.js'
 import { randomInt } from 'node:crypto'
 import { clientIp, tooMany, type Limits } from './rate-limit.js'
 import type { Rpc } from './tx.js'
@@ -552,22 +553,31 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
   route('/api/receipts', async (body) => {
     const a = auth(body)
     const limit = Math.min(Math.max(Number(body.limit ?? 50) || 50, 1), 200)
+    const view = ({ remainingBaseUnits, capBaseUnits, ...e }: ReturnType<MandateStore['events']>[number]) => ({
+      ...e,
+      // The cap, from the receipt itself or else the mandate: the slip's "cap this period".
+      cap: capBaseUnits
+        ? formatUnits(BigInt(capBaseUnits), e.decimals)
+        : ((m) => (m ? formatUnits(BigInt(m.amountPerPeriod), m.decimals) : null))(
+            e.mandateId ? mandates.getMandate(e.mandateId) : null,
+          ),
+      // What was left right after this receipt, when it was recorded: the slip's meter.
+      remaining: remainingBaseUnits ? formatUnits(BigInt(remainingBaseUnits), e.decimals) : null,
+      reset: e.nextResetTs ?? null,
+      per: e.periodLengthS ?? null,
+      amount: e.amountBaseUnits ? formatUnits(BigInt(e.amountBaseUnits), e.decimals) : null,
+      signature: e.signature && !e.signature.includes(':') ? e.signature : null,
+    })
+    const feed = receiptFeed(
+      mandates.events(a.address, 0, 500),
+      mandates.listMandates(a.address),
+      new Set(mandates.guardedPdas(a.address).filter((p) => !mandates.getMandateByPda(p))),
+    )
     return {
-      receipts: mandates.events(a.address, 0, limit).map(({ remainingBaseUnits, capBaseUnits, ...e }) => ({
-        ...e,
-        // The cap, from the receipt itself or else the mandate: the slip's "cap this period".
-        cap: capBaseUnits
-          ? formatUnits(BigInt(capBaseUnits), e.decimals)
-          : ((m) => (m ? formatUnits(BigInt(m.amountPerPeriod), m.decimals) : null))(
-              mandates.getMandateByPda(e.delegationPda),
-            ),
-        // What was left right after this receipt, when it was recorded: the slip's meter.
-        remaining: remainingBaseUnits ? formatUnits(BigInt(remainingBaseUnits), e.decimals) : null,
-        reset: e.nextResetTs ?? null,
-        per: e.periodLengthS ?? null,
-        amount: e.amountBaseUnits ? formatUnits(BigInt(e.amountBaseUnits), e.decimals) : null,
-        signature: e.signature && !e.signature.includes(':') ? e.signature : null,
-      })),
+      // Live permissions only, each since its grant: home and the top of the list.
+      receipts: feed.live.slice(0, limit).map(view),
+      // Permissions that have ended, newest first, each with its dates.
+      ended: feed.ended.map((s) => ({ ...s, receipts: s.receipts.map(view) })),
       cluster: cfg.cluster,
     }
   })

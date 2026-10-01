@@ -88,6 +88,8 @@ export interface ListResponse {
 
 export interface Receipt {
   id: number
+  /** The permission it belongs to (null for another app's delegation). */
+  mandateId?: string | null
   kind: 'pull' | 'refused' | 'granted' | 'revoked' | 'expired'
   at: number
   delegationPda: string
@@ -105,6 +107,15 @@ export interface Receipt {
   reset?: number | null
   /** The permission's period in seconds. */
   per?: number | null
+}
+
+export interface EndedReceipts {
+  key: string
+  label: string
+  symbol: string
+  from: number
+  to: number
+  receipts: Receipt[]
 }
 
 export interface Streak {
@@ -174,7 +185,9 @@ export const api = {
       session,
       mandateId,
     }),
-  receipts: (session: string) => post<{ receipts: Receipt[]; cluster: string }>('/api/receipts', { session }),
+  /** Live permissions' receipts since their grant, plus each ended permission's, dated. */
+  receipts: (session: string) =>
+    post<{ receipts: Receipt[]; ended?: EndedReceipts[]; cluster: string }>('/api/receipts', { session }),
   digest: (session: string, tzOffsetMin: number) => post<DigestResponse>('/api/digest', { session, tzOffsetMin }),
   digestPrefs: (session: string, hour: number, tzOffsetMin: number, enabled: boolean) =>
     post<{ prefs: DigestResponse['prefs'] }>('/api/digest/prefs', { session, hour, tzOffsetMin, enabled }),

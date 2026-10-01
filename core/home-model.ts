@@ -227,3 +227,17 @@ export function digestPicker(saved: number | null, draft: number | null) {
     later: (hour + 1) % 24,
   }
 }
+
+/** "natXcheck · 22–30 Sep" or "· 28 Sep – 1 Oct": an ended permission's section header. */
+export function endedHeader(label: string, fromMs: number, toMs: number, tzOffsetMin: number): string {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const a = new Date(fromMs + tzOffsetMin * 60_000)
+  const b = new Date(toMs + tzOffsetMin * 60_000)
+  const day = (d: Date) => `${d.getUTCDate()} ${months[d.getUTCMonth()]}`
+  let range: string
+  if (day(a) === day(b)) range = day(a)
+  else if (a.getUTCMonth() === b.getUTCMonth() && a.getUTCFullYear() === b.getUTCFullYear())
+    range = `${a.getUTCDate()}–${day(b)}`
+  else range = `${day(a)} – ${day(b)}`
+  return `${label} · ${range}`
+}

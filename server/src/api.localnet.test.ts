@@ -280,6 +280,22 @@ test('mandatum API end to end on the real program', { skip: skipLocalnet, timeou
       'no_mandate',
       "someone else's permission",
     )
+    // The feed: only the live permission, since its grant. "Rent to Ana" (revoked)
+    // and the other app's delegation are dated sections of their own.
+    const rc = await call('/api/receipts', {})
+    assert.ok(rc.json.receipts.length > 0)
+    assert.ok(
+      rc.json.receipts.every((x: { mandateId: string | null }) => x.mandateId === c.json.mandateId),
+      'home lists Gym only',
+    )
+    const ended = rc.json.ended.map((x: { label: string; receipts: { kind: string }[] }) => [
+      x.label,
+      x.receipts[0]!.kind,
+    ])
+    assert.ok(
+      ended.some(([l, k]: [string, string]) => l === 'Rent to Ana' && k === 'revoked'),
+      JSON.stringify(ended),
+    )
   })
 })
 

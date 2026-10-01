@@ -162,6 +162,37 @@ export function migrateMandates(db: Database.Database): void {
     (db.prepare('PRAGMA table_info(digest_prefs)').all() as { name: string }[]).map((c) => c.name),
   )
   if (!prefCols.has('saved_at')) db.exec('ALTER TABLE digest_prefs ADD COLUMN saved_at INTEGER')
+  // Every receipt belongs to one permission (one mandate), not just to an address:
+  // the same address can hold an earlier delegation account.
+  if (!cols.has('mandate_id')) db.exec('ALTER TABLE events ADD COLUMN mandate_id TEXT')
+  db.exec('CREATE INDEX IF NOT EXISTS idx_events_mandate ON events (mandate_id)')
+  attributeEvents(db)
+}
+
+/**
+ * Receipts are allowed this much before the mandate's row was created: the
+ * row is written before the user signs, so a real grant or pull is always
+ * after it, give or take clock differences between this server and the chain.
+ */
+export const RECEIPT_SKEW_MS = 60_000
+
+/**
+ * Gives existing receipts their mandate, and deletes receipts that come from
+ * before the mandate at their address existed: rows the guard inserted from an
+ * earlier delegation account at the same address (30 Sep, six pushes for 22 Sep
+ * transactions). Idempotent; runs on every start.
+ */
+function attributeEvents(db: Database.Database): void {
+  db.exec(`
+    UPDATE events SET mandate_id = (
+      SELECT m.id FROM mandates m
+       WHERE m.delegation_pda = events.delegation_pda AND m.created_at <= events.at + ${RECEIPT_SKEW_MS}
+       ORDER BY m.created_at DESC LIMIT 1)
+     WHERE mandate_id IS NULL;
+    DELETE FROM events
+     WHERE mandate_id IS NULL
+       AND EXISTS (SELECT 1 FROM mandates m WHERE m.delegation_pda = events.delegation_pda);
+  `)
 }
 
 type Row = Record<string, unknown>
@@ -229,7 +260,9 @@ export class MandateStore {
   }
 
   getMandateByPda(pda: string): Mandate | null {
-    const r = this.db.prepare('SELECT * FROM mandates WHERE delegation_pda = ?').get(pda) as Row | undefined
+    const r = this.db
+      .prepare('SELECT * FROM mandates WHERE delegation_pda = ? ORDER BY created_at DESC LIMIT 1')
+      .get(pda) as Row | undefined
     return r ? toMandate(r) : null
   }
 
@@ -334,15 +367,24 @@ export class MandateStore {
 
   /** Returns the new event id, or null when this signature already has this receipt. */
   addEvent(address: string, e: LedgerEvent, w: EventWindow = {}): number | null {
+    // The permission this receipt belongs to: the latest mandate at its address
+    // created before it. If the address has mandates but none that old, the
+    // receipt is from an earlier account there: never recorded, never pushed.
+    const mandates = this.db
+      .prepare('SELECT id, created_at FROM mandates WHERE delegation_pda = ? ORDER BY created_at DESC')
+      .all(e.delegationPda) as { id: string; created_at: number }[]
+    const mandate = mandates.find((m) => m.created_at <= e.at + RECEIPT_SKEW_MS)
+    if (mandates.length > 0 && !mandate) return null
     const r = this.db
       .prepare(
         `INSERT OR IGNORE INTO events (address, kind, at, delegation_pda, delegatee, label, amount, decimals, symbol, signature, actor,
-                                       remaining, cap, reset_ts, period_s)
+                                       remaining, cap, reset_ts, period_s, mandate_id)
          VALUES (@address, @kind, @at, @delegationPda, @delegatee, @label, @amountBaseUnits, @decimals, @symbol, @signature, @actor,
-                 @remaining, @cap, @resetTs, @periodS)`,
+                 @remaining, @cap, @resetTs, @periodS, @mandateId)`,
       )
       .run({
         address,
+        mandateId: mandate?.id ?? null,
         ...e,
         remaining: w.remainingBaseUnits ?? null,
         cap: w.capBaseUnits ?? null,
@@ -352,13 +394,18 @@ export class MandateStore {
     return r.changes === 1 ? Number(r.lastInsertRowid) : null
   }
 
-  events(address: string, sinceMs = 0, limit = 200): (LedgerEvent & EventWindow & { id: number })[] {
+  events(
+    address: string,
+    sinceMs = 0,
+    limit = 200,
+  ): (LedgerEvent & EventWindow & { id: number; mandateId: string | null })[] {
     return (
       this.db
         .prepare('SELECT * FROM events WHERE address = ? AND at >= ? ORDER BY at DESC, id DESC LIMIT ?')
         .all(address, sinceMs, limit) as Row[]
     ).map((r) => ({
       id: Number(r.id),
+      mandateId: r.mandate_id == null ? null : String(r.mandate_id),
       kind: String(r.kind) as EventKind,
       at: Number(r.at),
       delegationPda: String(r.delegation_pda),

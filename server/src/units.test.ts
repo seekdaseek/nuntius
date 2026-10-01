@@ -413,3 +413,115 @@ test('pull compute budget: unit limit and price, as the Compute Budget program r
   assert.deepEqual([...price!.data!], [3, 0x50, 0xc3, 0, 0, 0, 0, 0, 0]) // 50,000 LE
   assert.equal(priorityFeeLamports(PULL_BUDGET), 2_000n, '0.000002 SOL a pull')
 })
+
+test('receipt feed: a new permission shows only its own receipts; ended ones are dated sections', async () => {
+  const { receiptFeed } = await import('./receipt-feed.js')
+  const day = 86_400_000
+  const t0 = Date.UTC(2026, 8, 22)
+  const ev = (id: number, kind: string, at: number, mandateId: string | null, pda = 'PdaA', label = 'cj7check') =>
+    ({
+      id,
+      kind,
+      at,
+      mandateId,
+      delegationPda: pda,
+      delegatee: 'Dlg1111111111111111111111111111111111111111',
+      label,
+      amountBaseUnits: kind === 'pull' ? '10000' : null,
+      decimals: 6,
+      symbol: 'USDC',
+      signature: `s${id}`,
+      actor: mandateId ? 'nuntius' : 'other',
+    }) as unknown as import('./receipt-feed.js').FeedEvent
+  const mandates = [
+    { id: 'old', label: 'cj7check', symbol: 'USDC', status: 'revoked', createdAt: t0, endedAt: t0 + 8 * day },
+    { id: 'new', label: 'cj7check', symbol: 'USDC', status: 'active', createdAt: t0 + 9 * day, endedAt: null },
+  ] as const
+  const events = [
+    ev(1, 'pull', t0 + 1000, 'old'),
+    ev(2, 'refused', t0 + 2000, 'old'),
+    ev(3, 'revoked', t0 + 8 * day, 'old'),
+    ev(4, 'granted', t0 + 9 * day, 'new', 'PdaB'),
+    ev(5, 'pull', t0 + 9 * day + 10_000, 'new', 'PdaB'),
+    // Another app: one delegation that ended, then a new one at the same address.
+    ev(6, 'pull', t0 + 3 * day, null, 'PdaX', null as never),
+    ev(7, 'revoked', t0 + 4 * day, null, 'PdaX', null as never),
+    ev(8, 'granted', t0 + 9 * day + 1, null, 'PdaX', null as never),
+  ]
+  const f = receiptFeed(events, [...mandates] as never, new Set(['PdaX']))
+  assert.deepEqual(
+    f.live.map((e) => e.id),
+    [5, 8, 4],
+    'live: the new permission since its grant, and the other app’s current one',
+  )
+  assert.deepEqual(
+    f.ended.map((s) => [s.label, s.receipts.map((e) => e.id)]),
+    [
+      ['cj7check', [3, 2, 1]],
+      ['Dlg1…1111', [7, 6]],
+    ],
+    'ended: newest first, each with its own receipts',
+  )
+  assert.equal(f.ended[0]!.from, t0 + 1000)
+  assert.equal(f.ended[0]!.to, t0 + 8 * day)
+})
+
+test('receipts belong to a mandate; one from before the mandate at its address is never recorded or kept', async () => {
+  const Database = (await import('better-sqlite3')).default
+  const { MandateStore } = await import('./mandate-store.js')
+  const grantAt = Date.UTC(2026, 8, 30, 15, 20)
+  const base = {
+    address: 'Natx',
+    label: 'cj7check',
+    payee: 'P',
+    receiverAta: 'R',
+    mint: 'M',
+    symbol: 'USDC',
+    decimals: 6,
+    amountPerPeriod: '10000',
+    pullAmount: '10000',
+    periodLengthS: 86400,
+    expiryTs: 0,
+    nonce: 1,
+    delegatee: 'D',
+    delegationPda: '32KCvaok',
+    authorityPda: 'A',
+    userAta: 'U',
+  }
+  const e = (sig: string, kind: string, at: number) =>
+    ({
+      kind,
+      at,
+      delegationPda: '32KCvaok',
+      delegatee: 'D',
+      label: 'cj7check',
+      amountBaseUnits: '10000',
+      decimals: 6,
+      symbol: 'USDC',
+      signature: sig,
+      actor: 'other',
+    }) as never
+  // A database from before: receipts without a mandate, six of them from 22 Sep at
+  // the address a 30 Sep permission now holds (the old guard's replay).
+  const db = new Database(':memory:')
+  new MandateStore(db).insertMandate(base, grantAt)
+  db.exec('UPDATE events SET mandate_id = NULL')
+  const insert = db.prepare(
+    `INSERT INTO events (address, kind, at, delegation_pda, delegatee, label, amount, decimals, symbol, signature, actor)
+     VALUES ('Natx', ?, ?, '32KCvaok', 'D', 'cj7check', '1', 6, 'USDC', ?, 'other')`,
+  )
+  for (let i = 0; i < 6; i++) insert.run(i < 4 ? 'pull' : 'refused', Date.UTC(2026, 8, 22, 12, i), `old${i}`)
+  insert.run('pull', grantAt + 22_000, 'new1')
+  insert.run('pull', Date.UTC(2026, 8, 20), 'foreign-elsewhere')
+  db.exec("UPDATE events SET delegation_pda = 'OtherPda' WHERE signature = 'foreign-elsewhere'")
+  // Restart: the migration attributes and cleans.
+  const store = new MandateStore(db)
+  const left = store.events('Natx').map((x) => [x.signature, x.mandateId !== null])
+  assert.deepEqual(left, [
+    ['new1', true],
+    ['foreign-elsewhere', false],
+  ])
+  // And the gate holds for new receipts: before the mandate at that address, refused.
+  assert.equal(store.addEvent('Natx', e('old9', 'pull', Date.UTC(2026, 8, 22))), null)
+  assert.notEqual(store.addEvent('Natx', e('new2', 'pull', grantAt + 3_600_000)), null)
+})
