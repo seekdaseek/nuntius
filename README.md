@@ -13,6 +13,7 @@ Built for the Solana Seeker. Android only: Mobile Wallet Adapter and Seed Vault 
 | Judges, start here           | [JUDGE_GUIDE.md](JUDGE_GUIDE.md): install and verify in five minutes |
 | The APK                      | {{RELEASE_URL}}, sha256 `{{APK_SHA256}}`                             |
 | Demo video (1:45)            | https://youtu.be/rXs5zppcYKs                                         |
+| Pitch video (1:33)           | https://youtu.be/Zq1veG63Snw                                         |
 | Threat model                 | [SECURITY.md](SECURITY.md): what the cap bounds and what it does not |
 | Why this, not something else | [RESEARCH.md](RESEARCH.md)                                           |
 
