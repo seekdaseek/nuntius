@@ -13,6 +13,8 @@ const RULES: [RegExp, string][] = [
   [/(bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1***'],
   // A 64-number JSON array is a Solana CLI keypair file's contents.
   [/\[\s*(?:\d{1,3}\s*,\s*){63}\d{1,3}\s*\]/g, '[secret-key]'],
+  // A JSON SyntaxError quotes a slice of its input: ..."9,238,135,x]" is not valid JSON.
+  [/(Unexpected token .{1,6}?, )(?:\.\.\.)?\\?".*?\\?"(?:\.\.\.)? is not valid JSON/g, '$1[input] is not valid JSON'],
   // FCM registration tokens: instance id, colon, long blob.
   [/\b[A-Za-z0-9_-]{11,}:[A-Za-z0-9_-]{100,}\b/g, '[push-token]'],
   // Session tokens: 32 random bytes as base64url = exactly 43 chars. Solana

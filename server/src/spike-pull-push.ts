@@ -9,9 +9,9 @@
  *
  *   node --env-file=.env dist/spike-pull-push.js <push-recipient-wallet>
  */
-import { readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { createKeyPairSignerFromBytes, type TransactionSigner } from '@solana/kit'
+import { type TransactionSigner } from '@solana/kit'
+import { keypairFromFile } from './keyfile.js'
 import { loadConfig } from './config.js'
 import { openDb, Store } from './db.js'
 import { FcmSender } from './fcm.js'
@@ -34,7 +34,7 @@ function fail(msg: string): never {
 }
 
 async function loadSigner(file: string): Promise<TransactionSigner> {
-  return createKeyPairSignerFromBytes(new Uint8Array(JSON.parse(await readFile(file, 'utf8')) as number[]))
+  return keypairFromFile(file, file.endsWith('delegatee.json') ? 'delegatee.json' : 'SPIKE_PAYER')
 }
 
 async function main(): Promise<void> {

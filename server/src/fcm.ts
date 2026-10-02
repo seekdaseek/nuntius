@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { jsonSecretFromFile } from './keyfile.js'
 import { JWT } from 'google-auth-library'
 
 /**
@@ -30,7 +30,11 @@ export class FcmSender {
   private readonly endpoint: string
 
   constructor(keyFile: string, projectId: string) {
-    const key = JSON.parse(readFileSync(keyFile, 'utf8')) as { client_email?: string; private_key?: string }
+    // Parse errors quote the input, here the private key: jsonSecretFromFile throws fixed text instead.
+    const key = (jsonSecretFromFile(keyFile, 'FCM_SERVICE_ACCOUNT') ?? {}) as {
+      client_email?: string
+      private_key?: string
+    }
     if (!key.client_email || !key.private_key) {
       throw new Error('FCM service account file is missing client_email or private_key')
     }
