@@ -57,11 +57,11 @@ scripts/localnet.sh &          # fetches Agave 3.1.10, builds the program at rel
 cd server && npm ci && npm run test:localnet
 ```
 
-Measured output (2026-10-01, Linux x86_64):
+Measured output (2026-10-02, Linux x86_64):
 
 ```
-ℹ tests 83
-ℹ pass 83
+ℹ tests 105
+ℹ pass 105
 ℹ fail 0
 ```
 
@@ -72,7 +72,7 @@ Things worth reading in the output:
 - `a lost transaction is replaced only after its blockhash is dead — never doubled`. This is the executor's idempotency.
 - `guard: receipts for delegations nuntius did not create`.
 
-`npm test` without a validator passes 43 tests and reports the 6 localnet suites as skipped. At the repo root, `npm run test:core` runs the app's 27 logic tests, and `npm run test:e2e` runs 10 tests on the web build (cold-start tap, fonts, layout, BACK).
+`npm test` without a validator passes 65 tests and reports the 6 localnet suites as skipped. At the repo root, `npm run test:core` runs the app's 31 logic tests, and `npm run test:e2e` runs 10 tests on the web build (cold-start tap, fonts, layout, BACK).
 
 ## 4. Subscription launches (Meteora DBC)
 

@@ -8,14 +8,14 @@ nuntius also works as a **permission manager for the whole Subscriptions standar
 
 Built for the Solana Seeker. Android only: Mobile Wallet Adapter and Seed Vault are the mechanism, not decoration.
 
-|                              |                                                                      |
-| ---------------------------- | -------------------------------------------------------------------- |
-| Judges, start here           | [JUDGE_GUIDE.md](JUDGE_GUIDE.md): install and verify in five minutes |
-| The APK                      | https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0, sha256 `474aef66b1646419957164ea57653f3360b5936d2d13f8e52d589a626e00f9de`                             |
-| Demo video (1:45)            | https://youtu.be/rXs5zppcYKs                                         |
-| Pitch video (1:33)           | https://youtu.be/Zq1veG63Snw                                         |
-| Threat model                 | [SECURITY.md](SECURITY.md): what the cap bounds and what it does not |
-| Why this, not something else | [RESEARCH.md](RESEARCH.md)                                           |
+|                              |                                                                                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Judges, start here           | [JUDGE_GUIDE.md](JUDGE_GUIDE.md): install and verify in five minutes                                                                 |
+| The APK                      | https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0, sha256 `474aef66b1646419957164ea57653f3360b5936d2d13f8e52d589a626e00f9de` |
+| Demo video (1:45)            | https://youtu.be/rXs5zppcYKs                                                                                                         |
+| Pitch video (1:33)           | https://youtu.be/Zq1veG63Snw                                                                                                         |
+| Threat model                 | [SECURITY.md](SECURITY.md): what the cap bounds and what it does not                                                                 |
+| Why this, not something else | [RESEARCH.md](RESEARCH.md)                                                                                                           |
 
 ---
 
@@ -26,8 +26,8 @@ Built for the Solana Seeker. Android only: Mobile Wallet Adapter and Seed Vault 
 | **One-signature grant.** `initSubscriptionAuthority` and `createRecurringDelegation` go in one transaction, using the program's `UNKNOWN_INIT_ID` same-slot check (or the real `init_id` when the authority already exists)                 | `server/src/mandate-chain.ts`               | localnet against the real program: one required signer, delegation live with the exact terms |
 | **One-signature revoke.** `revokeDelegation`, plus `revokeSubscriptionAuthority` when it is the last delegation on that mint, in one transaction                                                                                            | `mandate-chain.ts`                          | localnet: `delegate: none` after the last revoke                                             |
 | **Rule-creation screen.** One sentence with four blanks; the text shown is the server's parse of the exact terms                                                                                                                            | `app/new.tsx`, `server/src/mandate-text.ts` | unit tests; rendered in the web build                                                        |
-| **Hardened executor.** Idempotent per (delegation, period); a replacement is built only after the old blockhash is dead; backoff with jitter; 0x190 recorded as a refusal and receipt, never retried; revocation and expiry end the mandate | `server/src/executor.ts`                    | 12 unit tests on a simulated program and 4 localnet tests on the real one                    |
-| **Guard.** Receipts for delegations nuntius did not create: foreign pulls, foreign 0x190 refusals, new permissions, revocations                                                                                                             | `server/src/guard.ts`                       | 5 localnet tests with a foreign delegatee                                                    |
+| **Hardened executor.** Idempotent per (delegation, period); a replacement is built only after the old blockhash is dead; backoff with jitter; 0x190 recorded as a refusal and receipt, never retried; revocation and expiry end the mandate | `server/src/executor.ts`                    | 15 unit tests on a simulated program and 5 localnet tests on the real one                    |
+| **Guard.** Receipts for delegations nuntius did not create: foreign pulls, foreign 0x190 refusals, new permissions, revocations                                                                                                             | `server/src/guard.ts`                       | 6 localnet tests with a foreign delegatee                                                    |
 | **Tier gate.** The guard is free for any wallet; Seeker verification lifts the limit from 1 mandate to 10 and adds the digest and streak                                                                                                    | `server/src/tier.ts`                        | unit and API tests                                                                           |
 | **Daily clock-in.** A morning digest at an hour the user sets, and a streak of days checked in                                                                                                                                              | `server/src/digest*.ts`, `app/digest.tsx`   | unit and API tests                                                                           |
 | **Home-screen widget.** Cap left and time to reset for each permission, plus the clock-in                                                                                                                                                   | `features/widget/*`, `core/widget-model.ts` | view-model and hook-free render tests; **on the Seeker, 1 Oct**: white card, rows and meters |
@@ -188,14 +188,14 @@ The full life cycle ran end to end on mainnet-beta, signed by Seed Vault on the 
 
 Cap was 10,000 base units (0.01 USDC) per 60-second period. 17,000 base units moved in total across four pulls. The delegator's SOL ended 112,000 lamports down — both account rents were returned by the revokes.
 
-**On localnet — the real program, built from source (measured 2026-10-01)**
+**On localnet — the real program, built from source (measured 2026-10-02)**
 
 The build environment cannot reach devnet or mainnet. Instead, `scripts/localnet.sh` builds `solana-foundation/subscriptions` at **`364a419`**, the commit the program's CHANGELOG names as the mainnet release, and loads it at its canonical address in `solana-test-validator` (Agave 3.1.10). Binary sha256: `31309d4202746b1af2040b792c127cde51cd549b5738096603e4504a30974648`. Whether this binary is byte-identical to mainnet is **not measured** yet. The check: `solana-verify get-program-hash` on mainnet against `solana-verify build --library-name subscriptions_program` at `364a419`.
 
 ```
 $ LOCALNET_RPC=http://127.0.0.1:8899 npm --prefix server test
-ℹ tests 83
-ℹ pass 83
+ℹ tests 105
+ℹ pass 105
 ℹ fail 0
 ```
 
@@ -301,14 +301,14 @@ Push is sent as **`notification` + `data`**, not data-only. A data-only FCM mess
 ### Tests
 
 ```bash
-npm ci && npm run test:core                 # 27 app-logic tests: taps, widget model, form checks, formatting
+npm ci && npm run test:core                 # 31 app-logic tests: taps, widget model, form checks, formatting
 npm run test:e2e                            # 10 tests on the web build: cold-start tap, fonts, layout, BACK
 npx tsc --noEmit && npx expo lint && npx prettier --check .
 
 cd server && npm ci
-npm test                                    # 43 unit tests; the 6 localnet suites report "skipped"
+npm test                                    # 65 unit tests; the 6 localnet suites report "skipped"
 ../scripts/localnet.sh &                    # validator + the program built from 364a419 (first run builds it)
-npm run test:localnet                       # all 83, against the real program
+npm run test:localnet                       # all 105, against the real program
 ```
 
 ### Backend
