@@ -9,6 +9,7 @@ import { radius } from '@/constants/app-styles'
 import { isUserCancellation, useNuntiusAuth } from '@/features/account/use-nuntius-auth'
 import { api, untilLanded, type LaunchInfo } from '@/features/mandates/mandates-api'
 import { signAndSend } from '@/features/wallet/sign-and-send'
+import { checkTransaction, MINTS } from '@/core/tx-check'
 import { checkLaunch, demandWords, launchesOn, routeWords } from '@/core/back-copy'
 import { useMandateList } from '@/features/mandates/use-mandates'
 
@@ -34,7 +35,14 @@ export default function LaunchScreen() {
         symbol: symbol.trim().toUpperCase(),
         quote,
       })
-      await signAndSend(chain, identity, auth.address, created.transactionBase64)
+      await signAndSend(chain, identity, auth.address, created.transactionBase64, (base64) =>
+        checkTransaction(base64, {
+          kind: 'launch',
+          wallet: auth.address,
+          baseMint: created.baseMint,
+          quoteMint: MINTS[quote]!.mint,
+        }),
+      )
       return (await untilLanded(() => api.launchConfirm(auth.session, created.baseMint), ['not_on_chain_yet'])).launch
     },
   })

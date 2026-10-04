@@ -7,6 +7,8 @@ import { signAndSend } from '@/features/wallet/sign-and-send'
 import { refreshWidget } from '@/features/widget/refresh-widget'
 import { tzOffsetMin } from '@/core/format'
 import { WalletStepError } from '@/core/wallet-session'
+import { checkTransaction, expectGrant } from '@/core/tx-check'
+import { AppConfig } from '@/constants/app-config'
 
 const KEY = ['mandates']
 
@@ -62,19 +64,49 @@ export function useGrantMandate(auth: NuntiusAuth | null, onStep?: (s: GrantStep
   const after = useAfterChange(auth)
   const pending = useRef<string | null>(null)
   return useMutation({
-    mutationFn: async ({ terms, rebuild = false }: { terms: TermsInput; rebuild?: boolean }) => {
+    mutationFn: async ({
+      terms,
+      rebuild = false,
+      shownAllowance,
+      baseMint,
+    }: {
+      terms: TermsInput
+      rebuild?: boolean
+      /** The total the screen showed ("Seed Vault will show X"); null for no limit; undefined if not shown. */
+      shownAllowance?: string | null
+      /** A back permission: the launch token the screen named. */
+      baseMint?: string
+    }) => {
       if (!auth) throw new Error('not signed in')
+      // Built before anything is fetched, from what the user typed and saw.
+      const expect = expectGrant({
+        wallet: auth.address,
+        symbol: terms.symbol ?? 'USDC',
+        amount: terms.amount,
+        period: terms.period,
+        untilDays: terms.untilDays,
+        executor: AppConfig.executor,
+        shownAllowance,
+        nowMs: Date.now(),
+        baseMint,
+      })
       onStep?.('building')
       let mandateId = rebuild ? pending.current : null
       let signature: string | null = null
       try {
         onStep?.('signing')
-        signature = await signAndSend(chain, identity, auth.address, async () => {
-          if (mandateId) return (await api.rebuild(auth.session, mandateId)).transactionBase64
-          const created = await api.create(auth.session, terms)
-          mandateId = pending.current = created.mandateId
-          return created.transactionBase64
-        })
+        signature = await signAndSend(
+          chain,
+          identity,
+          auth.address,
+          async () => {
+            if (mandateId) return (await api.rebuild(auth.session, mandateId)).transactionBase64
+            const created = await api.create(auth.session, terms)
+            mandateId = pending.current = created.mandateId
+            return created.transactionBase64
+          },
+          (base64) => checkTransaction(base64, expect),
+        )
       } catch (e) {
         if (!(e instanceof ApiError && e.code === 'already_on_chain')) throw e
       }
@@ -92,10 +124,22 @@ export function useRevoke(auth: NuntiusAuth | null) {
   const { chain, identity } = useMobileWallet()
   const after = useAfterChange(auth)
   return useMutation({
-    mutationFn: async (delegationPda: string) => {
+    mutationFn: async ({
+      delegationPda,
+      mint,
+      allowance,
+    }: {
+      delegationPda: string
+      /** The permission's mint, from the list. */
+      mint: string | null
+      /** That token account's allowance now, base units, when the list reports it. */
+      allowance?: bigint | null
+    }) => {
       if (!auth) throw new Error('not signed in')
       const tx = await api.revoke(auth.session, delegationPda)
-      const signature = await signAndSend(chain, identity, auth.address, tx.transactionBase64).catch((e: unknown) => {
+      const signature = await signAndSend(chain, identity, auth.address, tx.transactionBase64, (base64) =>
+        checkTransaction(base64, { kind: 'revoke', wallet: auth.address, delegationPda, mint, allowance }),
+      ).catch((e: unknown) => {
         throw new WalletStepError(e)
       })
       const done = await untilLanded(() => api.revokeConfirm(auth.session, delegationPda), ['still_live'])

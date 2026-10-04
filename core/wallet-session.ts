@@ -61,6 +61,8 @@ export function isRefusedAuthorization(e: unknown): boolean {
  */
 export function walletFailureText(e: unknown, action: 'revoke' | 'grant'): string {
   const what = action === 'revoke' ? 'still live' : 'not granted'
+  // The app's own check refused the server's transaction (core/tx-check.ts): its sentence says so.
+  if (e instanceof Error && e.name === 'TxMismatch') return e.message
   if (isWalletTimeout(e)) return `Seed Vault did not answer in time. Nothing was signed; the permission is ${what}.`
   if (isUserCancel(e)) return `Closed in Seed Vault. Nothing was signed; the permission is ${what}.`
   return `Seed Vault could not finish. Nothing was signed; the permission is ${what}.`

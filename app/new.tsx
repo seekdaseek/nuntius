@@ -138,7 +138,12 @@ export default function NewPermissionScreen() {
         }
         onPress={() =>
           grant.mutate(
-            { terms: { ...form, label: name, symbol }, rebuild: expired },
+            {
+              terms: { ...form, label: name, symbol },
+              rebuild: expired,
+              // What the line above Approve said Seed Vault will show; the transaction must match it.
+              shownAllowance: allowance?.allowanceTotal,
+            },
             {
               onSuccess: ({ mandate }) =>
                 router.replace(

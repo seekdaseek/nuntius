@@ -26,6 +26,7 @@ import { usePushRegistration } from '@/features/push/use-push-registration'
 import { useDemoOverCap, useMandateList, useReceipts, useRevoke } from '@/features/mandates/use-mandates'
 import { api, ApiError, type MandateView, type OtherDelegation } from '@/features/mandates/mandates-api'
 import { routeWords } from '@/core/back-copy'
+import { baseUnits } from '@/core/tx-check'
 import { shortAddr } from '@/core/format'
 import { delegateLine } from '@/core/allowance-copy'
 import { revokeFailureText } from '@/core/wallet-session'
@@ -254,6 +255,7 @@ const everyWords = (p: number) =>
 function PermissionCard({ m, demo, now }: { m: MandateView; demo: boolean; now: number }) {
   const auth = useNuntiusAuth()
   const revoke = useRevoke(auth)
+  const target = useRevokeTarget(m.delegationPda, m.mint ?? null, m.symbol, m.decimals)
   const overCap = useDemoOverCap(auth)
   const name = m.label || shortAddr(m.payee)
   const mt = meter(m.cap, m.remaining, m.decimals)
@@ -282,7 +284,7 @@ function PermissionCard({ m, demo, now }: { m: MandateView; demo: boolean; now: 
         right={`${mt.left} left${m.nextResetTs ? `, resets in ${span(m.nextResetTs, now)}` : ''}`}
       />
       <Row gap={8} style={{ marginTop: 4 }}>
-        <Button title="Revoke" kind="revoke" busy={revoke.isPending} onPress={() => revoke.mutate(m.delegationPda)} />
+        <Button title="Revoke" kind="revoke" busy={revoke.isPending} onPress={() => revoke.mutate(target)} />
         {demo ? (
           <Button
             title="Try to take more"
@@ -297,7 +299,7 @@ function PermissionCard({ m, demo, now }: { m: MandateView; demo: boolean; now: 
         <Note tone="refused">Refused by the chain, error 0x190. Nothing moved.</Note>
       ) : null}
       {overCap.isError ? <Note tone="refused">{overCap.error.message}</Note> : null}
-      {revoke.isError ? <RevokeFailed error={revoke.error} onRetry={() => revoke.mutate(m.delegationPda)} /> : null}
+      {revoke.isError ? <RevokeFailed error={revoke.error} onRetry={() => revoke.mutate(target)} /> : null}
     </Card>
   )
 }
@@ -323,6 +325,17 @@ function BackLines({ m, back }: { m: MandateView; back: NonNullable<MandateView[
  * A revoke that did not finish: in words, with one tap to try again (device
  * check 11: the card showed a raw java.util.concurrent.TimeoutException).
  */
+/**
+ * What the revoke check needs: the permission, its mint, and the token account's
+ * allowance now (when the list reports it), so a trim may only lower it.
+ */
+function useRevokeTarget(delegationPda: string, mint: string | null, symbol: string, decimals: number) {
+  const list = useMandateList(useNuntiusAuth())
+  const shown = list.data?.tokenAccounts?.find((t) => t.symbol === symbol)?.allowance
+  const allowance = shown ? baseUnits(shown, decimals) : undefined
+  return { delegationPda, mint, allowance: allowance ?? undefined }
+}
+
 function RevokeFailed({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   return (
     <>
@@ -337,6 +350,7 @@ function RevokeFailed({ error, onRetry }: { error: unknown; onRetry: () => void 
 function OtherCard({ o, now }: { o: OtherDelegation; now: number }) {
   const auth = useNuntiusAuth()
   const revoke = useRevoke(auth)
+  const target = useRevokeTarget(o.delegationPda, o.mint ?? null, o.symbol, o.decimals)
   const name = shortAddr(o.delegatee)
   const mt = meter(o.cap, o.remaining, o.decimals)
   return (
@@ -374,10 +388,10 @@ function OtherCard({ o, now }: { o: OtherDelegation; now: number }) {
       )}
       {o.revocable ? (
         <Row>
-          <Button title="Revoke" kind="revoke" busy={revoke.isPending} onPress={() => revoke.mutate(o.delegationPda)} />
+          <Button title="Revoke" kind="revoke" busy={revoke.isPending} onPress={() => revoke.mutate(target)} />
         </Row>
       ) : null}
-      {revoke.isError ? <RevokeFailed error={revoke.error} onRetry={() => revoke.mutate(o.delegationPda)} /> : null}
+      {revoke.isError ? <RevokeFailed error={revoke.error} onRetry={() => revoke.mutate(target)} /> : null}
     </Card>
   )
 }

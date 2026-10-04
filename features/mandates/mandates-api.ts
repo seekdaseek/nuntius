@@ -42,6 +42,8 @@ export interface MandateView {
   id: string
   label: string
   payee: string
+  /** The token's mint (the revoke check matches it). */
+  mint?: string
   symbol: string
   decimals: number
   cap: string
@@ -79,6 +81,7 @@ export interface OtherDelegation {
   delegationPda: string
   kind: 'fixed' | 'recurring' | 'subscription'
   delegatee: string
+  mint?: string | null
   symbol: string
   decimals: number
   cap: string | null

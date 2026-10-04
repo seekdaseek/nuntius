@@ -107,6 +107,7 @@ export default function BackScreen() {
                 pool: form.pool.trim(),
               },
               rebuild: expired,
+              baseMint: launch?.baseMint,
             },
             {
               onSuccess: ({ mandate }) =>

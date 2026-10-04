@@ -6,7 +6,8 @@ import { loadWalletToken, saveWalletToken } from '@/features/wallet/wallet-auth-
 type MobileWallet = ReturnType<typeof useMobileWallet>
 
 /**
- * Hands ONE server-built transaction to Seed Vault and returns its signature.
+ * Hands ONE server-built transaction to Seed Vault and returns its signature,
+ * after the app's own check of it (`verify`) has passed.
  *
  * Authorizes with the token from the last authorize for this wallet, so Seed
  * Vault opens straight on the transaction (one sheet, no "Connect" picker).
@@ -24,6 +25,11 @@ export async function signAndSend(
   identity: MobileWallet['identity'],
   address: string,
   transactionBase64: string | (() => Promise<string>),
+  /**
+   * The app's own check (core/tx-check.ts). It runs before the transaction is
+   * handed to Seed Vault; when it throws, Seed Vault never sees the transaction.
+   */
+  verify: (base64: string) => Promise<void>,
 ): Promise<string> {
   const signatures = await withStoredAuthorization<SignatureBytes[]>({
     load: () => loadWalletToken(address),
@@ -38,6 +44,7 @@ export async function signAndSend(
           )
         }
         const base64 = typeof transactionBase64 === 'string' ? transactionBase64 : await transactionBase64()
+        await verify(base64)
         const transaction: Transaction = getTransactionDecoder().decode(getBase64Encoder().encode(base64))
         const result = await wallet.signAndSendTransactions({ transactions: [transaction as never] })
         return { result, token: auth.auth_token }

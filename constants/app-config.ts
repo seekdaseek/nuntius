@@ -11,6 +11,14 @@ export class AppConfig {
   static apiBase = process.env.EXPO_PUBLIC_API_BASE ?? 'http://localhost:8787'
 
   /**
+   * The nuntius executor's address: every grant must name it as delegatee, or the
+   * app's transaction check refuses it before Seed Vault opens (core/tx-check.ts).
+   * Pinned at build time with EXPO_PUBLIC_EXECUTOR (a public key, not a secret);
+   * a build without it refuses every grant.
+   */
+  static executor: string | null = process.env.EXPO_PUBLIC_EXECUTOR ?? null
+
+  /**
    * MWA app identity. `uri` must be absolute (wallets may decline authorization
    * without one) and `icon` must be a path relative to `uri` or a data: URI —
    * an absolute http(s) icon URL is out of spec. Wallets verify the identity
