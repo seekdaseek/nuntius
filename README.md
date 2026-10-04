@@ -8,15 +8,15 @@ nuntius also works as a **permission manager for the whole Subscriptions standar
 
 Built for the Solana Seeker. Android only: Mobile Wallet Adapter and Seed Vault are the mechanism, not decoration.
 
-|                                    |                                                                                                                                      |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Judges, start here                 | [JUDGE_GUIDE.md](JUDGE_GUIDE.md): install and verify in five minutes                                                                 |
-| v1.0.1 (4 Oct): security hardening | What changed and how it is proven: [below](#v101-4-october-2026-security-hardening) and [SECURITY.md §7](SECURITY.md)                |
-| The APK                            | https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0, sha256 `474aef66b1646419957164ea57653f3360b5936d2d13f8e52d589a626e00f9de` |
-| Demo video (1:45)                  | https://youtu.be/rXs5zppcYKs                                                                                                         |
-| Pitch video (1:33)                 | https://youtu.be/Zq1veG63Snw                                                                                                         |
-| Threat model                       | [SECURITY.md](SECURITY.md): what the cap bounds and what it does not                                                                 |
-| Why this, not something else       | [RESEARCH.md](RESEARCH.md)                                                                                                           |
+|                                    |                                                                                                                                           |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Judges, start here                 | [JUDGE_GUIDE.md](JUDGE_GUIDE.md): install and verify in five minutes                                                                      |
+| v1.0.1 (4 Oct): security hardening | What changed and how it is proven: [below](#v101-4-october-2026-security-hardening) and [SECURITY.md §7](SECURITY.md)                     |
+| The APK                            | {{RELEASE_URL}} (`nuntius-1.0.1.apk`), sha256 `{{APK_SHA256}}`; v1.0.0 stays at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0 |
+| Demo video (1:45)                  | https://youtu.be/rXs5zppcYKs                                                                                                              |
+| Pitch video (1:33)                 | https://youtu.be/Zq1veG63Snw                                                                                                              |
+| Threat model                       | [SECURITY.md](SECURITY.md): what the cap bounds and what it does not                                                                      |
+| Why this, not something else       | [RESEARCH.md](RESEARCH.md)                                                                                                                |
 
 ---
 
@@ -31,7 +31,17 @@ v1.0.1 fixes every finding of the 2 Oct Radiants Align audit in code, plus two i
 - **Dependencies:** server `npm audit --omit=dev` 10 → 0; app 33 → 5, all five the `node-forge` chain (no patched release, not in the APK).
 - **Subscription launches are hidden** unless the server is started with `MANDATE_LAUNCHES=1`, which stays off until the Meteora device run.
 
-**On the device: UNTESTED until the v1.0.1 device run.** Everything above is proven by the tests listed in SECURITY.md §7, not yet on the Seeker. v1.0.0 below is the build the device rounds proved, and its release stays the published APK until v1.0.1's is.
+**On the device: 4 October 2026, v1.0.1 installed over v1.0.0** (`adb install -r`, an update: first install 30 Sep, versionName 1.0.1), built from `5ed747f`, server at the same commit. Every wallet tap was the owner's in Seed Vault.
+
+| Step                                                      | Result                                                                                                                                 | Transaction                                                                                                                            |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Open after the update                                     | still signed in as cj7, "✓ Seeker verified", home as before: the tokens moved to the keystore with nobody signed out                   | —                                                                                                                                      |
+| Widget                                                    | still draws: "No live permissions", then the natXcheck row during the grant                                                            | —                                                                                                                                      |
+| Sign out, sign in                                         | the server deleted the session and its push token (sessions 8 → 7, push tokens 1 → 0), then sign-in created new ones                   | —                                                                                                                                      |
+| Grant natXcheck, 0.05 USDC a day for 7 days, 20:59:24 UTC | the transaction check passed; the line above Approve and Seed Vault both showed 0.35 USDC; one signer, cj7; `approveChecked` 0.35 USDC | [`w6tX32Tq…`](https://explorer.solana.com/tx/w6tX32TqTehhks7XPRqP68jAE9rTw5jWKqW4RZMkMjHVjbCGvsDa7YSYtiNQuiPZbmQMv9zX2GZWvC4Wq3in2ep)  |
+| First pull, 20:59:31 UTC                                  | 7 s after the grant; one signer, the delegatee; 0.05 USDC; its push arrived                                                            | [`4jHvBzTP…`](https://explorer.solana.com/tx/4jHvBzTPofa1wDfCkV6xEs7azuA2YymYr7CjKhCUEX4XhFJKWcT5o1cuT3gseqZfv7u6cBXT4Hg8e5o41E8FKeaF) |
+| Revoke, 21:02:09 UTC                                      | one Seed Vault sheet (Transaction, no Connect); one signer, cj7; "Token account delegate: none"                                        | [`28Y2BWPJ…`](https://explorer.solana.com/tx/28Y2BWPJkBo73ajbPY6jKf7B9iA3GLXwpWyPeTtb5nLxKcw8mjvGtumo3nXvCyrjYD8Mzd9rtADWjUFpTpMNtWG9) |
+| Launch and back hidden                                    | no "Back a Seeker builder" starter; `nuntius://launch` and `nuntius://back` say "not available in this version"                        | —                                                                                                                                      |
 
 ## What this build adds (Crypto World's Fair window, from 14 Sep 2026)
 
@@ -87,7 +97,7 @@ The program account is **upgradeable** (upgrade authority `DXtFpbPjcn2hxPnw79x1P
 
 Nothing below is claimed from a successful build. Each line was executed and the result observed on the Seeker (`SM02E4060327059`), on chain with a signature, or against the real program on a local validator. Anything not seen on the phone is marked **UNTESTED**.
 
-**The release:** APK `nuntius-1.0.0.apk` at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0, sha256 `474aef66b1646419957164ea57653f3360b5936d2d13f8e52d589a626e00f9de`, signed with the release key (certificate `71:70:5E:DD…35:F8`, the one `assetlinks.json` names).
+**The release:** APK `nuntius-1.0.1.apk` at {{RELEASE_URL}}, sha256 `{{APK_SHA256}}`, signed with the release key (certificate `71:70:5E:DD…35:F8`, the one `assetlinks.json` names). The rounds below proved v1.0.0, still at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0 (sha256 `474aef66b1646419957164ea57653f3360b5936d2d13f8e52d589a626e00f9de`).
 
 ### On the Seeker, on mainnet: round 4, 1 October 2026 (build `57eb4e1`)
 
