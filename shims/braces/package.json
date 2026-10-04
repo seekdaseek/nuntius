@@ -1,0 +1,11 @@
+{
+  "name": "braces",
+  "version": "3.0.3-nuntius.1",
+  "description": "braces 3.0.3 with a nesting-depth limit (GHSA-vfj7-8cjw-p6xm), vendored for nuntius.",
+  "main": "index.js",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "fill-range": "^7.1.1"
+  }
+}

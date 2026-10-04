@@ -12,3 +12,6 @@ pnpm-workspace.yaml
 server/dist
 server/node_modules
 /design
+# Vendored packages keep their upstream formatting, so they diff cleanly against it.
+shims/braces/
+shims/decode-uri-component/

@@ -1,0 +1,5 @@
+braces 3.0.3 (https://github.com/micromatch/braces), Copyright (c) 2014-present
+Jon Schlinkert, MIT licence (LICENSE). Vendored unchanged except lib/parse.js,
+which refuses brace nesting deeper than 100 levels: the recursive AST walkers
+otherwise exhaust the call stack on input under the 10,000-character limit
+(GHSA-vfj7-8cjw-p6xm; no patched release). Change by seekdaseek for nuntius, 2026.

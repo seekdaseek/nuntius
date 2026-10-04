@@ -1,0 +1,8 @@
+{
+  "name": "decode-uri-component",
+  "version": "0.2.2-nuntius.1",
+  "description": "decode-uri-component 0.2.2's CommonJS API in linear time (GHSA-vcc3-ghjq-m6fr), for nuntius.",
+  "main": "index.js",
+  "license": "MIT",
+  "private": true
+}

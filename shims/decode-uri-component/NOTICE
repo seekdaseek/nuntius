@@ -1,0 +1,6 @@
+Based on decode-uri-component 0.2.2 (https://github.com/SamVerschueren/decode-uri-component),
+Copyright (c) 2017 Sam Verschueren, MIT licence (LICENSE). The fixed release (0.5.0)
+is an ES module, which query-string 7 cannot require(). This keeps 0.2.2's CommonJS
+API and its replacement rules, and replaces its retry-every-split decoder, whose cost
+grew with the length of a run of malformed escapes (GHSA-vcc3-ghjq-m6fr), by one that
+tries at most four escapes per position. Change by seekdaseek for nuntius, 2026.
