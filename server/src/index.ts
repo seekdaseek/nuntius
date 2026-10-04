@@ -18,6 +18,7 @@ import { DelegationScans } from './mandate-chain.js'
 import { withPagedProgramAccounts } from './program-accounts.js'
 import { meteoraConnection } from './meteora.js'
 import { createLogger } from './log.js'
+import { anthropicModelCall } from './parse-permission.js'
 import { bootLines } from './boot-log.js'
 import { keypairFromFile } from './keyfile.js'
 
@@ -108,6 +109,8 @@ if (mandateConfig) {
     conn,
     origin: `https://${config.domain}`,
     scans,
+    parsePermission: process.env.ANTHROPIC_API_KEY ? anthropicModelCall(process.env.ANTHROPIC_API_KEY) : null,
+    log,
   }
   log.info('mandates_enabled', {
     cluster: mandateConfig.cluster,
@@ -115,6 +118,7 @@ if (mandateConfig) {
     mints: mandateConfig.mints.map((m) => m.symbol).join(','),
     maxPerPeriod: mandateConfig.maxPerPeriodUi,
     demo: mandateConfig.demoEndpoints,
+    parse: Boolean(process.env.ANTHROPIC_API_KEY),
   })
 }
 

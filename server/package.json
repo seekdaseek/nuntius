@@ -12,6 +12,7 @@
     "test:localnet": "LOCALNET_RPC=${LOCALNET_RPC:-http://127.0.0.1:8899} npm test"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.131.0",
     "@meteora-ag/cp-amm-sdk": "1.5.1",
     "@meteora-ag/dynamic-bonding-curve-sdk": "1.5.13",
     "@solana-program/system": "0.13.0",

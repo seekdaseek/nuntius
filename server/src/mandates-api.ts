@@ -38,7 +38,17 @@ import {
 } from './mandate-chain.js'
 import { backerAccountInstruction, registerLaunchRoutes } from './launch-api.js'
 import { describeBacking } from './mandate-text.js'
-import { RateLimiter } from './rate-limit.js'
+import { RateLimiter, retryMessage } from './rate-limit.js'
+import type { Logger } from './log.js'
+import {
+  checkTerms,
+  COULD_NOT_READ,
+  localToday,
+  MAX_TEXT,
+  PARSE_TIMEOUT_MS,
+  withTimeout,
+  type ModelCall,
+} from './parse-permission.js'
 import { cleanLabel, describeMandate, formatUnits, parseUnits, PERIODS, type PeriodKey } from './mandate-text.js'
 import { canCreateMandate, LIMITS, tierOf } from './tier.js'
 import { buildDigest, computeStreak, localDay, type LiveMandate } from './digest.js'
@@ -68,6 +78,10 @@ export interface MandateApiDeps {
   origin?: string
   /** The last good delegation scan per wallet, shared with the guard. */
   scans?: DelegationScans
+  /** "Type it your way": the model call, or null when no key is configured. */
+  parsePermission?: ModelCall | null
+  parseTimeoutMs?: number
+  log?: Logger
 }
 
 class HttpError extends Error {
@@ -225,6 +239,54 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       now,
     })
   }
+
+  // "Type it your way": the model reads the user's sentence, plain code checks every
+  // term against this server's rules, and the app only fills its form. Ten tries a
+  // minute per session. The text is never logged, only its length and the outcome.
+  const parseLimiter = new RateLimiter(10, 60_000, now)
+  route('/api/parse-permission', async (body) => {
+    const a = auth(body)
+    const wait = parseLimiter.take(String(body.session))
+    if (wait > 0) throw new HttpError(429, 'rate_limited', retryMessage(wait))
+    const text = typeof body.text === 'string' ? body.text.trim() : ''
+    if (!text || text.length > MAX_TEXT) throw new HttpError(400, 'bad_text', `Write up to ${MAX_TEXT} characters.`)
+    const tz = Number(body.tzOffsetMin ?? 0)
+    const tzOffsetMin = Number.isInteger(tz) && Math.abs(tz) <= 14 * 60 ? tz : 0
+    const today = localToday(now(), tzOffsetMin)
+    const mintsCtx = cfg.mints.map((m) => ({
+      symbol: m.symbol,
+      decimals: m.decimals,
+      maxPerPeriodUi: m.maxPerPeriodUi ?? cfg.maxPerPeriodUi,
+    }))
+    const currentSymbol = typeof body.symbol === 'string' ? body.symbol : (cfg.mints[0]?.symbol ?? '')
+    const call = deps.parsePermission
+    if (!call) {
+      deps.log?.info('parse_permission', { length: text.length, outcome: 'not_configured' })
+      throw new HttpError(503, 'not_configured', COULD_NOT_READ)
+    }
+    let raw: unknown
+    try {
+      raw = await withTimeout(
+        call(text, { today, tokens: mintsCtx.map((m) => m.symbol) }),
+        deps.parseTimeoutMs ?? PARSE_TIMEOUT_MS,
+      )
+    } catch (e) {
+      deps.log?.info('parse_permission', {
+        length: text.length,
+        outcome: e instanceof Error && e.message === 'timeout' ? 'timeout' : 'model_failed',
+      })
+      throw new HttpError(503, 'parse_failed', COULD_NOT_READ)
+    }
+    const parsed = checkTerms(raw, { mints: mintsCtx, currentSymbol, today })
+    deps.log?.info('parse_permission', {
+      length: text.length,
+      outcome: 'parsed',
+      filled: Object.keys(parsed.terms).sort().join(',') || '-',
+      refused: Object.keys(parsed.reasons).sort().join(',') || '-',
+      tier: a.tier,
+    })
+    return { terms: parsed.terms, reasons: parsed.reasons }
+  })
 
   route('/api/mandates/create', async (body) => {
     const a = auth(body)

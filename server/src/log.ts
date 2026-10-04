@@ -1,6 +1,6 @@
 /**
  * Logging that cannot leak. Every line passes through `redact`, which removes
- * what must never reach a log file: RPC API keys, session tokens, FCM
+ * what must never reach a log file: RPC and Anthropic API keys, session tokens, FCM
  * registration tokens, bearer tokens, and anything shaped like a serialized
  * secret key. Public chain data (addresses, signatures, amounts) is kept,
  * because a log without it cannot be checked against the chain.
@@ -11,6 +11,8 @@ const RULES: [RegExp, string][] = [
   [/([?&](?:api[-_]?key|apikey|key|token|access_token)=)[^&\s"']+/gi, '$1***'],
   // Authorization headers.
   [/(bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1***'],
+  // Anthropic API keys (v1.0.2 "Type it your way"), wherever they appear.
+  [/\bsk-ant-[A-Za-z0-9_-]{8,}/g, '[anthropic-key]'],
   // A 64-number JSON array is a Solana CLI keypair file's contents.
   [/\[\s*(?:\d{1,3}\s*,\s*){63}\d{1,3}\s*\]/g, '[secret-key]'],
   // A JSON SyntaxError quotes a slice of its input: ..."9,238,135,x]" is not valid JSON.

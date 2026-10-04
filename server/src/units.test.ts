@@ -83,6 +83,7 @@ test('redact removes API keys, bearer tokens, keypairs, push and session tokens;
   const line = [
     'rpc https://mainnet.helius-rpc.com/?api-key=0123-secret-4567 failed',
     'Authorization: Bearer abc.def.ghi',
+    'x-api-key: sk-ant-api03-Zz9_fake-Key0123456789abcdefABCDEF',
     `key ${keypair}`,
     `token ${push}`,
     '{"session":"AbCdEfGhIjKlMnOpQrStUvWxYz0123456789abcdefg"}',
@@ -91,6 +92,8 @@ test('redact removes API keys, bearer tokens, keypairs, push and session tokens;
   const out = redact(line)
   assert.doesNotMatch(out, /0123-secret-4567/)
   assert.doesNotMatch(out, /abc\.def\.ghi/)
+  assert.doesNotMatch(out, /Zz9_fake-Key0123456789/)
+  assert.match(out, /x-api-key: \[anthropic-key\]/)
   assert.match(out, /\[secret-key\]/)
   assert.match(out, /\[push-token\]/)
   assert.doesNotMatch(out, /AbCdEfGhIjKlMnOpQrStUvWxYz0123456789abcdefg/)
