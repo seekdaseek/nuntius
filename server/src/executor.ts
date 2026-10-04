@@ -45,6 +45,7 @@ import {
   latestBlockhash,
   PULL_BUDGET,
   sendWire,
+  simulateWire,
   signOnly,
   statusOf,
   type ComputeBudget,
@@ -66,6 +67,8 @@ export interface ChainPort {
   prepareBuy?(m: Mandate, b: Backing, amount: bigint): Promise<PreparedBuy>
   /** Back permissions: how much of the launch token a landed buy delivered to the backer. */
   bought?(m: Mandate, b: Backing, signature: string): Promise<bigint | null>
+  /** Our own simulation of the signed bytes; every send but the over-cap demo runs it first. */
+  simulate(wire: string): Promise<{ err: string | null; customCode: number | null }>
   send(wire: string): Promise<void>
   status(signature: string, lastValidBlockHeight: bigint): Promise<TxStatus>
 }
@@ -149,6 +152,7 @@ export function rpcChain(
       if (after === undefined) return null
       return BigInt(after) - BigInt(pick(tx?.meta?.preTokenBalances) ?? '0')
     },
+    simulate: (wire) => simulateWire(rpc, wire),
     send: (wire) => sendWire(rpc, wire),
     status: (sig, lvbh) => statusOf(rpc, sig, lvbh),
   }
@@ -345,8 +349,9 @@ export class Executor {
       amount,
       sig: signed.signature,
     })
-    await this.o.chain.send(signed.wire)
     const row = this.o.store.getPull(m.delegationPda, periodStart)!
+    const refused = await this.sendChecked(m, row, signed.wire)
+    if (refused) return refused
     return this.settle(m, row, signed.wire)
   }
 
@@ -400,8 +405,10 @@ export class Executor {
         sig: signed.signature,
         attempt: row.attempts + 1,
       })
-      await this.o.chain.send(signed.wire)
-      return this.settle(m, this.o.store.getPull(m.delegationPda, row.periodStart)!, signed.wire)
+      const again = this.o.store.getPull(m.delegationPda, row.periodStart)!
+      const refused = await this.sendChecked(m, again, signed.wire)
+      if (refused) return refused
+      return this.settle(m, again, signed.wire)
     }
 
     const landed = st.landed
@@ -445,33 +452,7 @@ export class Executor {
 
     // A buy whose swap missed its minimum-out: the whole transaction failed, so nothing was
     // pulled. One receipt per period; tried again later in the period with a fresh quote.
-    if (back && failedInstruction(landed.err) === SWAP_INDEX) {
-      this.o.store.finishPull(row.id, 'skipped', landed.customCode, 'swap_minimum_out', this.o.now())
-      const delay = Math.min(this.o.backoffBaseMs * 2 ** row.attempts, this.o.backoffMaxMs)
-      this.o.store.backoffPull(
-        row.id,
-        this.o.now() + Math.round(delay * (0.5 + this.o.random() / 2)),
-        'swap_minimum_out',
-        this.o.now(),
-      )
-      await this.o.receipts.emit(
-        m.address,
-        {
-          kind: 'skipped',
-          at: this.o.now(),
-          delegationPda: m.delegationPda,
-          delegatee: m.delegatee,
-          label: m.label || null,
-          amountBaseUnits: row.amount,
-          decimals: m.decimals,
-          symbol: m.symbol,
-          signature: `skipped:${m.delegationPda}:${row.periodStart}`,
-          actor: 'nuntius',
-        },
-        { slippagePct: back.slippageBps / 100 },
-      )
-      return 'skipped'
-    }
+    if (back && failedInstruction(landed.err) === SWAP_INDEX) return this.skipBuy(m, back, row, landed.customCode)
 
     if (landed.customCode === ERR.AmountExceedsPeriodLimit && (!back || failedInstruction(landed.err) === PULL_INDEX)) {
       this.o.store.finishPull(row.id, 'refused', landed.customCode, 'AmountExceedsPeriodLimit', this.o.now())
@@ -524,8 +505,60 @@ export class Executor {
       p.amountIn.toString(),
     )
     this.o.log.info('executor_buy_retry', { mandate: m.id, sig: p.signed.signature, attempt: row.attempts + 1 })
-    await this.o.chain.send(p.signed.wire)
-    return this.settle(m, this.o.store.getPull(m.delegationPda, row.periodStart)!, p.signed.wire)
+    const again = this.o.store.getPull(m.delegationPda, row.periodStart)!
+    const refused = await this.sendChecked(m, again, p.signed.wire)
+    if (refused) return refused
+    return this.settle(m, again, p.signed.wire)
+  }
+
+  /**
+   * A buy whose swap would miss (simulated) or missed (landed) its minimum-out: nothing
+   * was pulled. One receipt per period; tried again later in the period with a fresh quote.
+   */
+  private async skipBuy(m: Mandate, back: Backing, row: PullRow, customCode: number | null): Promise<Outcome> {
+    this.o.store.finishPull(row.id, 'skipped', customCode, 'swap_minimum_out', this.o.now())
+    const delay = Math.min(this.o.backoffBaseMs * 2 ** row.attempts, this.o.backoffMaxMs)
+    this.o.store.backoffPull(
+      row.id,
+      this.o.now() + Math.round(delay * (0.5 + this.o.random() / 2)),
+      'swap_minimum_out',
+      this.o.now(),
+    )
+    await this.o.receipts.emit(
+      m.address,
+      {
+        kind: 'skipped',
+        at: this.o.now(),
+        delegationPda: m.delegationPda,
+        delegatee: m.delegatee,
+        label: m.label || null,
+        amountBaseUnits: row.amount,
+        decimals: m.decimals,
+        symbol: m.symbol,
+        signature: `skipped:${m.delegationPda}:${row.periodStart}`,
+        actor: 'nuntius',
+      },
+      { slippagePct: back.slippageBps / 100 },
+    )
+    return 'skipped'
+  }
+
+  /**
+   * Our own simulation, then the send. A transaction the program would refuse is never
+   * sent: a buy whose swap would miss becomes the same skip as a landed miss, and anything
+   * else is recorded as refused before it costs a fee. null = sent, settle it.
+   */
+  private async sendChecked(m: Mandate, row: PullRow, wire: string): Promise<Outcome | null> {
+    const sim = await this.o.chain.simulate(wire)
+    if (!sim.err) {
+      await this.o.chain.send(wire)
+      return null
+    }
+    const back = this.o.store.backingOf(m.id)
+    this.o.log.warn('executor_simulation_refused', { mandate: m.id, sig: row.signature, err: sim.err })
+    if (back && failedInstruction(sim.err) === SWAP_INDEX) return this.skipBuy(m, back, row, sim.customCode)
+    this.o.store.finishPull(row.id, 'refused', sim.customCode, `simulated: ${sim.err}`.slice(0, 200), this.o.now())
+    return 'refused'
   }
 
   private async refusalReceipt(m: Mandate, signature: string, amount: bigint): Promise<void> {
@@ -577,6 +610,8 @@ export class Executor {
     if (!state.exists) throw new Error('delegation does not exist')
     const w = effectiveWindow(state, BigInt(Math.floor(this.o.now() / 1000)))
     const signed = await this.o.chain.signPull(m, w.remaining + 1n)
+    // The one send without our simulation, on purpose: the simulation would refuse it,
+    // and the refusal must land on chain with a signature to be the 0x190 proof.
     await this.o.chain.send(signed.wire)
     const deadline = this.o.now() + this.o.settleMs
     for (;;) {

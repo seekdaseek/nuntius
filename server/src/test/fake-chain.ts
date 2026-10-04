@@ -111,6 +111,17 @@ export class FakeChain implements ChainPort {
     return this.boughtBy.get(signature) ?? null
   }
 
+  /** Every simulate() call, by signature. */
+  simulations: string[] = []
+  /** The next simulations to refuse, with these errors (then the send never happens). */
+  simRefusals: { err: string; customCode: number | null }[] = []
+
+  async simulate(wire: string): Promise<{ err: string | null; customCode: number | null }> {
+    const { signature } = JSON.parse(wire) as { signature: string }
+    this.simulations.push(signature)
+    return this.simRefusals.shift() ?? { err: null, customCode: null }
+  }
+
   async send(wire: string): Promise<void> {
     const { signature, pda, amount, buy } = JSON.parse(wire) as {
       signature: string

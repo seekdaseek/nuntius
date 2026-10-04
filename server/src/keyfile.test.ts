@@ -7,7 +7,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { jsonSecretFromFile, keypairFromFile, SecretFileError } from './keyfile.js'
-import { loadDelegationSigners } from './spike-signers.js'
 import { FcmSender } from './fcm.js'
 import { createLogger, safeError } from './log.js'
 
@@ -35,19 +34,6 @@ test('the parser really quotes the key file (the leak this guards against)', () 
     message = (e as Error).message
   }
   assert.match(message, /,x\]/, `Node ${process.version} quotes the input: ${message}`)
-})
-
-test('a malformed spike payer file: the log line holds none of its bytes', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'nuntius-key-'))
-  const { text, bytes } = malformedKey()
-  await writeFile(join(dir, 'id.json'), text)
-  const lines: string[] = []
-  const r = await loadDelegationSigners({ SPIKE_PAYER: join(dir, 'id.json') }, join(dir, 'delegatee.json'), (l) =>
-    lines.push(l),
-  )
-  assert.equal(r, undefined)
-  assert.deepEqual(lines, ['delegation spike disabled: SPIKE_PAYER: the file is not a valid key file'])
-  assertNoBytes(lines.join('\n'), bytes)
 })
 
 test('a malformed executor key: the thrown error names the file, never its content', async () => {

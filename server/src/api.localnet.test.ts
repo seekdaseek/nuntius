@@ -62,7 +62,7 @@ test('mandatum API end to end on the real program', { skip: skipLocalnet, timeou
     fcmServiceAccount: null,
     fcmProjectId: null,
   } as unknown as Config
-  const app = createApp(config, store, null, undefined, {
+  const app = createApp(config, store, null, {
     mandates,
     cfg,
     rpc,

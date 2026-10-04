@@ -221,6 +221,26 @@ test('demoOverCap lands a real refusal and produces the refused receipt', async 
   assert.equal(r.customCode, 400)
   assert.equal(chain.sent[0]!.amount, 10_001n)
   assert.equal(store.events(OWNER)[0]!.kind, 'refused')
+  // The one send without our simulation, on purpose: the refusal must land to be proof.
+  assert.deepEqual(chain.simulations, [])
+})
+
+test('every send is simulated first; a transaction the program would refuse is never sent', async () => {
+  const { chain, store, pushes, clock, m, mk } = setup()
+  const ex = mk()
+  assert.deepEqual(await ex.tick(), { [m.id]: 'landed' })
+  assert.deepEqual(chain.simulations, chain.sends, 'the same signed bytes, simulated before they went out')
+  clock.advance(61)
+  chain.simRefusals.push({ err: '{"InstructionError":[2,{"Custom":400}]}', customCode: 400 })
+  assert.deepEqual(await ex.tick(), { [m.id]: 'refused' })
+  assert.equal(chain.sends.length, 1, 'the refused pull was never sent, so no fee was paid')
+  assert.equal(chain.sent.length, 1)
+  const row =
+    store.pullsFor(PDA).find((r) => r.periodStart > store.pullsFor(PDA)[0]!.periodStart) ?? store.pullsFor(PDA)[1]!
+  assert.equal(row.state, 'refused')
+  assert.equal(row.errorCode, 400)
+  assert.equal(pushes.length, 1, 'nothing reached the chain, so there is no refusal to prove')
+  assert.deepEqual(await ex.tick(), { [m.id]: 'period_done' }, 'not retried in the period')
 })
 
 test('receipt for a grant made outside nuntius tells the user to check it', () => {

@@ -80,7 +80,7 @@ const config = {
   fcmServiceAccount: null,
   fcmProjectId: null,
 } as unknown as Config
-const api = createApp(config, store, null, undefined, {
+const api = createApp(config, store, null, {
   mandates,
   cfg,
   rpc,

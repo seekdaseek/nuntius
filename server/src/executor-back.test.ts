@@ -140,6 +140,20 @@ test('a buy that misses its minimum-out is skipped: nothing pulled, one receipt,
   assert.equal(store.events(OWNER).filter((e) => e.kind === 'skipped').length, 1)
 })
 
+test('a swap our simulation says would miss is skipped before it is sent: no fee, the same receipt', async () => {
+  const { chain, store, pushes, clock, m, mk, jitter } = setup()
+  clock.advance(jitter)
+  chain.simRefusals.push({ err: '{"InstructionError":[3,{"Custom":6003}]}', customCode: 6003 })
+  const ex = mk()
+  assert.deepEqual(await ex.tick(), { [m.id]: 'skipped' })
+  assert.deepEqual(chain.sends, [], 'never sent')
+  assert.equal(store.pullsFor(PDA)[0]!.state, 'skipped')
+  assert.equal(pushes[0]!.title, 'Skipped: Back NATX')
+  clock.advance(5)
+  assert.deepEqual(await ex.tick(), { [m.id]: 'landed' }, 'tried again later with a fresh quote')
+  assert.deepEqual(chain.simulations.length, 2)
+})
+
 test('while the curve migrates the executor waits: no ledger row, no pull', async () => {
   const { chain, store, clock, m, mk, jitter } = setup()
   clock.advance(jitter)

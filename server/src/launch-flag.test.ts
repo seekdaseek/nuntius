@@ -18,7 +18,6 @@ async function serve(launches: boolean) {
     config as unknown as Config,
     new Store(db),
     null,
-    undefined,
     {
       mandates: new MandateStore(db),
       cfg: { cluster: 'localnet', mints: [], demoEndpoints: false, launches },

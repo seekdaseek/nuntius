@@ -20,21 +20,12 @@ import { pageConnection, withPagedProgramAccounts } from './program-accounts.js'
 import { createLogger } from './log.js'
 import { bootLines } from './boot-log.js'
 import { keypairFromFile } from './keyfile.js'
-import { loadDelegationSigners } from './spike-signers.js'
 
 const config = loadConfig()
 const db = openDb(path.join(import.meta.dirname, '..', 'nuntius.db'))
 const store = new Store(db)
 const fcm =
   config.fcmServiceAccount && config.fcmProjectId ? new FcmSender(config.fcmServiceAccount, config.fcmProjectId) : null
-// The BRIEF-05/06 spike routes (/api/delegation/*) can trigger pulls with an
-// arbitrary amount. They only exist when explicitly asked for — never because a
-// CLI keypair happens to sit in the default path on the host.
-const delegationSigners =
-  process.env.SPIKE_ROUTES === '1'
-    ? await loadDelegationSigners(process.env, path.join(import.meta.dirname, '..', 'delegatee.json'))
-    : undefined
-
 /**
  * mandatum. Off unless MANDATE_CLUSTER is set. On mainnet the executor key must
  * already exist at MANDATE_DELEGATEE (and be funded for fees): the server never
@@ -61,7 +52,7 @@ async function loadMandateDelegatee(path: string | null, cluster: 'mainnet' | 'l
   }
 }
 
-let mandateDeps: Parameters<typeof createApp>[4]
+let mandateDeps: Parameters<typeof createApp>[3]
 if (mandateConfig) {
   // Helius deprioritizes unpaginated getProgramAccounts: both clients page with getProgramAccountsV2 there.
   const rpc = withPagedProgramAccounts(createSolanaRpc(mandateConfig.rpcUrl), mandateConfig.rpcUrl)
@@ -127,10 +118,10 @@ if (mandateConfig) {
   })
 }
 
-const app = createApp(config, store, fcm, delegationSigners, mandateDeps)
+const app = createApp(config, store, fcm, mandateDeps)
 
 // Loopback only: during development the Seeker reaches this through `adb reverse`,
 // and in production nginx terminates in front. Nothing here belongs on the LAN.
 app.listen(config.port, '127.0.0.1', () => {
-  for (const line of bootLines(config, { fcm: Boolean(fcm), spike: Boolean(delegationSigners) })) console.log(line)
+  for (const line of bootLines(config, { fcm: Boolean(fcm) })) console.log(line)
 })

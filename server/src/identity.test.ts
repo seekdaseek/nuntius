@@ -43,7 +43,7 @@ async function serve(cfg: Partial<Config>, withMandates = false) {
         executor: null,
       } as never)
     : undefined
-  const app = createApp(config, store, null, undefined, mandates, {
+  const app = createApp(config, store, null, mandates, {
     limits: limits(),
     staticDir: path.join(import.meta.dirname, '..', 'static'),
   })

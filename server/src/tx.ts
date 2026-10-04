@@ -133,9 +133,25 @@ export interface Landed {
 }
 
 /**
- * Sends pre-signed wire bytes with preflight off, so a refusal lands and has a
- * signature. The RPC node keeps forwarding it until its blockhash expires (no
- * maxRetries: 0, which let a dropped pull sit for 40 s on 30 Sep).
+ * Our own simulation of pre-signed wire bytes, against the current chain. The
+ * executor runs it before every send (Executor.sendChecked), so a transaction the
+ * program would refuse is never paid for.
+ */
+export async function simulateWire(rpc: Rpc, wire: string): Promise<{ err: string | null; customCode: number | null }> {
+  const { value } = await rpc
+    .simulateTransaction(wire as never, { encoding: 'base64', sigVerify: false, commitment: 'confirmed' })
+    .send()
+  const err = value.err ? JSON.stringify(value.err, (_k, v: unknown) => (typeof v === 'bigint' ? Number(v) : v)) : null
+  return { err, customCode: customCodeOf(value.err) }
+}
+
+/**
+ * Sends pre-signed wire bytes with preflight off. Callers simulate first with
+ * simulateWire; preflight off then only means the RPC node does not simulate a
+ * second time. The one send that skips our simulation on purpose is the over-cap
+ * demo (Executor.demoOverCap), whose refusal must land to be proof. The RPC node
+ * keeps forwarding until the blockhash expires (no maxRetries: 0, which let a
+ * dropped pull sit for 40 s on 30 Sep).
  */
 export async function sendWire(rpc: Rpc, wire: string): Promise<void> {
   await rpc.sendTransaction(wire as never, { encoding: 'base64', skipPreflight: true }).send()

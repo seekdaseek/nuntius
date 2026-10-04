@@ -66,7 +66,7 @@ test(
       fcmServiceAccount: null,
       fcmProjectId: null,
     } as unknown as Config
-    const app = createApp(config, store, null, undefined, {
+    const app = createApp(config, store, null, {
       mandates,
       cfg,
       rpc,
