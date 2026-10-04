@@ -1,5 +1,8 @@
 import { AppIdentity, createSolanaDevnet, createSolanaMainnet, SolanaCluster } from '@wallet-ui/react-native-kit'
 
+/** The mainnet executor (delegatee) the server signs pulls with. A public key. */
+export const MAINNET_EXECUTOR = '23fstLLk5nv17NUpbsyWgEkkwHM3uKpxtvXhrLhd3SHP'
+
 export class AppConfig {
   /**
    * Base URL of the nuntius backend. In development the Seeker reaches the Mac's
@@ -13,10 +16,12 @@ export class AppConfig {
   /**
    * The nuntius executor's address: every grant must name it as delegatee, or the
    * app's transaction check refuses it before Seed Vault opens (core/tx-check.ts).
-   * Pinned at build time with EXPO_PUBLIC_EXECUTOR (a public key, not a secret);
-   * a build without it refuses every grant.
+   * Defaults to the mainnet executor, the only signer of every executor pull on
+   * mainnet (e.g. Ry4tiD6o…, 30 Sep 2026) and the public key the VPS executor key
+   * derives to. EXPO_PUBLIC_EXECUTOR (a public key, not a secret) overrides it,
+   * e.g. for a localnet build with its own delegatee.
    */
-  static executor: string | null = process.env.EXPO_PUBLIC_EXECUTOR ?? null
+  static executor: string | null = process.env.EXPO_PUBLIC_EXECUTOR ?? MAINNET_EXECUTOR
 
   /**
    * MWA app identity. `uri` must be absolute (wallets may decline authorization
