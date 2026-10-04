@@ -49,3 +49,8 @@ export function postSiwsVerify(
 export function postVerifySeeker(session: string): Promise<{ sgtMint: string | null }> {
   return post('/api/verify-seeker', { session })
 }
+
+/** Sign-out on the server: the session stops working and its push tokens are deleted. */
+export function postSignOut(session: string): Promise<{ ok: boolean }> {
+  return post('/api/session/revoke', { session })
+}

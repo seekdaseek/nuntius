@@ -119,6 +119,9 @@ if (mandateConfig) {
 }
 
 const app = createApp(config, store, fcm, mandateDeps)
+// Expired sessions and the push tokens they registered are deleted at start and hourly.
+store.purgeExpiredSessions()
+setInterval(() => store.purgeExpiredSessions(), 3_600_000).unref()
 
 // Loopback only: during development the Seeker reaches this through `adb reverse`,
 // and in production nginx terminates in front. Nothing here belongs on the LAN.

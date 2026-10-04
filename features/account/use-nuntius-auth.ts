@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getBase64Encoder } from '@solana/kit'
 import { transact, useMobileWallet } from '@wallet-ui/react-native-kit'
-import { getSiwsPayload, postSiwsVerify, postVerifySeeker } from '@/features/account/nuntius-api'
+import { getSiwsPayload, postSignOut, postSiwsVerify, postVerifySeeker } from '@/features/account/nuntius-api'
 import { loadAuth, saveAuth } from '@/features/account/auth-storage'
 import { saveWalletToken } from '@/features/wallet/wallet-auth-storage'
 
@@ -105,6 +105,10 @@ export function useSignOut() {
   const queryClient = useQueryClient()
 
   return async () => {
+    // The server ends the session and stops this phone's pushes. Offline, the phone still
+    // signs out; the server copy then lapses at its 30-day expiry.
+    const current = queryClient.getQueryData<NuntiusAuth | null>(AUTH_QUERY_KEY) ?? (await loadAuth())
+    if (current) await postSignOut(current.session).catch(() => {})
     await setAuth(queryClient, null)
     await saveWalletToken('', null).catch(() => {})
     queryClient.removeQueries({ queryKey: ['mandates'] })

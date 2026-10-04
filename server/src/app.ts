@@ -124,7 +124,21 @@ export function createApp(
       return
     }
 
-    store.upsertPushToken(token, auth.address, auth.sgtMint, platform, Date.now())
+    store.upsertPushToken(token, auth.address, auth.sgtMint, platform, Date.now(), session)
+    res.json({ ok: true })
+  })
+
+  // Sign-out: the session ends on the server, and the push tokens it registered with it.
+  app.post('/api/session/revoke', (req, res) => {
+    const body: unknown = req.body
+    const v = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {}
+    const session = typeof v.session === 'string' && SESSION_TOKEN_RE.test(v.session) ? v.session : null
+    if (!session) {
+      res.status(400).json({ ok: false, error: 'bad_request' })
+      return
+    }
+    // Idempotent: a second sign-out, or one for an expired session, is still a success.
+    store.revokeSession(session)
     res.json({ ok: true })
   })
 

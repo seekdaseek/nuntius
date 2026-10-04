@@ -57,6 +57,17 @@ export function openDb(file: string): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS idx_delegations_address ON delegations (address);
   `)
+  // v1.0.1: a push token belongs to the session that registered it, and goes with it.
+  const cols = db.prepare('PRAGMA table_info(push_tokens)').all() as { name: string }[]
+  if (!cols.some((c) => c.name === 'session')) {
+    db.exec('ALTER TABLE push_tokens ADD COLUMN session TEXT')
+    // Tokens registered before v1.0.1 carry no session: bind each to its wallet's newest
+    // session, so pushes keep arriving until the app re-registers on its next start.
+    db.exec(`UPDATE push_tokens SET session = (
+      SELECT token FROM sessions WHERE sessions.address = push_tokens.address ORDER BY created_at DESC LIMIT 1
+    ) WHERE session IS NULL`)
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_push_tokens_session ON push_tokens (session)')
   return db
 }
 
@@ -96,11 +107,16 @@ export class Store {
     this.setSgtMint = db.prepare('UPDATE sessions SET sgt_mint = @mint WHERE token = @token')
     // Re-registering an existing token updates in place — unique on token, never duplicated.
     this.upsertPushTokenStmt = db.prepare(`
-      INSERT INTO push_tokens (token, address, sgt_mint, platform, created_at, updated_at)
-      VALUES (@token, @address, @sgtMint, @platform, @now, @now)
-      ON CONFLICT (token) DO UPDATE SET address = @address, sgt_mint = @sgtMint, platform = @platform, updated_at = @now
+      INSERT INTO push_tokens (token, address, sgt_mint, platform, session, created_at, updated_at)
+      VALUES (@token, @address, @sgtMint, @platform, @session, @now, @now)
+      ON CONFLICT (token) DO UPDATE SET address = @address, sgt_mint = @sgtMint, platform = @platform,
+        session = @session, updated_at = @now
     `)
-    this.selectPushTokens = db.prepare('SELECT token FROM push_tokens WHERE address = @address')
+    // Only tokens whose session is still live: a revoked or expired session receives nothing.
+    this.selectPushTokens = db.prepare(`
+      SELECT p.token FROM push_tokens p JOIN sessions s ON s.token = p.session
+      WHERE p.address = @address AND s.created_at > @notBefore
+    `)
     this.upsertDelegationStmt = db.prepare(`
       INSERT INTO delegations (delegation_pda, address, mint, user_ata, authority_pda, delegatee, amount_per_period, period_length_s, created_at)
       VALUES (@delegationPda, @address, @mint, @userAta, @authorityPda, @delegatee, @amountPerPeriod, @periodLengthS, @now)
@@ -171,8 +187,42 @@ export class Store {
     return row ? { address: row.address, sgtMint: row.sgt_mint } : null
   }
 
-  upsertPushToken(token: string, address: string, sgtMint: string | null, platform: string, nowMs: number): void {
-    this.upsertPushTokenStmt.run({ token, address, sgtMint, platform, now: nowMs })
+  /** Binds a device's push token to the session that registered it. */
+  upsertPushToken(
+    token: string,
+    address: string,
+    sgtMint: string | null,
+    platform: string,
+    nowMs: number,
+    session: string,
+  ): void {
+    this.upsertPushTokenStmt.run({ token, address, sgtMint, platform, now: nowMs, session })
+  }
+
+  /**
+   * Sign-out: the session stops working on the server, and every push token it
+   * registered is deleted, so a copied session token neither reads nor receives
+   * anything afterwards. Returns whether the session existed.
+   */
+  revokeSession(token: string): boolean {
+    return this.db.transaction(() => {
+      this.db.prepare('DELETE FROM push_tokens WHERE session = ?').run(token)
+      return this.db.prepare('DELETE FROM sessions WHERE token = ?').run(token).changes > 0
+    })()
+  }
+
+  /** Expired sessions go, with their push tokens (and any token left without a live session). */
+  purgeExpiredSessions(nowMs: number = Date.now()): { sessions: number; pushTokens: number } {
+    const notBefore = nowMs - SESSION_TTL_MS
+    return this.db.transaction(() => {
+      const pushTokens = this.db
+        .prepare(
+          'DELETE FROM push_tokens WHERE session IS NULL OR session NOT IN (SELECT token FROM sessions WHERE created_at > ?)',
+        )
+        .run(notBefore).changes
+      const sessions = this.db.prepare('DELETE FROM sessions WHERE created_at <= ?').run(notBefore).changes
+      return { sessions, pushTokens }
+    })()
   }
 
   /** Seeker verification for a wallet, from any of its sessions. Used where no session is in hand (scheduled digest). */
@@ -184,14 +234,18 @@ export class Store {
   }
 
   /** Every wallet with at least one registered device — the set the guard watches. */
-  pushAddresses(): string[] {
-    return (this.db.prepare('SELECT DISTINCT address FROM push_tokens').all() as { address: string }[]).map(
-      (r) => r.address,
-    )
+  pushAddresses(nowMs: number = Date.now()): string[] {
+    return (
+      this.db
+        .prepare(
+          'SELECT DISTINCT p.address FROM push_tokens p JOIN sessions s ON s.token = p.session WHERE s.created_at > ?',
+        )
+        .all(nowMs - SESSION_TTL_MS) as { address: string }[]
+    ).map((r) => r.address)
   }
 
-  getPushTokens(address: string): string[] {
-    const rows = this.selectPushTokens.all({ address }) as { token: string }[]
+  getPushTokens(address: string, nowMs: number = Date.now()): string[] {
+    const rows = this.selectPushTokens.all({ address, notBefore: nowMs - SESSION_TTL_MS }) as { token: string }[]
     return rows.map((r) => r.token)
   }
 
