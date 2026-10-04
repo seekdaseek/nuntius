@@ -1,0 +1,6 @@
+This package replaces bigint-buffer 1.1.5 (https://github.com/no2chem/bigint-buffer),
+Copyright Michael Wei, licensed under the Apache License 2.0 (LICENSE). It keeps
+that package's four exported functions and the behaviour of its pure-JavaScript
+fallback, and leaves out the native binding whose toBigIntLE() copies its input
+without checking its size (GHSA-3gc7-fjrx-p6mg, CVE-2025-3194; no patched release).
+Changes by seekdaseek for nuntius, 2026: native code removed; inputs checked.

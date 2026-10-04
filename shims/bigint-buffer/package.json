@@ -1,0 +1,8 @@
+{
+  "name": "bigint-buffer",
+  "version": "1.1.5-nuntius.1",
+  "description": "nuntius's pure-JavaScript stand-in for bigint-buffer 1.1.5 (GHSA-3gc7-fjrx-p6mg): same four functions, no native binding.",
+  "main": "index.js",
+  "license": "Apache-2.0",
+  "private": true
+}
