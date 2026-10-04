@@ -455,13 +455,13 @@
       <div class="kicker">Proof: the real program, built from its release commit</div>
       <div class="row" style="align-items: center; margin-top: 10px">
         <div style="flex: 0 0 520px">
-          <div class="big green">83 / 83</div>
+          <div class="big green">117 / 117</div>
           <p style="margin-top: 14px">
             tests pass against <b>solana-foundation/subscriptions @ 364a419</b>, the commit its CHANGELOG names as the
             mainnet release, in a local validator (Agave 3.1.10).
           </p>
           <p class="muted" style="font-size: 18px">
-            sha256 31309d42…a30974648; <code>scripts/localnet.sh</code> reproduces it
+            <code>scripts/localnet.sh</code> builds it from source; the binary&#39;s hash depends on the build machine
           </p>
         </div>
         <div style="flex: 1">
@@ -475,8 +475,9 @@
             <li>Two mints side by side, the SKR path: a ceiling per mint, one authority each</li>
           </ul>
           <p class="muted" style="font-size: 18px; margin-top: 16px">
-            Also: 27 app-logic tests, 10 tests on the web build (cold-start tap, fonts, layout, BACK); typecheck, lint
-            and prettier clean. Whether the local binary is byte-identical to mainnet has not been measured yet.
+            Also: 76 server unit tests, 44 app-logic tests (including the transaction check), 11 tests on the web build
+            (cold-start tap, fonts, layout, BACK, launch hidden); typecheck, lint and prettier clean. Whether the local
+            binary is byte-identical to mainnet has not been measured yet.
           </p>
         </div>
       </div>
@@ -510,8 +511,8 @@
         </div>
       </div>
       <p class="muted" style="margin-top: 30px; font-size: 20px">
-        12 unit tests on a simulated program (lost transactions, restarts, a send that throws after landing, max
-        attempts). Logs are JSON with keys and tokens redacted.
+        16 unit tests on a simulated program (lost transactions, restarts, a send that throws after landing, max
+        attempts, every send simulated first). Logs are JSON with keys and tokens redacted.
       </p>
     </section>
 
@@ -580,8 +581,9 @@
         <div class="card" style="flex: 1">
           <h3>This codebase</h3>
           <p>
-            No secrets in the repo; SIWS nonces are single-use; sessions expire in 30 days; the server has 0 npm
-            advisories. Full table in SECURITY.md.
+            The app checks every server-built transaction before Seed Vault opens. No secrets in the repo; SIWS nonces
+            are single-use; sign-out ends the session on the server. npm audit: 0 on the server; the app&#39;s 5 are
+            node-forge in Expo&#39;s build tools, not in the shipped bundle. Full table in SECURITY.md.
           </p>
         </div>
       </div>
@@ -662,17 +664,14 @@
         <div class="card chain" style="flex: 1">
           <h3>Done</h3>
           <p>
-            Four device rounds on mainnet, the last on the release build: one-approval grants and revokes, the capped
-            allowance matching Seed Vault, receipts and refusals tapped in every app state, SKR, the widget and the
-            digest. 83 tests against the real program. Docs, threat model, judge guide.
+            Five device rounds on mainnet. v1.0.0 released; v1.0.1, installed over it on 4 Oct, kept the sign-in, drew
+            the widget, passed the transaction check, matched Seed Vault at 0.35 USDC, pulled in 7 s and revoked with
+            one sheet. 117 tests against the real program. Docs, threat model, judge guide.
           </p>
         </div>
         <div class="card" style="flex: 1">
           <h3>Before submission</h3>
-          <p>
-            The digest on the release build (due 1 Oct, 21:00 UTC), then the APK as GitHub release v1.0.0, and the demo
-            video cut from the round-3 and round-4 recordings.
-          </p>
+          <p>v1.0.1 as a GitHub release, with its APK and sha256. The digest and the demo video are done.</p>
         </div>
         <div class="card" style="flex: 1">
           <h3>After</h3>
