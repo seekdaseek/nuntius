@@ -30,6 +30,8 @@ That run used **two** Seed Vault approvals (init, then create). This build cuts 
 
 ## 2. The app on a Seeker
 
+**v1.0.1** (4 Oct, security hardening: the app checks every transaction before Seed Vault, tokens in the keystore, server-side sign-out; see README and SECURITY.md §7) is built from `main`. Its release is not published yet and it is **UNTESTED on the device**; until then the v1.0.0 APK below is the release.
+
 **APK:** https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0 (`nuntius-1.0.0.apk`, sha256 `474aef66b1646419957164ea57653f3360b5936d2d13f8e52d589a626e00f9de`, signed with the release key).
 
 1. **Install.** On the Seeker, open the release page, download `nuntius-1.0.0.apk`, allow the install. The app talks to mainnet through the nuntius backend.
@@ -57,11 +59,11 @@ scripts/localnet.sh &          # fetches Agave 3.1.10, builds the program at rel
 cd server && npm ci && npm run test:localnet
 ```
 
-Measured output (2026-10-02, Linux x86_64):
+Measured output (2026-10-04, Linux x86_64):
 
 ```
-ℹ tests 105
-ℹ pass 105
+ℹ tests 117
+ℹ pass 117
 ℹ fail 0
 ```
 
@@ -72,9 +74,11 @@ Things worth reading in the output:
 - `a lost transaction is replaced only after its blockhash is dead — never doubled`. This is the executor's idempotency.
 - `guard: receipts for delegations nuntius did not create`.
 
-`npm test` without a validator passes 65 tests and reports the 6 localnet suites as skipped. At the repo root, `npm run test:core` runs the app's 31 logic tests, and `npm run test:e2e` runs 10 tests on the web build (cold-start tap, fonts, layout, BACK).
+`npm test` without a validator passes 76 tests and reports the 7 localnet suites as skipped. At the repo root, `npm run test:core` runs the app's 44 logic tests, and `npm run test:e2e` runs 11 tests on the web build (cold-start tap, fonts, layout, BACK, launches hidden).
 
 ## 4. Subscription launches (Meteora DBC)
+
+**Hidden in v1.0.1** unless the server runs with `MANDATE_LAUNCHES=1`; it stays off until the Meteora device run. The steps below are for a server with it on.
 
 - **On the phone:** New permission → **Back a Seeker builder** → paste a DBC pool → one Seed Vault approval. The first buy comes within about 10 minutes. Its receipt reads "Bought … for … USDC/SKR" and opens on Explorer, where the bought tokens are in the backer's own account.
 - **Launching:** **Launch your own token** (Seeker-verified wallets only) creates a DBC pool priced in SKR or USDC with one signature.

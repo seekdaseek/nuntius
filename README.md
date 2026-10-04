@@ -8,16 +8,30 @@ nuntius also works as a **permission manager for the whole Subscriptions standar
 
 Built for the Solana Seeker. Android only: Mobile Wallet Adapter and Seed Vault are the mechanism, not decoration.
 
-|                              |                                                                                                                                      |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Judges, start here           | [JUDGE_GUIDE.md](JUDGE_GUIDE.md): install and verify in five minutes                                                                 |
-| The APK                      | https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0, sha256 `474aef66b1646419957164ea57653f3360b5936d2d13f8e52d589a626e00f9de` |
-| Demo video (1:45)            | https://youtu.be/rXs5zppcYKs                                                                                                         |
-| Pitch video (1:33)           | https://youtu.be/Zq1veG63Snw                                                                                                         |
-| Threat model                 | [SECURITY.md](SECURITY.md): what the cap bounds and what it does not                                                                 |
-| Why this, not something else | [RESEARCH.md](RESEARCH.md)                                                                                                           |
+|                                    |                                                                                                                                      |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Judges, start here                 | [JUDGE_GUIDE.md](JUDGE_GUIDE.md): install and verify in five minutes                                                                 |
+| v1.0.1 (4 Oct): security hardening | What changed and how it is proven: [below](#v101-4-october-2026-security-hardening) and [SECURITY.md §7](SECURITY.md)                |
+| The APK                            | https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0, sha256 `474aef66b1646419957164ea57653f3360b5936d2d13f8e52d589a626e00f9de` |
+| Demo video (1:45)                  | https://youtu.be/rXs5zppcYKs                                                                                                         |
+| Pitch video (1:33)                 | https://youtu.be/Zq1veG63Snw                                                                                                         |
+| Threat model                       | [SECURITY.md](SECURITY.md): what the cap bounds and what it does not                                                                 |
+| Why this, not something else       | [RESEARCH.md](RESEARCH.md)                                                                                                           |
 
 ---
+
+## v1.0.1 (4 October 2026): security hardening
+
+v1.0.1 fixes every finding of the 2 Oct Radiants Align audit in code, plus two issues found while answering it. Each fix, its commit and the test that proves it are in [SECURITY.md §7](SECURITY.md). In short:
+
+- **The app checks every server-built transaction before Seed Vault opens** (`core/tx-check.ts`). The wallet must pay and sign alone, and every program must be on the action's allowlist. A grant's mint, amount, period, expiry, delegatee and token approval must be what the user typed and the screen showed; a revoke ends only the permission tapped. Anything else never reaches Seed Vault. The executor's address is pinned at build time (`EXPO_PUBLIC_EXECUTOR`); **a build without it refuses every grant**.
+- **Tokens move to the Android keystore** (`expo-secure-store`), moved from v1.0.0's storage on first start, so nobody is signed out.
+- **Sign-out ends the session on the server** and deletes the push tokens it registered; push tokens live only as long as their session.
+- **The executor simulates every transaction before sending it**; only the over-cap demo, whose refusal must land as proof, is sent unsimulated. The devnet spike routes are gone.
+- **Dependencies:** server `npm audit --omit=dev` 10 → 0; app 33 → 5, all five the `node-forge` chain (no patched release, not in the APK).
+- **Subscription launches are hidden** unless the server is started with `MANDATE_LAUNCHES=1`, which stays off until the Meteora device run.
+
+**On the device: UNTESTED until the v1.0.1 device run.** Everything above is proven by the tests listed in SECURITY.md §7, not yet on the Seeker. v1.0.0 below is the build the device rounds proved, and its release stays the published APK until v1.0.1's is.
 
 ## What this build adds (Crypto World's Fair window, from 14 Sep 2026)
 
@@ -188,14 +202,14 @@ The full life cycle ran end to end on mainnet-beta, signed by Seed Vault on the 
 
 Cap was 10,000 base units (0.01 USDC) per 60-second period. 17,000 base units moved in total across four pulls. The delegator's SOL ended 112,000 lamports down — both account rents were returned by the revokes.
 
-**On localnet — the real program, built from source (measured 2026-10-02)**
+**On localnet — the real program, built from source (measured 2026-10-04)**
 
 The build environment cannot reach devnet or mainnet. Instead, `scripts/localnet.sh` builds `solana-foundation/subscriptions` at **`364a419`**, the commit the program's CHANGELOG names as the mainnet release, and loads it at its canonical address in `solana-test-validator` (Agave 3.1.10). Binary sha256: `31309d4202746b1af2040b792c127cde51cd549b5738096603e4504a30974648`. Whether this binary is byte-identical to mainnet is **not measured** yet. The check: `solana-verify get-program-hash` on mainnet against `solana-verify build --library-name subscriptions_program` at `364a419`.
 
 ```
 $ LOCALNET_RPC=http://127.0.0.1:8899 npm --prefix server test
-ℹ tests 105
-ℹ pass 105
+ℹ tests 117
+ℹ pass 117
 ℹ fail 0
 ```
 
@@ -230,6 +244,8 @@ nuntius offers **SKR next to USDC**: recurring SKR payments, approved once in Se
 - **Evidence.** `server/src/mints.localnet.test.ts` runs two test mints against the real program: per-mint ceilings, one authority per mint (each granted with one signature), the executor pulling both, and receipts and widget rows with the right symbols. On mainnet from the Seeker: a 25 SKR a week grant on 30 Sep at 19:41:54 UTC ([`4LXBpcPM…`](https://explorer.solana.com/tx/4LXBpcPMZVnPcqmyCfeMVyZtzSAizo4j6JnU8JkbrhRepbafqyqxMMDygAP8HDqYCp13qDg3JnBD4NZcFaVNpi9G), one signer, cj7), its first pull 5 s later at 19:41:59 UTC and 5,961 compute units ([`Ry4tiD6o…`](https://explorer.solana.com/tx/Ry4tiD6o3u8idr6ud5s4W99AsZtasa9nubuXGBFH5zgy5ToCv45LaQ93S3912jQNhnBTKRSEQ3oBcbMAzizxxpR), one signer, the delegatee), the receipt "25 SKR · 0 of 25 left this week", and the revoke on 1 Oct at 04:05:24 UTC ([`4Et21Vw6…`](https://explorer.solana.com/tx/4Et21Vw684rGi86jSfzD893f5sUe99q8eYYPPK7wUXonpdNLMzfY8WeKmZ1q7K4gvcoe8fWwGM7TwoGtEoPVzqbh), one signer, cj7). The code behind it: `server/src/mandate-config.ts` (the SKR mint and its 55 SKR per-period ceiling), `core/mandate-form.ts` (the two starters) and `app/new.tsx` (the starter buttons).
 
 ## Subscription launches (Meteora)
+
+**In v1.0.1 these screens are hidden** unless the server is started with `MANDATE_LAUNCHES=1`; it stays off until the Meteora device run. Everything below describes the feature as built and tested.
 
 A builder launches a token on a Meteora **Dynamic Bonding Curve** (DBC), priced in SKR or USDC. Backers grant a capped recurring permission in one Seed Vault approval: _"Back NATX: 5 USDC every week, for 90 days."_ Every period, one executor transaction:
 
@@ -301,14 +317,14 @@ Push is sent as **`notification` + `data`**, not data-only. A data-only FCM mess
 ### Tests
 
 ```bash
-npm ci && npm run test:core                 # 31 app-logic tests: taps, widget model, form checks, formatting
-npm run test:e2e                            # 10 tests on the web build: cold-start tap, fonts, layout, BACK
+npm ci && npm run test:core                 # 44 app-logic tests: taps, widget model, form checks, transaction check, storage, shims
+npm run test:e2e                            # 11 tests on the web build: cold-start tap, fonts, layout, BACK, launches hidden
 npx tsc --noEmit && npx expo lint && npx prettier --check .
 
 cd server && npm ci
-npm test                                    # 65 unit tests; the 6 localnet suites report "skipped"
+npm test                                    # 76 unit tests; the 7 localnet suites report "skipped"
 ../scripts/localnet.sh &                    # validator + the program built from 364a419 (first run builds it)
-npm run test:localnet                       # all 105, against the real program
+npm run test:localnet                       # all 117, against the real program
 ```
 
 ### Backend
