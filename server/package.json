@@ -22,7 +22,7 @@
     "@solana/wallet-standard-util": "1.1.3",
     "@solana/web3.js": "1.99.0",
     "better-sqlite3": "13.0.3",
-    "bigint-buffer": "file:../shims/bigint-buffer",
+    "bigint-buffer": "file:shims/bigint-buffer",
     "bn.js": "5.2.5",
     "bs58": "6.0.0",
     "express": "5.2.1",

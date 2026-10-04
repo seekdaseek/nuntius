@@ -1,5 +1,5 @@
 // v1.0.1: the server's npm audit advisories, each fixed by an override or a shim
-// (package.json "overrides", ../shims). The advisories publish no exploit, so each
+// (package.json "overrides", server/shims). The advisories publish no exploit, so each
 // input is the one the advisory describes; the test also proves the override is
 // what the dependent package actually loads.
 import { test } from 'node:test'
