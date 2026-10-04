@@ -1,4 +1,3 @@
-import { Connection } from '@solana/web3.js'
 import { PULL_BUDGET } from './tx.js'
 import path from 'node:path'
 import { loadConfig } from './config.js'
@@ -16,7 +15,8 @@ import { Guard, rpcGuardChain, startGuard } from './guard.js'
 import { runDigests } from './digest-scheduler.js'
 import { liveMandatesFor } from './mandates-api.js'
 import { DelegationScans } from './mandate-chain.js'
-import { pageConnection, withPagedProgramAccounts } from './program-accounts.js'
+import { withPagedProgramAccounts } from './program-accounts.js'
+import { meteoraConnection } from './meteora.js'
 import { createLogger } from './log.js'
 import { bootLines } from './boot-log.js'
 import { keypairFromFile } from './keyfile.js'
@@ -75,7 +75,7 @@ if (mandateConfig) {
     : null
   const receipts = new Receipts(mandates, push, log, mandateConfig.cluster)
   // The Meteora SDKs speak web3.js: one connection to the same RPC, for back permissions and launches.
-  const conn = pageConnection(new Connection(mandateConfig.rpcUrl, 'confirmed'))
+  const conn = meteoraConnection(mandateConfig.rpcUrl)
   const executor = new Executor({ store: mandates, chain: rpcChain(rpc, delegatee, PULL_BUDGET, conn), receipts, log })
   const guard = new Guard({
     store: mandates,

@@ -17,6 +17,7 @@
  *   POST /api/clock-in                records today, returns the streak
  *   POST /api/widget                  compact snapshot for the home-screen widget
  */
+import type { MeteoraConnection } from './meteora.js'
 import type express from 'express'
 import type { Address } from '@solana/kit'
 import type { Store } from './db.js'
@@ -35,7 +36,6 @@ import {
   userAtaOf,
   type DelegationView,
 } from './mandate-chain.js'
-import type { Connection } from '@solana/web3.js'
 import { backerAccountInstruction, registerLaunchRoutes } from './launch-api.js'
 import { describeBacking } from './mandate-text.js'
 import { RateLimiter } from './rate-limit.js'
@@ -64,7 +64,7 @@ export interface MandateApiDeps {
   limits?: Pick<Limits, 'demoPerIp' | 'demoPerMandate'>
   now?: () => number
   /** Subscription launches (Meteora): a web3 connection for the SDKs, and the public origin for metadata. */
-  conn?: Connection
+  conn?: MeteoraConnection
   origin?: string
   /** The last good delegation scan per wallet, shared with the guard. */
   scans?: DelegationScans

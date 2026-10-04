@@ -27,9 +27,15 @@ import {
   type TransactionSigner,
 } from '@solana/kit'
 import { getCreateAssociatedTokenIdempotentInstruction, TOKEN_PROGRAM_ADDRESS } from '@solana-program/token'
-import { PublicKey, type Connection } from '@solana/web3.js'
-import * as DBC from '@meteora-ag/dynamic-bonding-curve-sdk'
-import { ataOf, DEFAULT_SLIPPAGE_BPS, launchInstructions, readLaunch } from './meteora.js'
+import {
+  ataOf,
+  dbcPoolAddress,
+  DEFAULT_SLIPPAGE_BPS,
+  launchInstructions,
+  readLaunch,
+  tokenInfo as readTokenInfo,
+  type MeteoraConnection,
+} from './meteora.js'
 import { buildGrantTx, readAta, readRecurring, userAtaOf } from './mandate-chain.js'
 import { describeBacking, formatUnits, parseUnits } from './mandate-text.js'
 import type { Mandate, MandateStore } from './mandate-store.js'
@@ -54,7 +60,7 @@ export class HttpError extends Error {
 export interface LaunchDeps {
   mandates: MandateStore
   rpc: Rpc
-  conn: Connection
+  conn: MeteoraConnection
   delegatee: Address
   /** https://<domain>: where /m/<mint>.json is served. */
   origin: string
@@ -77,29 +83,10 @@ export interface LaunchDeps {
 }
 
 /** The launch token's decimals and symbol, from its mint and Metaplex metadata accounts. */
-async function tokenInfo(conn: Connection, mint: string): Promise<{ decimals: number; symbol: string }> {
-  const m = await conn.getAccountInfo(new PublicKey(mint))
-  if (!m || m.data.length < 45) throw new HttpError(400, 'bad_launch', 'the launch token has no mint account')
-  const decimals = m.data[44] ?? 0
-  let symbol = `${mint.slice(0, 4)}…`
-  try {
-    const md = await conn.getAccountInfo(DBC.deriveMintMetadata(new PublicKey(mint)))
-    if (md) {
-      // Metaplex metadata: key(1) update_authority(32) mint(32) name(4+len) symbol(4+len)
-      const nameLen = md.data.readUInt32LE(65)
-      const at = 69 + nameLen
-      const symLen = md.data.readUInt32LE(at)
-      const s = md.data
-        .subarray(at + 4, at + 4 + symLen)
-        .toString('utf8')
-        .replace(/\0/g, '')
-        .trim()
-      if (s && /^[\p{L}\p{N}$._-]{1,12}$/u.test(s)) symbol = s
-    }
-  } catch {
-    /* the symbol is cosmetic: keep the short address */
-  }
-  return { decimals, symbol }
+async function tokenInfo(conn: MeteoraConnection, mint: string): Promise<{ decimals: number; symbol: string }> {
+  const t = await readTokenInfo(conn, mint)
+  if (!t) throw new HttpError(400, 'bad_launch', 'the launch token has no mint account')
+  return t
 }
 
 /** The extra instruction a back grant carries: the backer creates their own account for the launch token. */
@@ -262,11 +249,7 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
     const thresholdUi = quote.symbol === 'SKR' ? 50_000 : 1_000
     const config = await generateKeyPairSigner()
     const baseMint = await generateKeyPairSigner()
-    const pool = DBC.deriveDbcPoolAddress(
-      new PublicKey(quote.mint),
-      new PublicKey(baseMint.address),
-      new PublicKey(config.address),
-    ).toBase58()
+    const pool = dbcPoolAddress(quote.mint, baseMint.address, config.address)
     const uri = `${d.origin}/m/${baseMint.address}.json`
     const ixs = await launchInstructions(d.conn, {
       creator: a.address,
@@ -275,8 +258,8 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
       name,
       symbol,
       uri,
-      config: new PublicKey(config.address),
-      baseMint: new PublicKey(baseMint.address),
+      config: config.address,
+      baseMint: baseMint.address,
     })
     // The two new keys sign here; the creator (fee payer) is left for the device.
     const withSigners = ixs.map((ix) => ({

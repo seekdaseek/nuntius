@@ -10,9 +10,10 @@ import assert from 'node:assert/strict'
 import path from 'node:path'
 import { writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { Keypair, PublicKey, type Connection } from '@solana/web3.js'
+import { randomBytes } from 'node:crypto'
 import {
   appendTransactionMessageInstructions,
+  getAddressDecoder,
   compileTransaction,
   createNoopSigner,
   createTransactionMessage,
@@ -25,7 +26,7 @@ import {
 } from '@solana/kit'
 import { buildGrantTx, buildRevokeTx, readAta } from './mandate-chain.js'
 import { backerAccountInstruction } from './launch-api.js'
-import { launchInstructions } from './meteora.js'
+import { launchInstructions, offlineConnection } from './meteora.js'
 import { assertOk, deviceSignAndSend, funded, mintTo, requireLocal, skipLocalnet } from './test/localnet.js'
 
 type Check = (base64: string, e: Record<string, unknown>) => Promise<void>
@@ -86,7 +87,7 @@ test(
     assertOk(await deviceSignAndSend(rpc, owner, g2.transactionBase64))
 
     // 3. A back permission: the same grant plus the backer's own account for the launch token.
-    const baseMint = Keypair.generate().publicKey.toBase58()
+    const baseMint = getAddressDecoder().decode(randomBytes(32))
     const back = await buildGrantTx(rpc, terms(3n, 20_000n, 30), [
       (await backerAccountInstruction(owner.address, baseMint)).ix,
     ])
@@ -112,25 +113,15 @@ test(
     await accept('revoke-last', r2.transactionBase64, revokeExpect(g2.delegationPda, null))
 
     // 6. A launch, as the launch route composes it (the SDK reads only the quote mint's owner).
-    const config = Keypair.generate().publicKey
-    const launchMint = Keypair.generate().publicKey
-    const offline = {
-      rpcEndpoint: 'offline',
-      commitment: 'confirmed',
-      getAccountInfo: async () => ({
-        owner: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
-        data: Buffer.alloc(82),
-        lamports: 1,
-        executable: false,
-      }),
-    } as unknown as Connection
-    const ixs = await launchInstructions(offline, {
+    const config = getAddressDecoder().decode(randomBytes(32))
+    const launchMint = getAddressDecoder().decode(randomBytes(32))
+    const ixs = await launchInstructions(offlineConnection(), {
       creator: owner.address,
       quoteMint: mint,
       quoteThreshold: 50_000,
       name: 'natXbuilder',
       symbol: 'NATX',
-      uri: `https://nuntius.ochinimus.app/m/${launchMint.toBase58()}.json`,
+      uri: `https://nuntius.ochinimus.app/m/${launchMint}.json`,
       config,
       baseMint: launchMint,
     })
@@ -146,7 +137,7 @@ test(
     await accept('launch', getBase64Decoder().decode(getTransactionEncoder().encode(launch)), {
       kind: 'launch',
       wallet: owner.address,
-      baseMint: launchMint.toBase58(),
+      baseMint: launchMint,
       quoteMint: mint,
     })
 

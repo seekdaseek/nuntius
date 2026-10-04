@@ -35,8 +35,8 @@ import {
   swapInstruction,
   SWAP_INDEX,
   type Route,
+  type MeteoraConnection,
 } from './meteora.js'
-import type { Connection } from '@solana/web3.js'
 import type { Receipts } from './receipts.js'
 import type { Logger } from './log.js'
 import { safeError } from './log.js'
@@ -81,7 +81,7 @@ export function rpcChain(
   rpc: Rpc,
   delegatee: TransactionSigner,
   budget: ComputeBudget = PULL_BUDGET,
-  conn?: Connection,
+  conn?: MeteoraConnection,
 ): ChainPort {
   return {
     read: (pda) => readRecurring(rpc, pda as Address),

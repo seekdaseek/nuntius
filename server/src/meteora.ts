@@ -24,6 +24,7 @@ import * as DBC from '@meteora-ag/dynamic-bonding-curve-sdk'
 import * as CPAMM from '@meteora-ag/cp-amm-sdk'
 import { AccountRole, type Address, type Instruction } from '@solana/kit'
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from '@solana-program/token'
+import { isHelius, programAccountsV2, type Fetch } from './program-accounts.js'
 
 export const DBC_PROGRAM = 'dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN'
 export const DAMM_V2_PROGRAM = 'cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG'
@@ -443,15 +444,15 @@ export async function launchInstructions(
     name: string
     symbol: string
     uri: string
-    config: PublicKey
-    baseMint: PublicKey
+    config: string
+    baseMint: string
   },
 ): Promise<Instruction[]> {
   if (p.uri.length > MAX_URI) throw new Error(`metadata URI longer than ${MAX_URI} characters`)
   const client = new DBC.DynamicBondingCurveClient(conn, 'confirmed')
   const tx = await client.partner.createConfigAndPool({
     ...launchPreset(p.quoteThreshold),
-    config: p.config,
+    config: pk(p.config),
     feeClaimer: pk(p.creator),
     leftoverReceiver: pk(p.creator),
     quoteMint: pk(p.quoteMint),
@@ -462,8 +463,94 @@ export async function launchInstructions(
       symbol: p.symbol,
       uri: p.uri,
       poolCreator: pk(p.creator),
-      baseMint: p.baseMint,
+      baseMint: pk(p.baseMint),
     },
   })
   return [...budgetInstructions({ unitLimit: 400_000, microLamportsPerUnit: 50_000 }), ...tx.instructions.map(toKit)]
+}
+
+// --- The web3.js v1 boundary -------------------------------------------------------------
+// The Meteora SDKs are Anchor 0.31 clients: they take a web3.js v1 Connection and PublicKeys.
+// This module is the only server file that imports @solana/web3.js; the rest of the server
+// holds a MeteoraConnection as an opaque handle and passes addresses as strings.
+
+/** The SDKs' connection, opaque outside this module. */
+export type MeteoraConnection = Connection
+
+/** One connection to the RPC for the Meteora SDKs, paged on Helius (pageConnection). */
+export function meteoraConnection(rpcUrl: string, doFetch?: Fetch): MeteoraConnection {
+  return pageConnection(new Connection(rpcUrl, 'confirmed'), doFetch)
+}
+
+/**
+ * A connection that answers only getAccountInfo, with an SPL Token-owned 82-byte account:
+ * enough for the SDK to compose a launch without any RPC (tests).
+ */
+export function offlineConnection(): MeteoraConnection {
+  return {
+    rpcEndpoint: 'offline',
+    commitment: 'confirmed',
+    getAccountInfo: async () => ({
+      owner: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
+      data: Buffer.alloc(82),
+      lamports: 1,
+      executable: false,
+    }),
+  } as unknown as MeteoraConnection
+}
+
+/** The DBC pool a launch creates, from its quote mint, token mint and config key. */
+export function dbcPoolAddress(quoteMint: string, baseMint: string, config: string): string {
+  return DBC.deriveDbcPoolAddress(new PublicKey(quoteMint), new PublicKey(baseMint), new PublicKey(config)).toBase58()
+}
+
+/** A token's decimals and Metaplex symbol; null when the mint account does not exist. */
+export async function tokenInfo(
+  conn: MeteoraConnection,
+  mint: string,
+): Promise<{ decimals: number; symbol: string } | null> {
+  const m = await conn.getAccountInfo(new PublicKey(mint))
+  if (!m || m.data.length < 45) return null
+  const decimals = m.data[44] ?? 0
+  let symbol = `${mint.slice(0, 4)}…`
+  try {
+    const md = await conn.getAccountInfo(DBC.deriveMintMetadata(new PublicKey(mint)))
+    if (md) {
+      // Metaplex metadata: key(1) update_authority(32) mint(32) name(4+len) symbol(4+len)
+      const nameLen = md.data.readUInt32LE(65)
+      const at = 69 + nameLen
+      const symLen = md.data.readUInt32LE(at)
+      const s = md.data
+        .subarray(at + 4, at + 4 + symLen)
+        .toString('utf8')
+        .replace(/\0/g, '')
+        .trim()
+      if (s && /^[\p{L}\p{N}$._-]{1,12}$/u.test(s)) symbol = s
+    }
+  } catch {
+    /* the symbol is cosmetic: keep the short address */
+  }
+  return { decimals, symbol }
+}
+
+/**
+ * Helius deprioritizes unpaginated getProgramAccounts (1 Oct): on a Helius URL the
+ * Connection's getProgramAccounts is answered by getProgramAccountsV2, paged (see
+ * program-accounts.ts). Anchor's account.all() calls it for the DAMM v2 pool lookup.
+ */
+export function pageConnection(conn: Connection, doFetch?: Fetch): Connection {
+  if (!isHelius(conn.rpcEndpoint)) return conn
+  const paged = async (program: PublicKey, config?: { filters?: unknown }) =>
+    (await programAccountsV2(conn.rpcEndpoint, program.toBase58(), config?.filters, doFetch)).map((a) => ({
+      pubkey: new PublicKey(a.pubkey),
+      account: {
+        data: Buffer.from(a.account.data[0], 'base64'),
+        executable: a.account.executable,
+        lamports: a.account.lamports,
+        owner: new PublicKey(a.account.owner),
+        rentEpoch: a.account.rentEpoch,
+      },
+    }))
+  ;(conn as unknown as { getProgramAccounts: typeof paged }).getProgramAccounts = paged
+  return conn
 }

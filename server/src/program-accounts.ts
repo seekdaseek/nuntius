@@ -6,11 +6,10 @@
  * getProgramAccountsV2 with the same filters, paged on paginationKey until it is absent.
  * Any other RPC (localnet, a test validator) gets the plain call, unchanged.
  *
- * Two adapters, one per client in the server: the kit Rpc (the guard, the permission list,
- * grants, revokes) and the web3.js Connection the Meteora SDKs read through (the DAMM v2
- * pool lookup after migration).
+ * This is the kit Rpc's adapter (the guard, the permission list, grants, revokes). The
+ * web3.js Connection the Meteora SDKs read through gets the same paging in meteora.ts
+ * (pageConnection), the one module that holds web3.js v1.
  */
-import { PublicKey, type Connection } from '@solana/web3.js'
 import type { Rpc } from './tx.js'
 
 export function isHelius(rpcUrl: string): boolean {
@@ -113,22 +112,4 @@ export function withPagedProgramAccounts(rpc: Rpc, rpcUrl: string, doFetch?: Fet
     get: (target, prop, receiver) =>
       prop === 'getProgramAccounts' ? getProgramAccounts : Reflect.get(target, prop, receiver),
   })
-}
-
-/** The same for a web3.js Connection, in place: Anchor's account.all() calls connection.getProgramAccounts. */
-export function pageConnection(conn: Connection, doFetch?: Fetch): Connection {
-  if (!isHelius(conn.rpcEndpoint)) return conn
-  const paged = async (program: PublicKey, config?: { filters?: unknown }) =>
-    (await programAccountsV2(conn.rpcEndpoint, program.toBase58(), config?.filters, doFetch)).map((a) => ({
-      pubkey: new PublicKey(a.pubkey),
-      account: {
-        data: Buffer.from(a.account.data[0], 'base64'),
-        executable: a.account.executable,
-        lamports: a.account.lamports,
-        owner: new PublicKey(a.account.owner),
-        rentEpoch: a.account.rentEpoch,
-      },
-    }))
-  ;(conn as unknown as { getProgramAccounts: typeof paged }).getProgramAccounts = paged
-  return conn
 }

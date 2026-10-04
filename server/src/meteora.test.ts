@@ -30,7 +30,10 @@ import {
   quoteDbc,
   swapInstruction,
   SWAP_INDEX,
+  meteoraConnection,
 } from './meteora.js'
+import { fakeHelius } from './test/fake-helius.js'
+import { CpAmm, cpAmmCoder, CpAmmIdl, POOL_TOKEN_A_MINT_OFFSET } from '@meteora-ag/cp-amm-sdk'
 
 const offline = new Connection('http://127.0.0.1:1', 'confirmed')
 const K = () => Keypair.generate().publicKey.toBase58()
@@ -174,8 +177,8 @@ test('the launch: preset accepted by the SDK, one transaction under 1,232 bytes,
     name: 'natXbuilder',
     symbol: 'NATX',
     uri,
-    config: Keypair.generate().publicKey,
-    baseMint: Keypair.generate().publicKey,
+    config: K(),
+    baseMint: K(),
   })
   const msg = pipe(
     createTransactionMessage({ version: 0 }),
@@ -199,9 +202,40 @@ test('the launch: preset accepted by the SDK, one transaction under 1,232 bytes,
       name: 'x',
       symbol: 'XX',
       uri: `https://${'a'.repeat(MAX_URI)}`,
-      config: Keypair.generate().publicKey,
-      baseMint: Keypair.generate().publicKey,
+      config: K(),
+      baseMint: K(),
     }),
     /URI/,
+  )
+})
+
+const HELIUS = 'https://mainnet.helius-rpc.com/?api-key=test'
+
+test("elsewhere (localnet): the SDKs' connection keeps the plain getProgramAccounts", () => {
+  const plain = new Connection('http://127.0.0.1:8899').getProgramAccounts
+  assert.equal(meteoraConnection('http://127.0.0.1:8899').getProgramAccounts, plain)
+})
+
+test('the Meteora DAMM v2 lookup pages on Helius too (connection.getProgramAccounts → V2)', async () => {
+  const baseMint = Keypair.generate().publicKey
+  const poolKey = K()
+  const size = cpAmmCoder.accounts.size('Pool')
+  const data = Buffer.alloc(size)
+  Buffer.from(CpAmmIdl.accounts.find((a) => a.name === 'Pool')!.discriminator).copy(data)
+  baseMint.toBuffer().copy(data, POOL_TOKEN_A_MINT_OFFSET)
+  const { calls, doFetch } = fakeHelius(
+    [{ pubkey: poolKey, data: data.toString('base64'), owner: 'cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG' }],
+    1000,
+  )
+  const conn = meteoraConnection(HELIUS, doFetch)
+  const pools = await new CpAmm(conn).fetchPoolStatesByTokenAMint(baseMint)
+  assert.equal(pools.length, 1)
+  assert.equal(pools[0]!.publicKey.toBase58(), poolKey)
+  assert.equal(pools[0]!.account.tokenAMint.toBase58(), baseMint.toBase58())
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0]!.method, 'getProgramAccountsV2')
+  const filters = (calls[0]!.params[1] as { filters: { memcmp?: { offset: number; bytes: string } }[] }).filters
+  assert.ok(
+    filters.some((f) => f.memcmp?.offset === POOL_TOKEN_A_MINT_OFFSET && f.memcmp.bytes === baseMint.toBase58()),
   )
 })
