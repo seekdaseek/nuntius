@@ -171,7 +171,7 @@ test('mandate form checks', () => {
 test('SKR starters: only when SKR is offered; they fill the sentence, never the payee', () => {
   assert.deepEqual(startersFor(['USDC']), [], 'no SKR, no starters')
   assert.deepEqual(startersFor([]), [])
-  const s = startersFor(['USDC', 'SKR'])
+  const s = startersFor(['USDC', 'SKR'], true)
   assert.deepEqual(
     s.map((x) => [x.starter.title, x.symbol, x.line]),
     [
@@ -180,6 +180,11 @@ test('SKR starters: only when SKR is offered; they fill the sentence, never the 
     ],
   )
   assert.equal(startersFor(['tUSDC', 'tSKR'])[0]!.symbol, 'tSKR', 'the localnet stand-in')
+  // v1.0.1: backing a builder is a subscription launch, hidden unless the server turns launches on.
+  assert.deepEqual(
+    startersFor(['USDC', 'SKR']).map((x) => x.starter.key),
+    ['allowance'],
+  )
   for (const { starter } of s) {
     assert.ok(Number(starter.amount) <= 55, `${starter.key} fits the 55 SKR ceiling`)
     assert.doesNotMatch(`${starter.title} ${starter.label}`, /·|→|mandate/i)

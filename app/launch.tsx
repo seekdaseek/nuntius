@@ -9,7 +9,8 @@ import { radius } from '@/constants/app-styles'
 import { isUserCancellation, useNuntiusAuth } from '@/features/account/use-nuntius-auth'
 import { api, untilLanded, type LaunchInfo } from '@/features/mandates/mandates-api'
 import { signAndSend } from '@/features/wallet/sign-and-send'
-import { checkLaunch, demandWords, routeWords } from '@/core/back-copy'
+import { checkLaunch, demandWords, launchesOn, routeWords } from '@/core/back-copy'
+import { useMandateList } from '@/features/mandates/use-mandates'
 
 /**
  * Launch a token on a Meteora Dynamic Bonding Curve made for subscription backing: a flat
@@ -24,6 +25,7 @@ export default function LaunchScreen() {
   const [symbol, setSymbol] = useState('')
   const [quote, setQuote] = useState<'SKR' | 'USDC'>('SKR')
   const check = checkLaunch({ name, symbol })
+  const list = useMandateList(auth)
   const launch = useMutation({
     mutationFn: async (): Promise<LaunchInfo> => {
       if (!auth) throw new Error('not signed in')
@@ -41,6 +43,14 @@ export default function LaunchScreen() {
     return (
       <Screen back>
         <Muted>Sign in first.</Muted>
+      </Screen>
+    )
+  }
+  // v1.0.1: hidden unless the server turns subscription launches on.
+  if (!launchesOn(list.data)) {
+    return (
+      <Screen back>
+        <Muted>Launching a token is not available in this version.</Muted>
       </Screen>
     )
   }

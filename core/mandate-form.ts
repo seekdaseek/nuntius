@@ -88,11 +88,17 @@ export function skrSymbol(mints: readonly string[]): string | null {
   return mints.find((m) => m === 'SKR' || m === 'tSKR') ?? null
 }
 
-/** The starters to show: none unless the server offers SKR. */
-export function startersFor(mints: readonly string[]): { starter: Starter; symbol: string; line: string }[] {
+/**
+ * The starters to show: none unless the server offers SKR. "Back a Seeker builder"
+ * is a subscription launch, so it shows only when the server turns launches on.
+ */
+export function startersFor(
+  mints: readonly string[],
+  launches = false,
+): { starter: Starter; symbol: string; line: string }[] {
   const symbol = skrSymbol(mints)
   if (!symbol) return []
-  return SKR_STARTERS.map((starter) => ({
+  return SKR_STARTERS.filter((s) => launches || s.key !== 'builder').map((starter) => ({
     starter,
     symbol,
     line: `${starter.amount} ${symbol} every ${starter.period}, for ${starter.untilDays} days`,

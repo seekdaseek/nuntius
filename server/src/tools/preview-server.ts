@@ -71,6 +71,7 @@ const cfg = {
   executorIntervalMs: 30_000,
   guardIntervalMs: 60_000,
   demoEndpoints: true,
+  launches: false,
 }
 const config = {
   port: PORT,

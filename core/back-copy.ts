@@ -4,6 +4,14 @@
  */
 import type { PeriodKey } from './mandate-form'
 
+/**
+ * Launch and back screens show only when the server says so (`features.launches`).
+ * An older server that does not send the field counts as off.
+ */
+export function launchesOn(list: { features?: { launches?: boolean } } | null | undefined): boolean {
+  return list?.features?.launches === true
+}
+
 /** The quote tokens a back permission can spend: the server's USDC and SKR mints (mainnet). */
 const QUOTES: Record<string, string> = {
   EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: 'USDC',

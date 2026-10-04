@@ -95,6 +95,8 @@ export interface ListResponse {
   mints: string[]
   cluster: 'mainnet' | 'localnet'
   demo: boolean
+  /** Server switches: subscription launches stay hidden unless `launches` is true. */
+  features?: { launches?: boolean }
   mine: MandateView[]
   others: OtherDelegation[]
   /** When the chain was last read; `stale` when this is the last good list after a failed read. */

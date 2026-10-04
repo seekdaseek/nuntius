@@ -29,6 +29,11 @@ export interface MandateConfig {
   executorIntervalMs: number
   guardIntervalMs: number
   demoEndpoints: boolean
+  /**
+   * Subscription launches (Meteora back permissions and launches). Off unless
+   * MANDATE_LAUNCHES=1: v1.0.1 keeps them hidden until the Meteora device run.
+   */
+  launches: boolean
 }
 
 const USDC_MAINNET: MintInfo = { symbol: 'USDC', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6 }
@@ -80,6 +85,7 @@ export function loadMandateConfig(env: NodeJS.ProcessEnv, heliusRpc: string | nu
     executorIntervalMs: int(env.EXECUTOR_INTERVAL_MS, 30_000, 'EXECUTOR_INTERVAL_MS'),
     guardIntervalMs: int(env.GUARD_INTERVAL_MS, 60_000, 'GUARD_INTERVAL_MS'),
     demoEndpoints: env.DEMO_ENDPOINTS === '1',
+    launches: env.MANDATE_LAUNCHES === '1',
   }
 }
 

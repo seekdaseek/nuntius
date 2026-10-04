@@ -5,7 +5,7 @@ import Clipboard from '@react-native-clipboard/clipboard'
 import { Button, Label, Muted, Note, Screen, Segments, Title, color, font } from '@/components/ui'
 import { radius } from '@/constants/app-styles'
 import { isUserCancellation, useNuntiusAuth } from '@/features/account/use-nuntius-auth'
-import { useGrantMandate, type GrantStep } from '@/features/mandates/use-mandates'
+import { useGrantMandate, useMandateList, type GrantStep } from '@/features/mandates/use-mandates'
 import { isBlockhashExpired } from '@/core/grant-errors'
 import { grantedSlipUrl } from '@/core/routes'
 import { api, type MandateText } from '@/features/mandates/mandates-api'
@@ -23,6 +23,7 @@ import {
 import { tzOffsetMin } from '@/core/format'
 import { untilWords } from '@/core/home-model'
 import { approveLine, approveNote } from '@/core/allowance-copy'
+import { launchesOn } from '@/core/back-copy'
 
 const PERIOD_WORD: Record<PeriodKey, string> = { hour: 'hour', day: 'day', week: 'week', '30days': '30 days' }
 
@@ -58,8 +59,9 @@ export default function NewPermissionScreen() {
     setForm((f) => ({ ...f, [k]: v }))
   }
   const amountRef = useRef<TextInput>(null)
-  // One-tap SKR starters; empty unless the server offers SKR.
-  const starters = startersFor(mints)
+  // One-tap SKR starters; empty unless the server offers SKR. Backing a builder only when launches are on.
+  const list = useMandateList(auth)
+  const starters = startersFor(mints, launchesOn(list.data))
 
   useEffect(() => {
     if (!auth || !check.ok) {

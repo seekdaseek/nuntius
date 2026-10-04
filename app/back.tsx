@@ -5,12 +5,20 @@ import Clipboard from '@react-native-clipboard/clipboard'
 import { Button, Card, KV, Label, Muted, Note, Screen, Segments, Title, color, font } from '@/components/ui'
 import { radius } from '@/constants/app-styles'
 import { isUserCancellation, useNuntiusAuth } from '@/features/account/use-nuntius-auth'
-import { useGrantMandate, type GrantStep } from '@/features/mandates/use-mandates'
+import { useGrantMandate, useMandateList, type GrantStep } from '@/features/mandates/use-mandates'
 import { api, type LaunchInfo } from '@/features/mandates/mandates-api'
 import { isBlockhashExpired } from '@/core/grant-errors'
 import { grantedSlipUrl } from '@/core/routes'
 import { PERIOD_OPTIONS, sanitizeAmount, UNTIL_OPTIONS, type PeriodKey } from '@/core/mandate-form'
-import { backSentence, checkBack, demandWords, quoteSymbolOf, routeWords, type BackForm } from '@/core/back-copy'
+import {
+  backSentence,
+  checkBack,
+  demandWords,
+  launchesOn,
+  quoteSymbolOf,
+  routeWords,
+  type BackForm,
+} from '@/core/back-copy'
 
 /**
  * Back a launch: a capped recurring permission whose every pull buys the launch's token
@@ -31,12 +39,14 @@ export default function BackScreen() {
   const [, setStep] = useState<GrantStep | null>(null)
   const grant = useGrantMandate(auth, setStep)
   const check = checkBack(form)
+  const list = useMandateList(auth)
+  const on = launchesOn(list.data)
   const quote = launch ? quoteSymbolOf(launch.quoteMint) : null
 
   useEffect(() => {
     setLaunch(null)
     setLaunchError(null)
-    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(form.pool.trim())) return
+    if (!on || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(form.pool.trim())) return
     let live = true
     api
       .launch(form.pool.trim())
@@ -45,12 +55,20 @@ export default function BackScreen() {
     return () => {
       live = false
     }
-  }, [form.pool])
+  }, [form.pool, on])
 
   if (!auth) {
     return (
       <Screen back>
         <Muted>Sign in first.</Muted>
+      </Screen>
+    )
+  }
+  // v1.0.1: hidden unless the server turns subscription launches on.
+  if (!on) {
+    return (
+      <Screen back>
+        <Muted>Backing a launch is not available in this version.</Muted>
       </Screen>
     )
   }

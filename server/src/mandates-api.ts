@@ -208,7 +208,9 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
   })
 
   // Subscription launches (Meteora): back permissions, launches, and the public read-out.
-  if (deps.conn) {
+  // Off unless MANDATE_LAUNCHES=1: the routes do not exist, and the list tells the app to hide them.
+  const launches = cfg.launches && Boolean(deps.conn)
+  if (launches && deps.conn) {
     registerLaunchRoutes(app, {
       mandates,
       rpc,
@@ -521,6 +523,7 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       mints: cfg.mints.map((m) => m.symbol),
       cluster: cfg.cluster,
       demo: cfg.demoEndpoints,
+      features: { launches },
       mine,
       others,
       asOf: scan.asOfMs,

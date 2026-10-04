@@ -53,3 +53,12 @@ test('a launch is backed in its own quote token: USDC or SKR only', async () => 
   assert.equal(quoteSymbolOf('SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3'), 'SKR')
   assert.equal(quoteSymbolOf('So11111111111111111111111111111111111111112'), null)
 })
+
+test('launch and back: hidden unless the server sends features.launches = true', async () => {
+  const { launchesOn } = await import('./back-copy.ts')
+  assert.equal(launchesOn(undefined), false, 'list not loaded yet')
+  assert.equal(launchesOn({}), false, 'an older server without the field')
+  assert.equal(launchesOn({ features: {} }), false)
+  assert.equal(launchesOn({ features: { launches: false } }), false)
+  assert.equal(launchesOn({ features: { launches: true } }), true)
+})
