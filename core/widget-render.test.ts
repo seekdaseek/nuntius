@@ -8,9 +8,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
-import { readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import vm from 'node:vm'
 import { widgetView, type WidgetSnapshot } from './widget-model.ts'
 
 const require = createRequire(import.meta.url)
@@ -31,30 +30,41 @@ function compile(file: string, source = readFileSync(path.join(root, file), 'utf
   })!.code!
 }
 
-/** Stand-ins for the library's primitives: the same shape buildWidgetTree walks. */
-function primitive(name: string) {
-  const f = () => null
-  return Object.assign(f, { __name__: name, convertProps: (p: unknown) => p })
-}
-const widgetLib = { FlexWidget: primitive('FlexWidget'), TextWidget: primitive('TextWidget') }
+/**
+ * Compiled modules are written as ordinary CommonJS files and loaded with
+ * require(), never evaluated from a string. They sit under node_modules/.cache
+ * (git-ignored) so `react` and the JSX runtime resolve from the app's own
+ * node_modules. The two imports the device supplies are pointed at local files:
+ * the library's primitives (stand-ins with the shape buildWidgetTree walks) and
+ * the compiled app styles.
+ */
+const outDir = path.join(root, 'node_modules', '.cache', 'nuntius-widget-render')
+mkdirSync(outDir, { recursive: true })
+writeFileSync(
+  path.join(outDir, 'widget-lib.cjs'),
+  `const primitive = (name) => Object.assign(() => null, { __name__: name, convertProps: (p) => p })
+module.exports = { FlexWidget: primitive('FlexWidget'), TextWidget: primitive('TextWidget') }
+`,
+)
+writeFileSync(path.join(outDir, 'app-styles.cjs'), compile('constants/app-styles.ts'))
+let loads = 0
 
 function load(file: string, source?: string) {
-  const code = compile(file, source)
-  const module = { exports: {} as Record<string, unknown> }
-  const req = (id: string) => {
-    if (id === 'react-native-android-widget') return widgetLib
-    if (id === '@/constants/app-styles') return loadPlain('constants/app-styles.ts')
-    return require(id)
+  let code = compile(file, source)
+  for (const [id, local] of [
+    ['react-native-android-widget', './widget-lib.cjs'],
+    ['@/constants/app-styles', './app-styles.cjs'],
+  ]) {
+    const from = `require("${id}")`
+    assert.ok(code.includes(from), `the widget imports ${id}`)
+    code = code.replaceAll(from, `require("${local}")`)
   }
-  vm.runInThisContext(`(function (require, module, exports) {${code}\n})`)(req, module, module.exports)
-  return module.exports as {
+  // A new file per load, so the require cache never hands back an earlier compile.
+  const out = path.join(outDir, `permissions-widget-${process.pid}-${loads++}.cjs`)
+  writeFileSync(out, code)
+  return require(out) as {
     PermissionsWidget: import('react').FunctionComponent<{ view: ReturnType<typeof widgetView> }>
   }
-}
-function loadPlain(file: string) {
-  const module = { exports: {} as Record<string, unknown> }
-  vm.runInThisContext(`(function (require, module, exports) {${compile(file)}\n})`)(require, module, module.exports)
-  return module.exports
 }
 
 const { buildWidgetTree } = require(
