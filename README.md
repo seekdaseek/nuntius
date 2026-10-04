@@ -157,20 +157,6 @@ What that run showed:
 - **Revoke takes one Seed Vault sheet**, the transaction itself, when the wallet is authorized. After the phone had restarted, the first revoke showed Seed Vault's "Connect" first, then the transaction.
 - **Nothing left behind.** At the end, all 65 token accounts of both wallets (SPL Token and Token-2022) read `delegate: null`, and the balances reconcile to the pulls above (all account rent came back on the revokes; the net SOL cost was fees).
 
-### SKR on mainnet: 30 September 2026 (round 1)
-
-A recurring SKR payment, end to end, signed in Seed Vault on the Seeker: cj7 lets natX take 25 SKR a week for 90 days (the **Back a Seeker builder** starter). Checked with `getTransaction` at `confirmed`: all three have `err: null` and the signers below.
-
-| What                                     | UTC      | Transaction                                                                                                                            | Signers and result                                 |
-| ---------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| grant cj7 → natX, 25 SKR a week, 90 days | 15:41:45 | [`ZczmrUKb…`](https://explorer.solana.com/tx/ZczmrUKbh8Y7uYc9JEsz7aZmVEKxvAMF9xAmhy51d4s79b7tcKiTpftJfZ8gfn3R4kfkt2kTyM42yioGuzE57oq)  | one signer, cj7                                    |
-| pull of 25 SKR                           | 15:41:51 | [`2BBJPsyK…`](https://explorer.solana.com/tx/2BBJPsyKfULYgS9NMuZNa59x3JSA2Hdj1r5992s8gBuinvx2FQNxgUS6nXpUz7kgiM1RLU3M6WiYybuvMXaMMQwF) | one signer, the delegatee; 25 SKR moved cj7 → natX |
-| revoke                                   | 17:58:32 | [`3thfSH1s…`](https://explorer.solana.com/tx/3thfSH1seZUTsc9wuRZrDS526ahTUn4AAcfnpEeGLxdcZwq3uCK6AjrTWB6FfWnXkZZZUqaZGZNSJgkugn8EFHp9) | one signer, cj7                                    |
-
-On this round-1 build the grant left the SKR token account's allowance at `u64::MAX`, the amount the Subscriptions program approves on its own. The finite cap came later: from round 2 the grant ends with an `approveChecked` for the lifetime total, first seen for SKR in [`4LXBpcPM…`](https://explorer.solana.com/tx/4LXBpcPMZVnPcqmyCfeMVyZtzSAizo4j6JnU8JkbrhRepbafqyqxMMDygAP8HDqYCp13qDg3JnBD4NZcFaVNpi9G) (325 SKR, 30 Sep 19:41 UTC).
-
-The code behind it: `server/src/mandate-config.ts` (the SKR mint and its 55 SKR per-period ceiling), `core/mandate-form.ts` (the two starters: 25 SKR a week to back a Seeker builder, 50 SKR a week as an allowance) and `app/new.tsx` (the starter buttons on New permission).
-
 ### Earlier on the device (9–30 September)
 
 - **SIWS** with a backend-issued single-use nonce. Replay, expiry and domain binding all rejected. Seed Vault signs the payload field-for-field — it adds no `Version:` or `Chain ID:` line, so `verifySignIn` passes with no loosening of the check.
@@ -241,7 +227,7 @@ nuntius offers **SKR next to USDC**: recurring SKR payments, approved once in Se
 - **Server.** `MANDATE_MINTS=SYMBOL:mint:decimals[:maxPerPeriod],…`. Each mint has its own beta ceiling per period. Mainnet defaults to USDC plus SKR, with an SKR ceiling of 55 SKR per period: about 1 USD at 0.0181 USD per SKR, the price read on 30 Sep 2026. `SKR_CEILING=<n>` on the deploy overrides it only if the price moves a lot.
 - **Two uses, one tap each.** When the server offers SKR, New permission shows two starters above the sentence. **Back a Seeker builder** fills 25 SKR every week for 90 days; **Allowance in SKR** fills 50 SKR every week for 30 days. A starter fills the sentence only: the payee is always entered by hand, and Approve stays off until it is. `core/core.test.ts` tests the starters; `docs/screens/web/02b-new-permission-skr-starter.png` shows one tapped.
 - **App.** The token choice on New permission shows only what the server offers. Receipts, the widget, the digest and the home sentence carry each mint's own symbol and decimals.
-- **Evidence.** `server/src/mints.localnet.test.ts` runs two test mints against the real program: per-mint ceilings, one authority per mint (each granted with one signature), the executor pulling both, and receipts and widget rows with the right symbols. On mainnet from the Seeker (1 Oct): a 25 SKR a week grant, its first pull 5 s later at 5,961 compute units, the receipt "25 SKR · 0 of 25 left this week", and the revoke.
+- **Evidence.** `server/src/mints.localnet.test.ts` runs two test mints against the real program: per-mint ceilings, one authority per mint (each granted with one signature), the executor pulling both, and receipts and widget rows with the right symbols. On mainnet from the Seeker: a 25 SKR a week grant on 30 Sep at 19:41:54 UTC ([`4LXBpcPM…`](https://explorer.solana.com/tx/4LXBpcPMZVnPcqmyCfeMVyZtzSAizo4j6JnU8JkbrhRepbafqyqxMMDygAP8HDqYCp13qDg3JnBD4NZcFaVNpi9G), one signer, cj7), its first pull 5 s later at 19:41:59 UTC and 5,961 compute units ([`Ry4tiD6o…`](https://explorer.solana.com/tx/Ry4tiD6o3u8idr6ud5s4W99AsZtasa9nubuXGBFH5zgy5ToCv45LaQ93S3912jQNhnBTKRSEQ3oBcbMAzizxxpR), one signer, the delegatee), the receipt "25 SKR · 0 of 25 left this week", and the revoke on 1 Oct at 04:05:24 UTC ([`4Et21Vw6…`](https://explorer.solana.com/tx/4Et21Vw684rGi86jSfzD893f5sUe99q8eYYPPK7wUXonpdNLMzfY8WeKmZ1q7K4gvcoe8fWwGM7TwoGtEoPVzqbh), one signer, cj7). The code behind it: `server/src/mandate-config.ts` (the SKR mint and its 55 SKR per-period ceiling), `core/mandate-form.ts` (the two starters) and `app/new.tsx` (the starter buttons).
 
 ## Subscription launches (Meteora)
 
