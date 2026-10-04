@@ -22,8 +22,11 @@ import {
   windowWords,
 } from './home-model.ts'
 import {
+  applyParsed,
   applyStarter,
   checkForm,
+  COULD_NOT_READ,
+  FILLED_NOTE,
   isStarter,
   PERIOD_OPTIONS,
   sanitizeAmount,
@@ -180,10 +183,21 @@ test('SKR starters: only when SKR is offered; they fill the sentence, never the 
     ],
   )
   assert.equal(startersFor(['tUSDC', 'tSKR'])[0]!.symbol, 'tSKR', 'the localnet stand-in')
-  // v1.0.1: backing a builder is a subscription launch, hidden unless the server turns launches on.
+  // v1.0.2: with launches off, "Back a Seeker builder" is the 25 SKR a week payment it was in v1.0.0;
+  // with launches on, it opens the launch flow.
   assert.deepEqual(
-    startersFor(['USDC', 'SKR']).map((x) => x.starter.key),
-    ['allowance'],
+    startersFor(['USDC', 'SKR']).map((x) => [x.starter.key, x.launch]),
+    [
+      ['builder', false],
+      ['allowance', false],
+    ],
+  )
+  assert.deepEqual(
+    s.map((x) => [x.starter.key, x.launch]),
+    [
+      ['builder', true],
+      ['allowance', false],
+    ],
   )
   for (const { starter } of s) {
     assert.ok(Number(starter.amount) <= 55, `${starter.key} fits the 55 SKR ceiling`)
@@ -202,6 +216,56 @@ test('SKR starters: only when SKR is offered; they fill the sentence, never the 
   assert.ok(isStarter(allowance, 'SKR', 'SKR', SKR_STARTERS[1]!))
   assert.ok(!isStarter(allowance, 'SKR', 'USDC', SKR_STARTERS[1]!), 'token changed')
   assert.ok(!isStarter({ ...allowance, amount: '49' }, 'SKR', 'SKR', SKR_STARTERS[1]!), 'amount edited')
+})
+
+test('Type it your way: Fill writes the parsed terms into the sentence and never the payee', () => {
+  const payee = 'ASCQRp616JVQKMpynYfcPVdKPext719WUf7CuFcnnatX'
+  const before = { label: 'Old', payee, amount: '1', period: 'week' as const, untilDays: 30 }
+  // "Pay Ana 5 cents a day for a week"
+  const r = applyParsed(before, 'SKR', ['USDC', 'SKR'], {
+    terms: { label: 'Ana', amount: '0.05', symbol: 'USDC', period: 'day', untilDays: 7 },
+    reasons: {},
+  })
+  assert.deepEqual(r.form, { label: 'Ana', payee: '', amount: '0.05', period: 'day', untilDays: 7 })
+  assert.equal(r.symbol, 'USDC')
+  assert.equal(r.note, FILLED_NOTE)
+  assert.equal(r.note, 'Filled from your words. Check every term.')
+  assert.deepEqual(r.reasons, [])
+  // The payee is emptied, so Approve stays off until it is pasted by hand.
+  assert.equal(checkForm(r.form, null).field, 'payee')
+  assert.ok(checkForm({ ...r.form, payee }, null).ok)
+
+  // A refused amount stays empty with its reason; the token, period and end keep their value.
+  const over = applyParsed(before, 'USDC', ['USDC', 'SKR'], {
+    terms: { label: 'Ana' },
+    reasons: { amount: 'At most 1 USDC a period in this beta.', untilDays: 'At most 90 days ahead.' },
+  })
+  assert.deepEqual(over.form, { label: 'Ana', payee: '', amount: '', period: 'week', untilDays: 30 })
+  assert.equal(over.symbol, 'USDC')
+  assert.deepEqual(over.reasons, ['At most 1 USDC a period in this beta.', 'At most 90 days ahead.'])
+  assert.equal(checkForm({ ...over.form, payee }, null).field, 'amount', 'Approve stays off without an amount')
+
+  // Nothing filled: the form is left exactly as it was and the app says it could not read the text.
+  const none = applyParsed(before, 'USDC', ['USDC', 'SKR'], { terms: {}, reasons: { amount: 'No amount found.' } })
+  assert.equal(none.form, before)
+  assert.equal(none.filled, 0)
+  assert.equal(none.note, COULD_NOT_READ)
+  assert.deepEqual(none.reasons, ['No amount found.'])
+
+  // Belt and braces: whatever a server sends, the app writes no address, no bad amount, no unknown token.
+  const odd = applyParsed(before, 'USDC', ['USDC', 'SKR'], {
+    terms: {
+      label: `pay ${payee}`,
+      amount: '0',
+      symbol: 'BONK',
+      period: 'year' as never,
+      untilDays: 400,
+    },
+    reasons: {},
+  })
+  assert.equal(odd.form, before)
+  assert.equal(odd.form.label, 'Old', 'a name with an address in it is never written')
+  assert.deepEqual(odd.reasons, ['This app offers USDC and SKR.'])
 })
 
 test('approve note: the token approval in plain words, with the exact total', async () => {

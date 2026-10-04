@@ -10,9 +10,12 @@ import { isBlockhashExpired } from '@/core/grant-errors'
 import { grantedSlipUrl } from '@/core/routes'
 import { api, type MandateText } from '@/features/mandates/mandates-api'
 import {
+  applyParsed,
   applyStarter,
   checkForm,
+  COULD_NOT_READ,
   isStarter,
+  MAX_WORDS,
   PERIOD_OPTIONS,
   sanitizeAmount,
   startersFor,
@@ -51,6 +54,10 @@ export default function NewPermissionScreen() {
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [step, setStep] = useState<GrantStep | null>(null)
   const [why, setWhy] = useState(false)
+  // "Type it your way": the words, whether the server is reading them, and what Fill did.
+  const [words, setWords] = useState('')
+  const [reading, setReading] = useState(false)
+  const [filled, setFilled] = useState<{ ok: boolean; note: string; reasons: string[] } | null>(null)
   const grant = useGrantMandate(auth, setStep)
   const check = checkForm(form, auth?.address ?? null)
   const set = <K extends keyof MandateForm>(k: K, v: MandateForm[K]) => {
@@ -92,6 +99,26 @@ export default function NewPermissionScreen() {
   }
 
   const cycle = <T,>(list: readonly T[], v: T) => list[(list.indexOf(v) + 1) % list.length]!
+  // Fill only writes the form: the payee stays empty, the preview and the
+  // transaction check run as for typed terms, and Approve is still a tap.
+  const fill = () => {
+    const text = words.trim()
+    if (!text || reading) return
+    setReading(true)
+    api
+      .parsePermission(auth.session, text, symbol, tzOffsetMin())
+      .then((p) => {
+        const r = applyParsed(form, symbol, mints, p)
+        if (r.filled > 0) {
+          grant.reset()
+          setForm(r.form)
+          setSymbol(r.symbol)
+        }
+        setFilled({ ok: r.filled > 0, note: r.note, reasons: r.reasons })
+      })
+      .catch(() => setFilled({ ok: false, note: COULD_NOT_READ, reasons: [] }))
+      .finally(() => setReading(false))
+  }
   const expired = grant.isError && isBlockhashExpired(grant.error)
   const cancelled = grant.isError && !expired && isUserCancellation(grant.error)
   const busy = grant.isPending
@@ -171,7 +198,7 @@ export default function NewPermissionScreen() {
 
       {starters.length > 0 ? (
         <View style={s.starters} accessibilityLabel="SKR starters">
-          {starters.map(({ starter, symbol: sym, line }) => {
+          {starters.map(({ starter, symbol: sym, line, launch }) => {
             const on = isStarter(form, sym, symbol, starter)
             return (
               <Pressable
@@ -180,8 +207,9 @@ export default function NewPermissionScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ selected: on }}
                 onPress={() => {
-                  // Backing a builder is a subscription launch: each week's pull buys their token.
-                  if (starter.key === 'builder') {
+                  // With launches on, backing a builder is a subscription launch: each week's pull
+                  // buys their token. With launches off, it is the 25 SKR a week payment to their wallet.
+                  if (launch) {
                     router.push({
                       pathname: '/back',
                       params: { amount: starter.amount, period: starter.period, untilDays: String(starter.untilDays) },
@@ -189,6 +217,7 @@ export default function NewPermissionScreen() {
                     return
                   }
                   grant.reset()
+                  setFilled(null)
                   setForm((f) => applyStarter(f, starter))
                   setSymbol(sym)
                 }}
@@ -201,6 +230,36 @@ export default function NewPermissionScreen() {
           })}
         </View>
       ) : null}
+
+      <View style={[s.field, s.wordsField]}>
+        <View style={{ flex: 1 }}>
+          <Label>Type it your way</Label>
+          <TextInput
+            testID="words"
+            style={[s.fieldInput, s.wordsInput]}
+            value={words}
+            placeholder="Pay Ana 5 cents a day for a week"
+            placeholderTextColor={color.ink2}
+            onChangeText={setWords}
+            maxLength={MAX_WORDS}
+            multiline
+          />
+        </View>
+        <Pressable
+          testID="fill"
+          onPress={fill}
+          disabled={!words.trim() || reading}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !words.trim() || reading, busy: reading }}
+        >
+          <Text style={[s.paste, !words.trim() ? s.off : null]}>{reading ? 'Reading' : 'Fill'}</Text>
+        </Pressable>
+      </View>
+      {filled ? <Note tone={filled.ok ? 'moved' : 'foreign'}>{filled.note}</Note> : null}
+      {filled?.reasons.map((r) => (
+        <Muted key={r}>{r}</Muted>
+      ))}
 
       <View style={s.sentence} accessibilityLabel="Permission sentence">
         <Text style={s.word}>Let</Text>
@@ -390,6 +449,9 @@ const s = StyleSheet.create({
   fieldError: { borderWidth: 1.5, borderColor: color.refused },
   fieldInput: { fontFamily: font.medium, fontSize: 15, color: color.ink, padding: 0, marginTop: 3 },
   paste: { fontFamily: font.semibold, fontSize: 14, color: color.signal },
+  off: { color: color.ink2 },
+  wordsField: { marginTop: 12, alignItems: 'flex-end' },
+  wordsInput: { minHeight: 22, maxHeight: 88, textAlignVertical: 'top' },
   note: { textAlign: 'center', fontSize: 13, lineHeight: 18 },
   lineRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 },
   line: { fontFamily: font.medium, fontSize: 13, lineHeight: 18, color: color.ink2, flexShrink: 1 },

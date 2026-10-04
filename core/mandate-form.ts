@@ -32,6 +32,8 @@ export interface FormCheck {
 
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
 const AMOUNT = /^\d{1,15}(\.\d{1,6})?$/
+/** An address anywhere in a string: a parsed name with one in it is never written. */
+const BASE58_ANY = /[1-9A-HJ-NP-Za-km-z]{32,44}/
 
 export function checkForm(f: MandateForm, owner: string | null): FormCheck {
   if (f.label.length > 40) return { ok: false, field: 'label', hint: 'Keep the name under 40 characters' }
@@ -90,18 +92,21 @@ export function skrSymbol(mints: readonly string[]): string | null {
 
 /**
  * The starters to show: none unless the server offers SKR. "Back a Seeker builder"
- * is a subscription launch, so it shows only when the server turns launches on.
+ * is the 25 SKR a week recurring payment to a builder's wallet (v1.0.0, proven on
+ * mainnet 30 Sep). When the server turns launches on, it opens the launch flow
+ * instead (`launch: true`): each week's pull then buys the builder's token.
  */
 export function startersFor(
   mints: readonly string[],
   launches = false,
-): { starter: Starter; symbol: string; line: string }[] {
+): { starter: Starter; symbol: string; line: string; launch: boolean }[] {
   const symbol = skrSymbol(mints)
   if (!symbol) return []
-  return SKR_STARTERS.filter((s) => launches || s.key !== 'builder').map((starter) => ({
+  return SKR_STARTERS.map((starter) => ({
     starter,
     symbol,
     line: `${starter.amount} ${symbol} every ${starter.period}, for ${starter.untilDays} days`,
+    launch: launches && starter.key === 'builder',
   }))
 }
 
@@ -119,4 +124,62 @@ export function isStarter(f: MandateForm, symbol: string, current: string, s: St
     f.period === s.period &&
     f.untilDays === s.untilDays
   )
+}
+
+/**
+ * "Type it your way" (v1.0.2). The server reads the sentence with a model and
+ * checks every term with plain code (server/src/parse-permission.ts); this is
+ * what came back. Only terms that passed are present; a refused or missing one
+ * has a one-line reason instead.
+ */
+export interface ParsedTerms {
+  terms: Partial<{ label: string; amount: string; symbol: string; period: PeriodKey; untilDays: number }>
+  reasons: Partial<Record<'label' | 'amount' | 'symbol' | 'period' | 'untilDays', string>>
+}
+
+export const MAX_WORDS = 280
+export const FILLED_NOTE = 'Filled from your words. Check every term.'
+export const COULD_NOT_READ = 'Could not read that text. Fill in the form as before.'
+
+const REASON_ORDER = ['label', 'amount', 'symbol', 'period', 'untilDays'] as const
+
+/**
+ * The form after Fill. It writes the parsed terms into the sentence and never the
+ * payee: the payee is emptied, so Approve stays off until an address is pasted by
+ * hand. The name and the amount are written or emptied; the token, the period and
+ * the end keep their current value when the text gave none that passed. Nothing
+ * filled means the form is left exactly as it was.
+ */
+export function applyParsed(
+  f: MandateForm,
+  symbol: string,
+  mints: readonly string[],
+  p: ParsedTerms,
+): { form: MandateForm; symbol: string; filled: number; note: string; reasons: string[] } {
+  const t = p.terms ?? {}
+  const reasons: string[] = REASON_ORDER.map((k) => p.reasons?.[k]).filter((r): r is string => Boolean(r))
+  const sym = t.symbol && mints.includes(t.symbol) ? t.symbol : null
+  if (t.symbol && !sym) reasons.push(`This app offers ${mints.join(' and ')}.`)
+  const amount = typeof t.amount === 'string' && AMOUNT.test(t.amount) && Number(t.amount) > 0 ? t.amount : null
+  const period = PERIOD_OPTIONS.some((o) => o.key === t.period) ? (t.period as PeriodKey) : null
+  const untilDays =
+    Number.isInteger(t.untilDays) && (t.untilDays as number) >= 1 && (t.untilDays as number) <= 90
+      ? (t.untilDays as number)
+      : null
+  const label = typeof t.label === 'string' && t.label.length <= 40 && !BASE58_ANY.test(t.label) ? t.label : null
+  const filled = [label, amount, sym, period, untilDays].filter((v) => v !== null).length
+  if (filled === 0) return { form: f, symbol, filled, note: COULD_NOT_READ, reasons }
+  return {
+    form: {
+      label: label ?? '',
+      payee: '',
+      amount: amount ?? '',
+      period: period ?? f.period,
+      untilDays: untilDays ?? f.untilDays,
+    },
+    symbol: sym ?? symbol,
+    filled,
+    note: FILLED_NOTE,
+    reasons,
+  }
 }

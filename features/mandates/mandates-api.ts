@@ -1,5 +1,5 @@
 import { AppConfig } from '@/constants/app-config'
-import type { PeriodKey } from '@/core/mandate-form'
+import type { ParsedTerms, PeriodKey } from '@/core/mandate-form'
 
 /** Typed client for the server's mandatum routes (server/src/mandates-api.ts). */
 
@@ -245,6 +245,16 @@ export const api = {
     }),
   widget: (session: string, tzOffsetMin: number) =>
     post<Record<string, unknown>>('/api/widget', { session, tzOffsetMin }),
+  /**
+   * "Type it your way": the server reads the text and checks every term. Only the
+   * text, the form's token and the time zone are sent; the server answers within
+   * 5 s, and the app gives up at 8 s whatever the network does.
+   */
+  parsePermission: (session: string, text: string, symbol: string, tzOffsetMin: number) =>
+    Promise.race([
+      post<ParsedTerms>('/api/parse-permission', { session, text, symbol, tzOffsetMin }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new ApiError('timeout', 'timeout', 0)), 8_000)),
+    ]),
 }
 
 /** Retries `fn` while the chain has not caught up with a just-signed transaction. */

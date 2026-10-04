@@ -55,12 +55,19 @@ test('Clock in: an unsaved digest hour is saved from the footer, in full view, a
 
 test.after(close)
 
-test('v1.0.1: launch and back stay hidden when the server does not turn them on', async () => {
+test('v1.0.2: with launches off, Back a Seeker builder fills 25 SKR a week; launch and back stay hidden', async () => {
   const page = await browser.newPage({ viewport: { width: 360, height: 800 } })
   await page.addInitScript((a) => localStorage.setItem('nuntius-auth-v1', JSON.stringify(a)), SEEKER)
   await page.goto(`${base}/new?mints=USDC,SKR`)
   await page.waitForSelector('[data-testid=starter-allowance]', { timeout: 15000 })
-  assert.equal(await page.locator('[data-testid=starter-builder]').count(), 0, 'no "Back a Seeker builder"')
+  await page.click('[data-testid=starter-builder]')
+  await page.waitForTimeout(300)
+  assert.match(page.url(), /\/new\?/, 'stays on New permission: no launch flow')
+  assert.equal(await page.inputValue('[data-testid=label]'), 'Seeker builder')
+  assert.equal(await page.inputValue('[data-testid=amount]'), '25')
+  assert.equal(await page.locator('[data-testid=slot-symbol]').textContent(), 'SKR')
+  assert.equal(await page.locator('[data-testid=slot-period]').textContent(), 'week')
+  assert.equal(await page.inputValue('[data-testid=payee]'), '', 'the payee is still to be pasted')
   for (const [path, words] of [
     ['/back', 'Backing a launch is not available in this version.'],
     ['/launch', 'Launching a token is not available in this version.'],
@@ -70,5 +77,22 @@ test('v1.0.1: launch and back stay hidden when the server does not turn them on'
   }
   assert.equal(await page.locator('[data-testid=back-approve]').count(), 0)
   assert.equal(await page.locator('[data-testid=launch]').count(), 0)
+  await page.close()
+})
+
+test('v1.0.2: Type it your way, when the server cannot read the text, says so and leaves the form as it was', async () => {
+  const page = await browser.newPage({ viewport: { width: 360, height: 800 } })
+  await page.addInitScript((a) => localStorage.setItem('nuntius-auth-v1', JSON.stringify(a)), SEEKER)
+  await page.goto(`${base}/new?mints=USDC,SKR`)
+  await page.waitForSelector('[data-testid=words]', { timeout: 15000 })
+  await page.fill('[data-testid=amount]', '0.5')
+  await page.fill('[data-testid=words]', 'Pay Ana 5 cents a day for a week')
+  await page.click('[data-testid=fill]')
+  // The API answers 503 here, as if offline.
+  await page.waitForSelector('text=Could not read that text. Fill in the form as before.', { timeout: 15000 })
+  assert.equal(await page.inputValue('[data-testid=amount]'), '0.5', 'the form is untouched')
+  assert.equal(await page.inputValue('[data-testid=label]'), '')
+  assert.equal(await page.locator('[data-testid=words]').getAttribute('maxlength'), '280')
+  assert.equal(await page.locator('[data-testid=authorize]').isEnabled(), false, 'Approve stays off')
   await page.close()
 })
