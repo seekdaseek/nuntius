@@ -488,7 +488,10 @@ export const PULL_INDEX = 2
  *  - the creator gets 50% of trading fees; all LP is permanently locked at migration;
  *  - metadata immutable once created.
  */
-export function launchPreset(quoteThreshold: number) {
+/** The share of supply kept for the migrated pool; it sets the curve's price ratio (tools/curve-ratio.ts). */
+export const PRESET_MIGRATION_PCT = 20
+
+export function launchPreset(quoteThreshold: number, percentageSupplyOnMigration: number = PRESET_MIGRATION_PCT) {
   return DBC.buildCurve({
     token: {
       tokenType: DBC.TokenType.SPLToken,
@@ -528,7 +531,7 @@ export function launchPreset(quoteThreshold: number) {
       cliffDurationFromMigrationTime: 0,
     },
     activationType: DBC.ActivationType.Timestamp,
-    percentageSupplyOnMigration: 20,
+    percentageSupplyOnMigration,
     migrationQuoteThreshold: quoteThreshold,
   })
 }

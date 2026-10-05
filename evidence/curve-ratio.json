@@ -1,0 +1,114 @@
+{
+  "measuredAt": "2026-10-05T21:42:11.819Z",
+  "sdk": "@meteora-ag/dynamic-bonding-curve-sdk 1.5.13 buildCurve",
+  "presetDefaultPct": 20,
+  "thresholdUi": 50000,
+  "note": "ratio = price of the last base unit before migration / price of the first; flat 1% fee at both ends",
+  "rows": [
+    {
+      "percentageSupplyOnMigration": 20,
+      "soldOnCurvePct": 80,
+      "formula": 16,
+      "fromCurveSqrtPrices": 15.999999411116008,
+      "fromSwapQuotes": 15.999983030310313,
+      "firstBuy": {
+        "quoteIn": "10000",
+        "baseOut": "633599600"
+      },
+      "lastBuy": {
+        "quoteIn": "10000",
+        "baseOut": "39600017"
+      }
+    },
+    {
+      "percentageSupplyOnMigration": 25,
+      "soldOnCurvePct": 75,
+      "formula": 9,
+      "fromCurveSqrtPrices": 8.999999604944843,
+      "fromSwapQuotes": 8.999992585861433,
+      "firstBuy": {
+        "quoteIn": "10000",
+        "baseOut": "445499804"
+      },
+      "lastBuy": {
+        "quoteIn": "10000",
+        "baseOut": "49500019"
+      }
+    },
+    {
+      "percentageSupplyOnMigration": 30,
+      "soldOnCurvePct": 70,
+      "formula": 5.4444444444444455,
+      "fromCurveSqrtPrices": 5.4444441639416965,
+      "fromSwapQuotes": 5.444440877292633,
+      "firstBuy": {
+        "quoteIn": "10000",
+        "baseOut": "323399897"
+      },
+      "lastBuy": {
+        "quoteIn": "10000",
+        "baseOut": "59400020"
+      }
+    },
+    {
+      "percentageSupplyOnMigration": 31,
+      "soldOnCurvePct": 69,
+      "formula": 4.954214360041623,
+      "fromCurveSqrtPrices": 4.954214096814981,
+      "fromSwapQuotes": 4.954211272658432,
+      "firstBuy": {
+        "quoteIn": "10000",
+        "baseOut": "304089587"
+      },
+      "lastBuy": {
+        "quoteIn": "10000",
+        "baseOut": "61380020"
+      }
+    },
+    {
+      "percentageSupplyOnMigration": 33,
+      "soldOnCurvePct": 67,
+      "formula": 4.122130394857668,
+      "fromCurveSqrtPrices": 4.122130162138898,
+      "fromSwapQuotes": 4.122128109574012,
+      "firstBuy": {
+        "quoteIn": "10000",
+        "baseOut": "269339929"
+      },
+      "lastBuy": {
+        "quoteIn": "10000",
+        "baseOut": "65340019"
+      }
+    },
+    {
+      "percentageSupplyOnMigration": 35,
+      "soldOnCurvePct": 65,
+      "formula": 3.4489795918367347,
+      "fromCurveSqrtPrices": 3.4489793851357406,
+      "fromSwapQuotes": 3.448977892040374,
+      "firstBuy": {
+        "quoteIn": "10000",
+        "baseOut": "239014230"
+      },
+      "lastBuy": {
+        "quoteIn": "10000",
+        "baseOut": "69300018"
+      }
+    },
+    {
+      "percentageSupplyOnMigration": 40,
+      "soldOnCurvePct": 60,
+      "formula": 2.25,
+      "fromCurveSqrtPrices": 2.2499998438290434,
+      "fromSwapQuotes": 2.2499991824496495,
+      "firstBuy": {
+        "quoteIn": "10000",
+        "baseOut": "178199969"
+      },
+      "lastBuy": {
+        "quoteIn": "10000",
+        "baseOut": "79200015"
+      }
+    }
+  ]
+}
