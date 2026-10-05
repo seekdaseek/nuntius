@@ -21,7 +21,7 @@ import type { MeteoraConnection } from './meteora.js'
 import type express from 'express'
 import type { Address } from '@solana/kit'
 import type { Store } from './db.js'
-import type { MandateStore, Mandate } from './mandate-store.js'
+import { termsMatch, type MandateStore, type Mandate } from './mandate-store.js'
 import type { MandateConfig, MintInfo } from './mandate-config.js'
 import type { Receipts } from './receipts.js'
 import type { Executor } from './executor.js'
@@ -395,14 +395,8 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     const d = await readRecurring(rpc, m.delegationPda as Address)
     if (!d.exists) throw new HttpError(409, 'not_on_chain_yet', 'the grant has not landed yet')
     // Activate only on an exact match: the chain, not the request, is the record.
-    const match =
-      d.delegator === m.address &&
-      d.delegatee === m.delegatee &&
-      d.mint === m.mint &&
-      d.amountPerPeriod === BigInt(m.amountPerPeriod) &&
-      d.periodLengthS === BigInt(m.periodLengthS) &&
-      d.expiryTs === BigInt(m.expiryTs)
-    if (!match) throw new HttpError(409, 'terms_mismatch', 'the on-chain delegation does not match this permission')
+    if (!termsMatch(m, d))
+      throw new HttpError(409, 'terms_mismatch', 'the on-chain delegation does not match this permission')
     mandates.setStatus(m.id, 'active', now())
     mandates.setGuardCursor(m.delegationPda, a.address, null, now(), { delegatee: m.delegatee, mint: m.mint })
     await deps.receipts.emit(

@@ -17,7 +17,7 @@
  */
 import type { Address } from '@solana/kit'
 import { effectiveWindow, listDelegations, type DelegationScans, type DelegationView } from './mandate-chain.js'
-import type { MandateStore } from './mandate-store.js'
+import { termsMatch, type MandateStore } from './mandate-store.js'
 import type { Receipts } from './receipts.js'
 import type { Logger } from './log.js'
 import { safeError } from './log.js'
@@ -109,6 +109,8 @@ export interface GuardOptions {
   addresses: () => string[]
   /** Symbol/decimals for a mint; unknown mints are shown by address. */
   mintInfo: (mint: string) => { symbol: string; decimals: number }
+  /** A pending permission was found live on chain and activated (the executor can pull at once). */
+  onActivated?: () => void
   now?: () => number
 }
 
@@ -188,6 +190,16 @@ export class Guard {
     }
 
     for (const d of live) {
+      // A grant that landed while the app never confirmed it: the wallet answered
+      // with an error after sending (device round 6, 5 Oct), or the app was closed.
+      // The chain is the record, on the same exact match as /api/mandates/confirm;
+      // without this, the stale-pending sweep would later forget a live permission.
+      const pending = this.o.store.getMandateByPda(d.address)
+      if (pending?.status === 'pending' && pending.address === address && termsMatch(pending, d)) {
+        this.o.store.setStatus(pending.id, 'active', this.now())
+        this.o.log.info('mandate_activated_from_chain', { id: pending.id, pda: d.address })
+        this.o.onActivated?.()
+      }
       const known = this.o.store.hasGuardCursor(d.address)
       const b = this.base(d)
       if (!known) {

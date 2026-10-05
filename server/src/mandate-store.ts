@@ -38,6 +38,33 @@ export interface Mandate {
   endedAt: number | null
 }
 
+/**
+ * The chain's delegation carries exactly this permission's terms. Only then does
+ * a pending permission become active: from the app's confirm, or from the guard
+ * when the grant landed and the app never confirmed it.
+ */
+export function termsMatch(
+  m: Mandate,
+  d: {
+    delegator?: string
+    delegatee?: string
+    mint?: string | null
+    amountPerPeriod?: bigint | string | null
+    periodLengthS?: bigint | number | null
+    expiryTs?: bigint | number | null
+  },
+): boolean {
+  if (d.amountPerPeriod == null || d.periodLengthS == null || d.expiryTs == null) return false
+  return (
+    d.delegator === m.address &&
+    d.delegatee === m.delegatee &&
+    d.mint === m.mint &&
+    BigInt(d.amountPerPeriod) === BigInt(m.amountPerPeriod) &&
+    BigInt(d.periodLengthS) === BigInt(m.periodLengthS) &&
+    BigInt(d.expiryTs) === BigInt(m.expiryTs)
+  )
+}
+
 /** The permission's window right after a receipt, in base units: what the meter draws. */
 export interface EventWindow {
   remainingBaseUnits?: string

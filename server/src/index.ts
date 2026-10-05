@@ -86,6 +86,7 @@ if (mandateConfig) {
     addresses: () => [...new Set([...store.pushAddresses(), ...mandates.activeMandates().map((m) => m.address)])],
     mintInfo: (mint) =>
       mandateConfig.mints.find((m) => m.mint === mint) ?? { symbol: `${mint.slice(0, 4)}…`, decimals: 0 },
+    onActivated: () => executor.kick(),
   })
   startExecutor(executor, mandateConfig.executorIntervalMs)
   startGuard(guard, mandateConfig.guardIntervalMs)
