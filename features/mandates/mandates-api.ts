@@ -76,6 +76,8 @@ export interface LaunchInfo {
   symbol: string | null
   progressPct: number
   committed: { backers: number; perWeek: string; symbol: string | null }
+  /** Why a back permission cannot buy this pool, in one sentence (server 1.1.0); null or absent when it can. */
+  refusal?: string | null
 }
 
 export interface OtherDelegation {
@@ -120,9 +122,11 @@ export interface Receipt {
   id: number
   /** The permission it belongs to (null for another app's delegation). */
   mandateId?: string | null
-  kind: 'pull' | 'refused' | 'granted' | 'revoked' | 'expired' | 'buy' | 'skipped'
+  kind: 'pull' | 'refused' | 'granted' | 'revoked' | 'expired' | 'buy' | 'skipped' | 'migrated'
   /** A buy: what it delivered, e.g. "1234.5 NATX". */
   got?: string | null
+  /** A skipped buy: why (curve_full, no_room, slippage, error:<code>). */
+  note?: string | null
   at: number
   delegationPda: string
   delegatee: string

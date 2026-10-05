@@ -50,16 +50,33 @@ export function backSentence(f: BackForm, token: string | null, quote: string): 
   return `Back ${token ?? 'this launch'}: ${f.amount || '…'} ${quote} ${EVERY[f.period]}, for ${f.untilDays} days.`
 }
 
+/**
+ * Why a buy was skipped, in one sentence; the server sends the same words in the push
+ * (server/src/receipts.ts skipWords). `why` is the server's cause; a receipt from before
+ * causes were recorded has none, and was a slippage miss.
+ */
+export function skipWords(why: string | null | undefined): string {
+  if (why === 'curve_full')
+    return 'The curve filled before this buy. Nothing was taken; the next buy goes to its regular pool.'
+  if (why === 'no_room') return 'The curve had less room left than quoted. Nothing was taken.'
+  if (why?.startsWith('error:')) return `The swap failed with error ${why.slice(6)}. Nothing was taken.`
+  return 'The price moved more than 2%. Nothing was taken.'
+}
+
 /** A receipt row's line for a buy or a skip. */
 export function buyLine(r: {
   kind: string
   amount: string | null
   symbol: string
   got?: string | null
+  note?: string | null
 }): string | null {
   if (r.kind === 'buy')
     return r.got ? `Bought ${r.got} for ${r.amount} ${r.symbol}` : `Bought for ${r.amount} ${r.symbol}`
-  if (r.kind === 'skipped') return 'Skipped: the price moved more than 2%. Nothing was taken.'
+  if (r.kind === 'skipped') {
+    const w = skipWords(r.note)
+    return `Skipped: ${w[0]!.toLowerCase()}${w.slice(1)}`
+  }
   return null
 }
 

@@ -15,6 +15,7 @@ const KIND: Record<Receipt['kind'], { title: string; dot: string }> = {
   expired: { title: 'Expired', dot: color.ink2 },
   buy: { title: 'Bought', dot: color.moved },
   skipped: { title: 'Skipped', dot: color.ink2 },
+  migrated: { title: 'Moved to its regular pool', dot: color.signal },
 }
 
 export function ReceiptRow({ r, cluster }: { r: Receipt; cluster?: string }) {
@@ -32,6 +33,7 @@ export function ReceiptRow({ r, cluster }: { r: Receipt; cluster?: string }) {
         sig: r.signature ?? '',
         amount: r.amount ?? '',
         got: r.got ?? '',
+        why: r.note ?? '',
         symbol: r.symbol,
         cap: r.cap ?? '',
         remaining: r.remaining ?? '',

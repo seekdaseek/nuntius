@@ -6,7 +6,7 @@ import { Button, Card, KV, Label, Muted, Note, Screen, Segments, Title, color, f
 import { radius } from '@/constants/app-styles'
 import { isUserCancellation, useNuntiusAuth } from '@/features/account/use-nuntius-auth'
 import { useGrantMandate, useMandateList, type GrantStep } from '@/features/mandates/use-mandates'
-import { api, type LaunchInfo } from '@/features/mandates/mandates-api'
+import { api, ApiError, type LaunchInfo } from '@/features/mandates/mandates-api'
 import { isBlockhashExpired } from '@/core/grant-errors'
 import { grantedSlipUrl } from '@/core/routes'
 import { PERIOD_OPTIONS, sanitizeAmount, UNTIL_OPTIONS, type PeriodKey } from '@/core/mandate-form'
@@ -51,7 +51,16 @@ export default function BackScreen() {
     api
       .launch(form.pool.trim())
       .then((l) => live && setLaunch(l))
-      .catch((e: unknown) => live && setLaunchError(e instanceof Error ? e.message : 'not a launch'))
+      .catch(
+        (e: unknown) =>
+          live &&
+          setLaunchError(
+            // A pool nuntius cannot buy says why in its own sentence (server: launch_unsupported).
+            e instanceof ApiError && e.code === 'launch_unsupported'
+              ? e.message
+              : `Not a launch nuntius can read: ${e instanceof Error ? e.message : 'not a launch'}`,
+          ),
+      )
     return () => {
       live = false
     }
@@ -78,7 +87,7 @@ export default function BackScreen() {
   }
   const expired = grant.isError && isBlockhashExpired(grant.error)
   const token = launch?.symbol ?? null
-  const ready = check.ok && !!launch && !!quote && launch.route !== 'migrating'
+  const ready = check.ok && !!launch && !!quote && launch.route !== 'migrating' && !launch.refusal
 
   const footer = (
     <>
@@ -149,12 +158,13 @@ export default function BackScreen() {
           onPress={() => void Clipboard.getString().then((v) => set('pool', v.trim()))}
         />
       </View>
-      {launchError ? <Note tone="refused">Not a launch nuntius can read: {launchError}</Note> : null}
+      {launchError ? <Note tone="refused">{launchError}</Note> : null}
       {launch ? (
         <Card>
           <KV k="Token" v={token ?? launch.baseMint.slice(0, 8)} />
           <KV k="Now" v={routeWords(launch)} />
           <KV k="Committed" v={demandWords(launch.committed)} />
+          {launch.refusal ? <Note tone="refused">{launch.refusal}</Note> : null}
           {!quote ? (
             <Note tone="refused">This launch is priced in a token nuntius does not pull (only USDC or SKR).</Note>
           ) : null}

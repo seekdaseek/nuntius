@@ -1,6 +1,7 @@
 import React from 'react'
 import { Linking, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
+import { skipWords } from '@/core/back-copy'
 import { Button, CapMeter, Chip, KV, Muted, Note, Screen, Slip, Stamp, Title, color, font } from '@/components/ui'
 import { tabular } from '@/constants/app-styles'
 import { explorerTx, shortAddr, tzOffsetMin } from '@/core/format'
@@ -30,6 +31,7 @@ export default function ReceiptScreen() {
     per?: string
     payee?: string
     got?: string
+    why?: string
   }>()
 
   // Receipt pushes and the older delegation spike share this screen.
@@ -106,6 +108,22 @@ export default function ReceiptScreen() {
     )
   }
 
+  if (kind === 'migrated') {
+    return (
+      <Screen back>
+        <Slip>
+          <Chip label="Migrated" tone="plain" />
+          <Text style={s.amount}>{p.got ? `${p.got} moved` : 'The token moved'}</Text>
+          <Muted style={{ marginBottom: 12 }}>
+            {who}: the curve filled and moved to its regular pool on Meteora (DAMM v2). Your next buys go there, with
+            the same cap. You signed nothing.
+          </Muted>
+          {explorerButton}
+        </Slip>
+      </Screen>
+    )
+  }
+
   if (kind === 'skipped') {
     return (
       <Screen back>
@@ -113,8 +131,10 @@ export default function ReceiptScreen() {
           <Chip label="Skipped" tone="plain" />
           <Text style={s.amount}>Nothing taken</Text>
           <Muted style={{ marginBottom: 12 }}>
-            {who}: the price moved more than 2% before the buy, so the whole transaction failed. nuntius tries again
-            later this period.
+            {who}: {skipWords(p.why)}{' '}
+            {!p.why || p.why === 'slippage'
+              ? 'The whole transaction failed, and nuntius tries again later this period.'
+              : 'The whole transaction failed.'}
           </Muted>
         </Slip>
       </Screen>

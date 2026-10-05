@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { backSentence, buyLine, checkBack, checkLaunch, demandWords, routeWords } from './back-copy.ts'
+import { backSentence, buyLine, checkBack, checkLaunch, demandWords, routeWords, skipWords } from './back-copy.ts'
 
 const POOL = '4kC74bssQ1tg2MhdVSfHDyerY8sivUuZviPmmU4Sp6yq'
 
@@ -61,4 +61,20 @@ test('launch and back: hidden unless the server sends features.launches = true',
   assert.equal(launchesOn({ features: {} }), false)
   assert.equal(launchesOn({ features: { launches: false } }), false)
   assert.equal(launchesOn({ features: { launches: true } }), true)
+})
+
+test('skip words name the cause; a receipt without one was a slippage miss', () => {
+  assert.equal(skipWords(undefined), 'The price moved more than 2%. Nothing was taken.')
+  assert.equal(skipWords('slippage'), 'The price moved more than 2%. Nothing was taken.')
+  assert.match(skipWords('curve_full'), /^The curve filled before this buy\. Nothing was taken/)
+  assert.equal(skipWords('no_room'), 'The curve had less room left than quoted. Nothing was taken.')
+  assert.equal(skipWords('error:6043'), 'The swap failed with error 6043. Nothing was taken.')
+  assert.equal(
+    buyLine({ kind: 'skipped', amount: '1', symbol: 'USDC', note: 'curve_full' }),
+    'Skipped: the curve filled before this buy. Nothing was taken; the next buy goes to its regular pool.',
+  )
+  assert.equal(
+    buyLine({ kind: 'skipped', amount: '1', symbol: 'USDC' }),
+    'Skipped: the price moved more than 2%. Nothing was taken.',
+  )
 })
