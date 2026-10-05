@@ -88,7 +88,9 @@ export default function NewPermissionScreen() {
         })
     }, 350)
     return () => clearTimeout(t)
-  }, [auth, form, check.ok, symbol])
+    // grant.isError: a failed grant asks again, since the wallet may have sent it
+    // anyway and the lifetime total Seed Vault will show then includes it.
+  }, [auth, form, check.ok, symbol, grant.isError])
 
   if (!auth) {
     return (

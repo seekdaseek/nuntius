@@ -33,7 +33,7 @@ import {
   SKR_STARTERS,
   startersFor,
 } from './mandate-form.ts'
-import { isBlockhashExpired } from './grant-errors.ts'
+import { isBlockhashExpired, landedAnyway } from './grant-errors.ts'
 import { revokeFailureText, walletFailureText, WalletStepError, withStoredAuthorization } from './wallet-session.ts'
 
 const NOW = Date.UTC(2026, 9, 1, 12)
@@ -266,6 +266,53 @@ test('Type it your way: Fill writes the parsed terms into the sentence and never
   assert.equal(odd.form, before)
   assert.equal(odd.form.label, 'Old', 'a name with an address in it is never written')
   assert.deepEqual(odd.reasons, ['This app offers USDC and SKR.'])
+})
+
+test('a wallet error after the grant was sent: the app asks the chain before saying "not granted"', async () => {
+  const pendingErr = Object.assign(new Error('the grant has not landed yet'), { code: 'not_on_chain_yet' })
+  const isPending = (e: unknown) => (e as { code?: string }).code === 'not_on_chain_yet'
+  const confirmAfter = (misses: number) => {
+    let calls = 0
+    const fn = async () => {
+      calls++
+      if (calls <= misses) throw pendingErr
+      return { mandate: 'live' }
+    }
+    return { fn, calls: () => calls }
+  }
+  const walletErr = new Error('Transaction failed to confirm')
+  const fast = { delayMs: 0 }
+  // Device round 6: it had landed; the grant is live, not "not granted".
+  let c = confirmAfter(0)
+  assert.deepEqual(await landedAnyway(walletErr, true, c.fn, isPending, fast), { mandate: 'live' })
+  // Still landing: asked again, a few times.
+  c = confirmAfter(2)
+  assert.deepEqual(await landedAnyway(walletErr, true, c.fn, isPending, fast), { mandate: 'live' })
+  assert.equal(c.calls(), 3)
+  c = confirmAfter(9)
+  assert.equal(await landedAnyway(walletErr, true, c.fn, isPending, fast), null)
+  assert.equal(c.calls(), 3, 'then the wallet error stands')
+  // A cancel is asked once: no wait after a dismissed sheet.
+  c = confirmAfter(9)
+  assert.equal(
+    await landedAnyway(new Error('User cancelled'), true, c.fn, isPending, { ...fast, cancelled: true }),
+    null,
+  )
+  assert.equal(c.calls(), 1)
+  // Nothing built, or refused by the app's own check: nothing reached Seed Vault, so nothing is asked.
+  c = confirmAfter(0)
+  assert.equal(await landedAnyway(walletErr, false, c.fn, isPending, fast), null)
+  const mismatch = Object.assign(new Error('did not match'), { name: 'TxMismatch' })
+  assert.equal(await landedAnyway(mismatch, true, c.fn, isPending, fast), null)
+  assert.equal(c.calls(), 0)
+  // A real refusal from the server (terms differ on chain) is not retried.
+  let refusals = 0
+  const refused = async () => {
+    refusals++
+    throw Object.assign(new Error('the on-chain delegation does not match'), { code: 'terms_mismatch' })
+  }
+  assert.equal(await landedAnyway(walletErr, true, refused, isPending, fast), null)
+  assert.equal(refusals, 1)
 })
 
 test('approve note: the token approval in plain words, with the exact total', async () => {

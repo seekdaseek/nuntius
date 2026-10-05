@@ -6,7 +6,8 @@ import { api, ApiError, untilLanded, type TermsInput } from '@/features/mandates
 import { signAndSend } from '@/features/wallet/sign-and-send'
 import { refreshWidget } from '@/features/widget/refresh-widget'
 import { tzOffsetMin } from '@/core/format'
-import { WalletStepError } from '@/core/wallet-session'
+import { isUserCancel, WalletStepError } from '@/core/wallet-session'
+import { landedAnyway } from '@/core/grant-errors'
 import { checkTransaction, expectGrant } from '@/core/tx-check'
 import { AppConfig } from '@/constants/app-config'
 
@@ -108,7 +109,19 @@ export function useGrantMandate(auth: NuntiusAuth | null, onStep?: (s: GrantStep
           (base64) => checkTransaction(base64, expect),
         )
       } catch (e) {
-        if (!(e instanceof ApiError && e.code === 'already_on_chain')) throw e
+        if (!(e instanceof ApiError && e.code === 'already_on_chain')) {
+          // The wallet may have sent it before reporting an error: ask the chain, through the server.
+          const landed = await landedAnyway(
+            e,
+            mandateId !== null,
+            () => api.confirm(auth.session, mandateId!),
+            (x) => x instanceof ApiError && x.code === 'not_on_chain_yet',
+            { cancelled: isUserCancel(e) },
+          )
+          if (!landed) throw e
+          pending.current = null
+          return { signature, mandate: landed.mandate }
+        }
       }
       onStep?.('confirming')
       const confirmed = await untilLanded(() => api.confirm(auth.session, mandateId!), ['not_on_chain_yet'])
