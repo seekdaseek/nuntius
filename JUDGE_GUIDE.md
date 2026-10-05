@@ -30,16 +30,18 @@ That run used **two** Seed Vault approvals (init, then create). This build cuts 
 
 ## 2. The app on a Seeker
 
-**v1.0.1** (4 Oct, security hardening: the app checks every transaction before Seed Vault, tokens in the keystore, server-side sign-out; see README and SECURITY.md §7) is the release below. It was installed over v1.0.0 on the Seeker on 4 Oct and passed a grant, its first pull and a revoke on mainnet (README, "v1.0.1").
+**v1.0.2** (5 Oct: **Type it your way**, where you write the permission in your own words and tap Fill; and the **Back a Seeker builder** starter, 25 SKR a week; see README and SECURITY.md §4b) is the release below. It was installed over v1.0.1 on the Seeker on 5 Oct, and it passed the Fill, two grants with their first pulls, two revokes, sign-out and sign-in on mainnet (README, "v1.0.2"). It keeps everything in v1.0.1 (4 Oct, security hardening; SECURITY.md §7).
 
-**APK:** https://github.com/seekdaseek/nuntius/releases/tag/v1.0.1 (`nuntius-1.0.1.apk`, sha256 `60aba5095d2f976e75939a3dfd1caf8f00bc7d27f49ef6533271e45cf6d6e2b8`, signed with the release key). v1.0.0 stays at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0.
+**APK:** {{RELEASE_URL}} (`nuntius-1.0.2.apk`, sha256 `{{APK_SHA256}}`, signed with the release key). v1.0.1 stays at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.1 and v1.0.0 at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0.
 
-1. **Install.** On the Seeker, open the release page, download `nuntius-1.0.1.apk`, allow the install. The app talks to mainnet through the nuntius backend.
+1. **Install.** On the Seeker, open the release page, download `nuntius-1.0.2.apk`, allow the install. The app talks to mainnet through the nuntius backend.
 2. **Sign in** (about 20 s). Tap **Sign in with Solana** and approve in Seed Vault. The backend verifies the signature with a single-use nonce and checks the Seeker Genesis Token. A Seeker wallet shows **✓ Seeker verified**; any other wallet shows **Basic tier** and can hold one permission.
 3. **Look at your permissions.** Home lists every Subscriptions delegation your wallet has granted, to nuntius or to any other app, each with the cap left and a countdown. If no other app has one, the green row with the shield says so. That is the guard.
 4. **Grant a permission** (about 60 s).
    - Tap **+ New permission**.
    - Fill the sentence: a name, an amount (for example `0.01`), USDC, **day**, **7 days**. Paste a payee address that already holds USDC.
+   - Or type it your way: write _"Pay Ana 5 cents a day for a week"_ in the box and tap **Fill**. The sentence fills itself (Ana, 0.05 USDC, every day, 7 days ahead) with "Filled from your words. Check every term." The payee stays empty for you to paste, and Approve stays off until you do. Try something it must refuse, such as 1000000 USDC or a date in the past: that term stays empty, with a one-line reason.
+   - SKR: **Back a Seeker builder** fills 25 SKR every week for 90 days. Paste the builder's address; Seed Vault then shows 325 SKR, the lifetime total.
    - Read the green box: the server's parse of the exact terms the transaction carries.
    - Above **Approve in Seed Vault**, one line says what Seed Vault will show, for example _"Seed Vault will show 0.07 USDC."_ **Why?** explains it. Approve **once** in Seed Vault; its sheet shows that finite amount, not "Unlimited".
    - Within about 15 s (4–14 s on the Seeker) the first payment goes out and a push arrives: _"… received 0.01 USDC"_. Tap it, with the app open or closed, to open the receipt with its cap meter and Explorer link.
@@ -47,7 +49,7 @@ That run used **two** Seed Vault approvals (init, then create). This build cuts 
 6. **Revoke** (about 20 s). Tap **Revoke** and approve once. If it was the last permission on USDC, home reads **Token account delegate: none**.
 7. **Clock in.** On a Seeker wallet, open **Clock in**: the last 24 hours and your streak. Pick the digest hour with **Earlier** and **Later**, then **Send it at …**. The home-screen widget (long-press the home screen → Widgets → nuntius) shows the cap left and today's clock-in.
 
-Steps 1–7 were run on Seeker `SM02E4060327059` on mainnet in four rounds between 30 Sep and 1 Oct 2026; the last, on build `57eb4e1`, is the release. The signatures are in README.md, _What is proven_.
+Steps 1–7 were run on Seeker `SM02E4060327059` on mainnet in four rounds between 30 Sep and 1 Oct 2026, then on 4 Oct (v1.0.1) and 5 Oct (v1.0.2, build `bf1313d`, the release). The signatures are in README.md, _What is proven_.
 
 **Identity check, no install.** `curl -s https://nuntius.ochinimus.app/.well-known/assetlinks.json` shows the package and the release certificate fingerprint that wallets verify the app against. Checked on 30 Sep 2026: it matches the APK's signer.
 
@@ -59,11 +61,11 @@ scripts/localnet.sh &          # fetches Agave 3.1.10, builds the program at rel
 cd server && npm ci && npm run test:localnet
 ```
 
-Measured output (2026-10-04, Linux x86_64):
+Measured output (2026-10-05, macOS arm64):
 
 ```
-ℹ tests 117
-ℹ pass 117
+ℹ tests 130
+ℹ pass 130
 ℹ fail 0
 ```
 
@@ -74,13 +76,13 @@ Things worth reading in the output:
 - `a lost transaction is replaced only after its blockhash is dead — never doubled`. This is the executor's idempotency.
 - `guard: receipts for delegations nuntius did not create`.
 
-`npm test` without a validator passes 76 tests and reports the 7 localnet suites as skipped. At the repo root, `npm run test:core` runs the app's 44 logic tests, and `npm run test:e2e` runs 11 tests on the web build (cold-start tap, fonts, layout, BACK, launches hidden).
+`npm test` without a validator passes 89 tests, Type it your way among them (a mocked model: valid sentences, an amount over the ceiling, an unknown token, a past date, an injection, an address in the answer, a timeout), and reports the 7 localnet suites as skipped. At the repo root, `npm run test:core` runs the app's 46 logic tests, and `npm run test:e2e` runs 12 tests on the web build (cold-start tap, fonts, layout, BACK, the builder starter with launches off, Fill when the server cannot read the text).
 
 ## 4. Subscription launches (Meteora DBC)
 
-**Hidden in v1.0.1** unless the server runs with `MANDATE_LAUNCHES=1`; it stays off until the Meteora device run. The steps below are for a server with it on.
+**Hidden in v1.0.1 and v1.0.2** unless the server runs with `MANDATE_LAUNCHES=1`; it stays off until the Meteora device run. The steps below are for a server with it on.
 
-- **On the phone:** New permission → **Back a Seeker builder** → paste a DBC pool → one Seed Vault approval. The first buy comes within about 10 minutes. Its receipt reads "Bought … for … USDC/SKR" and opens on Explorer, where the bought tokens are in the backer's own account.
+- **On the phone:** New permission → **Back a Seeker builder** (with launches on, it opens the launch flow) → paste a DBC pool → one Seed Vault approval. The first buy comes within about 10 minutes. Its receipt reads "Bought … for … USDC/SKR" and opens on Explorer, where the bought tokens are in the backer's own account.
 - **Launching:** **Launch your own token** (Seeker-verified wallets only) creates a DBC pool priced in SKR or USDC with one signature.
 - **Without a phone:**
   - `GET https://<server>/api/launch/<pool>` returns the curve's progress, the route and the committed recurring demand.
@@ -95,5 +97,6 @@ Things worth reading in the output:
 | What stops a double pull?               | `server/src/executor.ts` (header comment, `claimPull`, `resolve`) |
 | What happens on 0x190?                  | `executor.ts`, `resolve` → `refusalReceipt`                       |
 | How are other apps' pulls seen?         | `server/src/guard.ts`                                             |
+| What can the model behind Fill do?      | `server/src/parse-permission.ts`, `checkTerms`; `SECURITY.md` §4b |
 | What does the user read before signing? | `server/src/mandate-text.ts`, `describeMandate`                   |
 | What does the cap not cover?            | `SECURITY.md` §3                                                  |

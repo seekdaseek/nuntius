@@ -8,17 +8,49 @@ nuntius also works as a **permission manager for the whole Subscriptions standar
 
 Built for the Solana Seeker. Android only: Mobile Wallet Adapter and Seed Vault are the mechanism, not decoration.
 
-|                                    |                                                                                                                                           |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Judges, start here                 | [JUDGE_GUIDE.md](JUDGE_GUIDE.md): install and verify in five minutes                                                                      |
-| v1.0.1 (4 Oct): security hardening | What changed and how it is proven: [below](#v101-4-october-2026-security-hardening) and [SECURITY.md §7](SECURITY.md)                     |
-| The APK                            | https://github.com/seekdaseek/nuntius/releases/tag/v1.0.1 (`nuntius-1.0.1.apk`), sha256 `60aba5095d2f976e75939a3dfd1caf8f00bc7d27f49ef6533271e45cf6d6e2b8`; v1.0.0 stays at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0 |
-| Demo video (1:45)                  | https://youtu.be/rXs5zppcYKs                                                                                                              |
-| Pitch video (1:33)                 | https://youtu.be/Zq1veG63Snw                                                                                                              |
-| Threat model                       | [SECURITY.md](SECURITY.md): what the cap bounds and what it does not                                                                      |
-| Why this, not something else       | [RESEARCH.md](RESEARCH.md)                                                                                                                |
+|                                    |                                                                                                                                                                                                                |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Judges, start here                 | [JUDGE_GUIDE.md](JUDGE_GUIDE.md): install and verify in five minutes                                                                                                                                           |
+| v1.0.2 (5 Oct): Type it your way   | Write the permission in your own words and Fill; the SKR builder starter is back: [below](#v102-5-october-2026-type-it-your-way-and-the-skr-builder-starter) and [SECURITY.md §4b](SECURITY.md)                |
+| v1.0.1 (4 Oct): security hardening | What changed and how it is proven: [below](#v101-4-october-2026-security-hardening) and [SECURITY.md §7](SECURITY.md)                                                                                          |
+| The APK                            | {{RELEASE_URL}} (`nuntius-1.0.2.apk`), sha256 `{{APK_SHA256}}`; v1.0.1 stays at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.1, v1.0.0 at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0 |
+| Demo video (1:45)                  | https://youtu.be/rXs5zppcYKs                                                                                                                                                                                   |
+| Pitch video (1:33)                 | https://youtu.be/Zq1veG63Snw                                                                                                                                                                                   |
+| Threat model                       | [SECURITY.md](SECURITY.md): what the cap bounds and what it does not                                                                                                                                           |
+| Why this, not something else       | [RESEARCH.md](RESEARCH.md)                                                                                                                                                                                     |
 
 ---
+
+## v1.0.2 (5 October 2026): Type it your way, and the SKR builder starter
+
+- **Type it your way.** On New permission, write the permission in your own words, for example _"Pay Ana 5 cents a day for a week"_, and tap **Fill**. Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) reads the sentence and proposes the terms. Plain code then checks each one against the server's own rules: the token must be one it offers; the amount must be more than zero and within that token's per-period ceiling; the period must be one of the form's; the end must be after today and at most 90 days ahead. A term that fails stays empty, with a one-line reason. The model never returns an address: anything address-shaped in its answer is dropped. Fill empties the payee, so Approve stays off until an address is pasted by hand. The preview, the "Seed Vault will show" line and the transaction check run exactly as for typed terms. On any failure the app says it could not read the text, and the form works as before. What the model can and cannot do, what is sent to it and where its key lives: [SECURITY.md §4b](SECURITY.md).
+- **Back a Seeker builder** is again the 25 SKR a week, 90-day recurring payment it was in v1.0.0, while subscription launches are off. With launches on, it opens the launch flow.
+- **A grant the wallet reports as failed is checked on chain.** In the first attempt below, the wallet reported an error after the grant had landed. The app now asks the server whether the grant landed before it says "not granted". The guard activates a pending permission whose delegation it finds live with exactly its terms (`8be7a2c`, `bf1313d`; tests in `server/src/guard.test.ts` and `core/core.test.ts`).
+- versionName 1.0.2, versionCode 2.
+
+**On the device: 5 October 2026, v1.0.2 installed over v1.0.1** (`adb install -r`, an update: first install 30 Sep), built from `bf1313d`, server at the same commit, `MANDATE_LAUNCHES` unset. Every wallet tap was the owner's in Seed Vault.
+
+**Attempt 1 (build `36fd0e0`) failed at the first grant, and was fixed.**
+
+- **What worked:** the update kept the sign-in, and Fill read the sentence.
+- **The failure:** the grant landed one second after the Seed Vault signature ([`43VQo7Xi…`](https://explorer.solana.com/tx/43VQo7XiPt2s31DLHks8tpcVUZcqp2YgWvTMpd2E3z9WVw3RPSj5gSZ7gUbupZ72GKjnurCkgi7AFZkHxe4BeAb7)). The wallet then held its sheet for 84 s and reported an error, so the app never confirmed the grant. The server then swept the pending permission while its delegation was live, and nothing pulled.
+- **The retry:** the app's transaction check refused it before Seed Vault. Seed Vault would have shown 0.70 USDC while the screen said 0.35.
+- **Cleanup:** the owner revoked the stray delegation from home ([`3WRM9pqt…`](https://explorer.solana.com/tx/3WRM9pqt71KZ5fT8p7xgTFpWekLhM9DCLmxcqeuWS6wTqUvM2geXFBjb2XnAtKdLxV3fXtGV62zf7wkdGHG8JJfH)).
+
+**Attempt 2 (build `bf1313d`, the release) passed every step:**
+
+| Step                                       | Result                                                                                                                                                                                                                                                                        | Transaction                                                                                                                            |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Open after the update                      | still signed in as cj7, "✓ Seeker verified", token account delegate none                                                                                                                                                                                                      | —                                                                                                                                      |
+| Type it your way                           | "Pay Ana 5 cents a day for a week" → **Fill** → "Filled from your words. Check every term.": Ana, 0.05 USDC, every day, until 12 Oct, 7 days, payee empty, Approve off (about 2 s on the recording); the server logged the text's length (32) and the outcome, never the text | —                                                                                                                                      |
+| Grant Ana after pasting natX, 06:59:56 UTC | the line above Approve and Seed Vault both showed 0.35 USDC; one signer, cj7                                                                                                                                                                                                  | [`4vCAEkPz…`](https://explorer.solana.com/tx/4vCAEkPz2Nu76YrcXEPpAMdddsWwvPCKBYTLeLzovqzNgyF9QUVUNAJp3N3G2x7cNVEqX9AACjnnK26XyJrWgv4Y) |
+| First pull, 07:00:10 UTC                   | 14 s after the grant; one signer, the delegatee; 0.05 USDC; push "Ana received 0.05 USDC"                                                                                                                                                                                     | [`5qjWpYP7…`](https://explorer.solana.com/tx/5qjWpYP7LzKE1yPUBXWpGkfiP4WeduY76gj6u5zSkYaDjpiH6L88W9FeRPzCxp73FrJfQN8s4ZNUahd7oS6tjMvW) |
+| Revoke Ana, 07:01:05 UTC                   | one Seed Vault sheet; one signer, cj7; "Token account delegate: none"                                                                                                                                                                                                         | [`2asfK8uc…`](https://explorer.solana.com/tx/2asfK8uc9LdSPoWUts46U9a7xUrtS2MqdBX2thxweeBFUBnHbQerWgwmnooy3KaiQ463sAv5hCNMN6oV9NAeQSjv) |
+| Back a Seeker builder, 07:02:24 UTC        | stays on New permission: Seeker builder, 25 SKR every week until 3 Jan; natX pasted; the line and Seed Vault both showed 325 SKR; one signer, cj7                                                                                                                             | [`5UyuFt8u…`](https://explorer.solana.com/tx/5UyuFt8uTZrHppkA2zxW6Tyf8U9eJ9Yv3mkxYtyv3RpyBnUUW6G73Ad7NWpDhH5YMYXfJoQrrvE9rKKuUTmyxZ9Y) |
+| First pull, 07:02:27 UTC                   | 3 s after the grant; one signer, the delegatee; 25 SKR; push "Seeker builder received 25 SKR"; receipt "0 of 25 left this week · Signed by nuntius executor only · You signed nothing"                                                                                        | [`i7bbzYzr…`](https://explorer.solana.com/tx/i7bbzYzrbiVq1DprQBeYyVPUwEzCjxqR3LyZK5pXmbdehKZXrqwmZCwb7FRcfm9bGWCLSRbQ2hqUXu7vfgcaw4H)  |
+| Revoke the builder, 07:03:54 UTC           | one signer, cj7; SKR delegate none                                                                                                                                                                                                                                            | [`24CUYKkr…`](https://explorer.solana.com/tx/24CUYKkrksAwQH4FDrwjwi8S5tzFxkW6qjw7RZ6pJADs3i5brhWZoxx2MmDRo4CwVxodQEkxrRPsjTvSxp7gtoKR) |
+| Sign out, sign in, widget, push            | sessions 8 → 7 → 8 and push tokens 1 → 0 → 1; the widget draws "Clock in, day 1 · No live permissions"; a test push from the server to the token registered at sign-in arrived (FCM 200)                                                                                      | —                                                                                                                                      |
+| Launch and back hidden                     | `nuntius://launch` and `nuntius://back` say "not available in this version"                                                                                                                                                                                                   | —                                                                                                                                      |
 
 ## v1.0.1 (4 October 2026): security hardening
 
@@ -97,7 +129,7 @@ The program account is **upgradeable** (upgrade authority `DXtFpbPjcn2hxPnw79x1P
 
 Nothing below is claimed from a successful build. Each line was executed and the result observed on the Seeker (`SM02E4060327059`), on chain with a signature, or against the real program on a local validator. Anything not seen on the phone is marked **UNTESTED**.
 
-**The release:** APK `nuntius-1.0.1.apk` at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.1, sha256 `60aba5095d2f976e75939a3dfd1caf8f00bc7d27f49ef6533271e45cf6d6e2b8`, signed with the release key (certificate `71:70:5E:DD…35:F8`, the one `assetlinks.json` names). The rounds below proved v1.0.0, still at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0 (sha256 `474aef66b1646419957164ea57653f3360b5936d2d13f8e52d589a626e00f9de`).
+**The release:** APK `nuntius-1.0.2.apk` at {{RELEASE_URL}}, sha256 `{{APK_SHA256}}`, signed with the release key. v1.0.1 (https://github.com/seekdaseek/nuntius/releases/tag/v1.0.1, sha256 `60aba5095d2f976e75939a3dfd1caf8f00bc7d27f49ef6533271e45cf6d6e2b8`) was signed with the same key (certificate `71:70:5E:DD…35:F8`, the one `assetlinks.json` names). The rounds below proved v1.0.0, still at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0 (sha256 `474aef66b1646419957164ea57653f3360b5936d2d13f8e52d589a626e00f9de`).
 
 ### On the Seeker, on mainnet: round 4, 1 October 2026 (build `57eb4e1`)
 
@@ -249,13 +281,13 @@ nuntius offers **SKR next to USDC**: recurring SKR payments, approved once in Se
 
 - **Mint.** `SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3`, SPL Token program, 6 decimals (read on mainnet on 30 Sep 2026).
 - **Server.** `MANDATE_MINTS=SYMBOL:mint:decimals[:maxPerPeriod],…`. Each mint has its own beta ceiling per period. Mainnet defaults to USDC plus SKR, with an SKR ceiling of 55 SKR per period: about 1 USD at 0.0181 USD per SKR, the price read on 30 Sep 2026. `SKR_CEILING=<n>` on the deploy overrides it only if the price moves a lot.
-- **Two uses, one tap each.** When the server offers SKR, New permission shows two starters above the sentence. **Back a Seeker builder** fills 25 SKR every week for 90 days; **Allowance in SKR** fills 50 SKR every week for 30 days. A starter fills the sentence only: the payee is always entered by hand, and Approve stays off until it is. `core/core.test.ts` tests the starters; `docs/screens/web/02b-new-permission-skr-starter.png` shows one tapped.
+- **Two uses, one tap each.** When the server offers SKR, New permission shows two starters above the sentence. **Back a Seeker builder** fills 25 SKR every week for 90 days (with subscription launches on, it opens the launch flow instead); **Allowance in SKR** fills 50 SKR every week for 30 days. A starter fills the sentence only: the payee is always entered by hand, and Approve stays off until it is. `core/core.test.ts` tests the starters; `docs/screens/web/02b-new-permission-skr-starter.png` shows one tapped.
 - **App.** The token choice on New permission shows only what the server offers. Receipts, the widget, the digest and the home sentence carry each mint's own symbol and decimals.
 - **Evidence.** `server/src/mints.localnet.test.ts` runs two test mints against the real program: per-mint ceilings, one authority per mint (each granted with one signature), the executor pulling both, and receipts and widget rows with the right symbols. On mainnet from the Seeker: a 25 SKR a week grant on 30 Sep at 19:41:54 UTC ([`4LXBpcPM…`](https://explorer.solana.com/tx/4LXBpcPMZVnPcqmyCfeMVyZtzSAizo4j6JnU8JkbrhRepbafqyqxMMDygAP8HDqYCp13qDg3JnBD4NZcFaVNpi9G), one signer, cj7), its first pull 5 s later at 19:41:59 UTC and 5,961 compute units ([`Ry4tiD6o…`](https://explorer.solana.com/tx/Ry4tiD6o3u8idr6ud5s4W99AsZtasa9nubuXGBFH5zgy5ToCv45LaQ93S3912jQNhnBTKRSEQ3oBcbMAzizxxpR), one signer, the delegatee), the receipt "25 SKR · 0 of 25 left this week", and the revoke on 1 Oct at 04:05:24 UTC ([`4Et21Vw6…`](https://explorer.solana.com/tx/4Et21Vw684rGi86jSfzD893f5sUe99q8eYYPPK7wUXonpdNLMzfY8WeKmZ1q7K4gvcoe8fWwGM7TwoGtEoPVzqbh), one signer, cj7). The code behind it: `server/src/mandate-config.ts` (the SKR mint and its 55 SKR per-period ceiling), `core/mandate-form.ts` (the two starters) and `app/new.tsx` (the starter buttons).
 
 ## Subscription launches (Meteora)
 
-**In v1.0.1 these screens are hidden** unless the server is started with `MANDATE_LAUNCHES=1`; it stays off until the Meteora device run. Everything below describes the feature as built and tested.
+**In v1.0.1 and v1.0.2 these screens are hidden** unless the server is started with `MANDATE_LAUNCHES=1`; it stays off until the Meteora device run. Everything below describes the feature as built and tested.
 
 A builder launches a token on a Meteora **Dynamic Bonding Curve** (DBC), priced in SKR or USDC. Backers grant a capped recurring permission in one Seed Vault approval: _"Back NATX: 5 USDC every week, for 90 days."_ Every period, one executor transaction:
 
@@ -327,14 +359,14 @@ Push is sent as **`notification` + `data`**, not data-only. A data-only FCM mess
 ### Tests
 
 ```bash
-npm ci && npm run test:core                 # 44 app-logic tests: taps, widget model, form checks, transaction check, storage, shims
-npm run test:e2e                            # 11 tests on the web build: cold-start tap, fonts, layout, BACK, launches hidden
+npm ci && npm run test:core                 # 46 app-logic tests: taps, widget model, form checks, the fill, transaction check, storage, shims
+npm run test:e2e                            # 12 tests on the web build: cold-start tap, fonts, layout, BACK, the builder starter, Fill offline
 npx tsc --noEmit && npx expo lint && npx prettier --check .
 
 cd server && npm ci
-npm test                                    # 76 unit tests; the 7 localnet suites report "skipped"
+npm test                                    # 89 unit tests (Type it your way with a mocked model); the 7 localnet suites report "skipped"
 ../scripts/localnet.sh &                    # validator + the program built from 364a419 (first run builds it)
-npm run test:localnet                       # all 117, against the real program
+npm run test:localnet                       # all 130, against the real program
 ```
 
 ### Backend
@@ -343,7 +375,7 @@ npm run test:localnet                       # all 117, against the real program
 cd server && npm ci && npm run build && npm start
 ```
 
-Listens on `127.0.0.1:8787`, loopback only. Configuration comes from `server/.env`, which is gitignored. Every variable is listed with placeholders in [`server/.env.example`](server/.env.example). Mandates are off unless `MANDATE_CLUSTER` is set. On mainnet the executor key must already exist at `MANDATE_DELEGATEE` and be funded for fees; the server will not invent a mainnet key. Endpoint semantics for auth, SGT and push are in [`server/README.md`](server/README.md); the mandate routes are documented at the top of [`server/src/mandates-api.ts`](server/src/mandates-api.ts).
+Listens on `127.0.0.1:8787`, loopback only. Configuration comes from `server/.env`, which is gitignored. Every variable is listed with placeholders in [`server/.env.example`](server/.env.example). Mandates are off unless `MANDATE_CLUSTER` is set. **Type it your way** needs `ANTHROPIC_API_KEY`; without it `/api/parse-permission` answers that it could not read the text, and the form works as before. On mainnet the executor key must already exist at `MANDATE_DELEGATEE` and be funded for fees; the server will not invent a mainnet key. Endpoint semantics for auth, SGT and push are in [`server/README.md`](server/README.md); the mandate routes are documented at the top of [`server/src/mandates-api.ts`](server/src/mandates-api.ts).
 
 ### App
 
@@ -369,13 +401,14 @@ The full threat model is in [SECURITY.md](SECURITY.md). In short:
 - The per-period cap is enforced by the program, not by this code.
 - The SPL approval behind it is capped at the lifetime total of the live permissions, so even a program upgrade reaches at most what you approved in total.
 - The destination of a pull is bound by nuntius, not by the chain.
+- The model behind **Fill** only fills the form: it never signs, never picks an address and never moves money. Plain code checks every term it proposes, and the transaction check and the chain's cap bound the grant as for typed terms (SECURITY.md §4b).
 - There are no secrets in the repository. `.env`, keystores, the Firebase service account, `google-services.json` and the delegatee key are gitignored.
 - Logs are JSON with API keys, keypairs and session and FCM tokens redacted.
 - SIWS nonces are single-use and atomic, and sessions expire after 30 days.
 - The legacy devnet spike routes (`/api/delegation/*`) were removed in v1.0.1; nothing in the app used them.
 - `/api/rpc`, the SIWS routes and the demo route are rate-limited per client IP (429 with JSON).
 - The MWA app identity is `https://nuntius.ochinimus.app`. That host serves its own `/.well-known/assetlinks.json` and icon.
-- Server `npm audit`: 0 vulnerabilities. App: 14 moderate, all transitive through the Expo SDK 55 toolchain (SECURITY.md §5).
+- Server `npm audit --omit=dev`: 0 vulnerabilities (5 Oct, with `@anthropic-ai/sdk` 0.131.0). App: 5 high, all the `node-forge` chain in Expo's build tools, which has no patched release and is not in the APK (SECURITY.md §5).
 
 ---
 

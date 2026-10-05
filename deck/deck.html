@@ -258,7 +258,9 @@
             <h3>Grant, in one sentence</h3>
             <p>
               "Ana can receive up to 25 USDC every week, until 26 Dec." One Seed Vault approval. The first payment goes
-              out at once, then one per period, with the phone in your pocket.
+              out at once, then one per period, with the phone in your pocket. Or type it your way, "Pay Ana 5 cents a
+              day for a week", and Fill: a model reads it, plain code checks every term, you paste the payee. One tap
+              backs a Seeker builder: 25 SKR a week.
             </p>
           </div>
           <div class="card chain">
@@ -291,9 +293,10 @@
       <h2>What the user sees</h2>
       <div class="row" style="justify-content: space-between">
         <div style="text-align: center">
-          <img class="phone" style="height: 560px" src="img/device-form.png" />
+          <img class="phone" style="height: 560px" src="img/device-fill.png" />
           <div class="cap">
-            The sentence, the chain's terms in green, and one line above Approve: what Seed Vault will show.
+            Typed in plain words, filled by Fill, every term checked by plain code. The payee is pasted by hand, and one
+            line above Approve says what Seed Vault will show.
           </div>
         </div>
         <div style="text-align: center">
@@ -308,7 +311,8 @@
         </div>
       </div>
       <p class="muted" style="font-size: 18px; margin-top: 14px">
-        Screenshots from Seeker SM02E4060327059 on mainnet, 1 Oct 2026 (rounds 3 and 4; release build 57eb4e1).
+        Screenshots from Seeker SM02E4060327059 on mainnet: 5 Oct 2026, v1.0.2 build bf1313d (left); 1 Oct 2026, rounds
+        3 and 4, build 57eb4e1 (middle, right).
       </p>
     </section>
 
@@ -455,7 +459,7 @@
       <div class="kicker">Proof: the real program, built from its release commit</div>
       <div class="row" style="align-items: center; margin-top: 10px">
         <div style="flex: 0 0 520px">
-          <div class="big green">117 / 117</div>
+          <div class="big green">130 / 130</div>
           <p style="margin-top: 14px">
             tests pass against <b>solana-foundation/subscriptions @ 364a419</b>, the commit its CHANGELOG names as the
             mainnet release, in a local validator (Agave 3.1.10).
@@ -475,9 +479,11 @@
             <li>Two mints side by side, the SKR path: a ceiling per mint, one authority each</li>
           </ul>
           <p class="muted" style="font-size: 18px; margin-top: 16px">
-            Also: 76 server unit tests, 44 app-logic tests (including the transaction check), 11 tests on the web build
-            (cold-start tap, fonts, layout, BACK, launch hidden); typecheck, lint and prettier clean. Whether the local
-            binary is byte-identical to mainnet has not been measured yet.
+            Also: 89 server unit tests (Type it your way with a mocked model: ceilings, unknown tokens, past dates, an
+            injection, an address in the answer, a timeout), 46 app-logic tests (including the transaction check and the
+            fill), 12 tests on the web build (cold-start tap, fonts, layout, BACK, launch hidden, the builder starter);
+            typecheck, lint and prettier clean. Whether the local binary is byte-identical to mainnet has not been
+            measured yet.
           </p>
         </div>
       </div>
@@ -581,9 +587,11 @@
         <div class="card" style="flex: 1">
           <h3>This codebase</h3>
           <p>
-            The app checks every server-built transaction before Seed Vault opens. No secrets in the repo; SIWS nonces
-            are single-use; sign-out ends the session on the server. npm audit: 0 on the server; the app&#39;s 5 are
-            node-forge in Expo&#39;s build tools, not in the shipped bundle. Full table in SECURITY.md.
+            The app checks every server-built transaction before Seed Vault opens. The model behind Fill only fills the
+            form: it never signs, never picks an address, and plain code checks each term against the server&#39;s
+            limits. No secrets in the repo; SIWS nonces are single-use; sign-out ends the session on the server. npm
+            audit: 0 on the server; the app&#39;s 5 are node-forge in Expo&#39;s build tools, not in the shipped bundle.
+            Full table in SECURITY.md.
           </p>
         </div>
       </div>
@@ -664,14 +672,15 @@
         <div class="card chain" style="flex: 1">
           <h3>Done</h3>
           <p>
-            Five device rounds on mainnet. v1.0.0 released; v1.0.1, installed over it on 4 Oct, kept the sign-in, drew
-            the widget, passed the transaction check, matched Seed Vault at 0.35 USDC, pulled in 7 s and revoked with
-            one sheet. 117 tests against the real program. Docs, threat model, judge guide.
+            v1.0.2 is done. Installed over v1.0.1 on 5 Oct, it filled "Pay Ana 5 cents a day for a week" into 0.05 USDC
+            a day, matched Seed Vault at 0.35 USDC and pulled in 14 s. Back a Seeker builder took 25 SKR a week, matched
+            Seed Vault at 325 SKR and pulled in 3 s. Both were revoked, and the first attempt's wallet error is now
+            checked on chain. 130 tests against the real program.
           </p>
         </div>
         <div class="card" style="flex: 1">
           <h3>Before submission</h3>
-          <p>v1.0.1 as a GitHub release, with its APK and sha256. The digest and the demo video are done.</p>
+          <p>Clock In submission by 9 Oct. Crypto World&#39;s Fair submission by 12 Oct.</p>
         </div>
         <div class="card" style="flex: 1">
           <h3>After</h3>
