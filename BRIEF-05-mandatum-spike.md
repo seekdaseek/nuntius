@@ -102,7 +102,7 @@ Paste real transaction signatures and real errors for each. Items 5 and 7 matter
 
 This is the step that actually decides the product.
 
-The delegation must be authorized by the user's real wallet through Mobile Wallet Adapter on the Seeker (`SM02E4060327059`). Not a server-side keypair.
+The delegation must be authorized by the user's real wallet through Mobile Wallet Adapter on the Seeker. Not a server-side keypair.
 
 Report: whether Seed Vault signs the authority-approval and delegation-creation transactions cleanly, what the wallet shows the user, and any transaction size or account-count limits hit.
 

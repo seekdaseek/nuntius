@@ -91,7 +91,7 @@ Note in `server/README.md` as an open item: wallets verify the app by checking D
 
 **C4. Three visibly distinct UI states:** disconnected, connected but not Seeker-verified, Seeker-verified. Keep `constants/app-styles.ts` conventions. No new UI library.
 
-**C5. Then run it on the device** (`SM02E4060327059`, `adb reverse tcp:8787 tcp:8787` already set) and report:
+**C5. Then run it on the device** (`adb reverse tcp:8787 tcp:8787` already set) and report:
 
 - whether Seed Vault's signed message verifies against `verifySignIn` **field for field** — you flagged that `verifySignIn` is strict and will reject if the wallet adds lines the payload does not carry. This is the highest-risk unknown in the client.
 - the SGT result for the device's actual primary account.

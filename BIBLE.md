@@ -245,7 +245,7 @@ Spine first. The payload drops into a slot that is already built.
 
 ## 11. Build state as of 2026-09-10
 
-**Proven on the real Seeker `SM02E4060327059`** (briefs 01-04):
+**Proven on the real Seeker** (briefs 01-04):
 
 - SIWS with a backend-issued single-use nonce; replay, expiry and domain binding all rejected. Seed Vault signs the payload field-for-field - it adds no `Version:` or `Chain ID:` line, so `verifySignIn` passes with no loosening.
 - SGT gate returns mint `Gv9AN58bVkqWp4w7dNc7nT3cJAavAH1VBi4fpESsCVZn` for the device wallet; `claimSgtMint` writes it through a real session.
@@ -271,7 +271,7 @@ The measurement payload is dead; the payload is now **Solana Subscriptions** rec
 
 - Repo scaffolded at `/Volumes/D/nuntius`. Two commits: `0d85185 chore: initial commit`, `df89ebd chore: set package app.ochinimus.nuntius and scheme nuntius`.
 - `app.json` corrected off the placeholders: package `app.ochinimus.nuntius`, scheme `nuntius`. Done before Firebase, because Firebase keys its config to the package name.
-- **Debug APK built and installed on the real Seeker, device `SM02E4060327059`. App runs, Metro connects. Verified on hardware, not assumed.**
+- **Debug APK built and installed on the real Seeker. App runs, Metro connects. Verified on hardware, not assumed.**
 - `.gitignore` excludes `android/`, `.gradle/`, `*.keystore`, `.env`, `.env.*`, `google-services.json`.
 - `adb reverse tcp:8787 tcp:8787` set, so the Seeker reaches a Mac dev server at `http://localhost:8787`. **The reverses are lost on reinstall and on reconnect** - `adb reverse --list` came back empty twice mid-session and the symptom is a useless "Failed to connect to localhost:8081". Re-run both (8787 and 8081) after every `adb install`.
 - **A release build cannot reach the local dev backend**: release blocks cleartext HTTP, so `http://localhost:8787` fails and the app shows `Version: undefined`. Dev-only - production is HTTPS - but device tests that need the backend must use the debug build.
@@ -279,7 +279,7 @@ The measurement payload is dead; the payload is now **Solana Subscriptions** rec
 
 ### 11a. Mainnet proof, 2026-09-22 (BRIEF-06)
 
-**The product exists.** The full life cycle ran on mainnet-beta with real USDC, signed by Seed Vault on device `SM02E4060327059`.
+**The product exists.** The full life cycle ran on mainnet-beta with real USDC, signed by Seed Vault on the Seeker.
 
 Payer/delegator was **natX** `ASCQRp616JVQKMpynYfcPVdKPext719WUf7CuFcnnatX`, not the cj7 treasury. Destination was cj7's existing ATA `HqbmBbn...az5z`, which **was never delegated** - it stayed `delegate: none` throughout, confirmed in the init simulation's post-state before signing and in every reading after.
 

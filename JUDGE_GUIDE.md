@@ -12,7 +12,7 @@ Three things to check, in order of how little they ask of you:
 
 ## 1. The mainnet proof (no install)
 
-On 22 September 2026, the full life cycle ran on **mainnet-beta with real USDC**, signed by Seed Vault on Seeker `SM02E4060327059`. Cap: 10,000 base units (0.01 USDC) per 60-second period. Open each link and check the one thing listed.
+On 22 September 2026, the full life cycle ran on **mainnet-beta with real USDC**, signed by Seed Vault on a Seeker. Cap: 10,000 base units (0.01 USDC) per 60-second period. Open each link and check the one thing listed.
 
 | Step                                 | What to check                                                                             | Link                                                                                                                                |
 | ------------------------------------ | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -49,7 +49,7 @@ That run used **two** Seed Vault approvals (init, then create). This build cuts 
 6. **Revoke** (about 20 s). Tap **Revoke** and approve once. If it was the last permission on USDC, home reads **Token account delegate: none**.
 7. **Clock in.** On a Seeker wallet, open **Clock in**: the last 24 hours and your streak. Pick the digest hour with **Earlier** and **Later**, then **Send it at …**. The home-screen widget (long-press the home screen → Widgets → nuntius) shows the cap left and today's clock-in.
 
-Steps 1–7 were run on Seeker `SM02E4060327059` on mainnet in four rounds between 30 Sep and 1 Oct 2026, then on 4 Oct (v1.0.1) and 5 Oct (v1.0.2, build `bf1313d`, the release). The signatures are in README.md, _What is proven_.
+Steps 1–7 were run on a Seeker on mainnet in four rounds between 30 Sep and 1 Oct 2026, then on 4 Oct (v1.0.1) and 5 Oct (v1.0.2, build `bf1313d`, the release). The signatures are in README.md, _What is proven_.
 
 **Identity check, no install.** `curl -s https://nuntius.ochinimus.app/.well-known/assetlinks.json` shows the package and the release certificate fingerprint that wallets verify the app against. Checked on 30 Sep 2026: it matches the APK's signer.
 

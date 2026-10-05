@@ -122,7 +122,7 @@ Keep `constants/app-styles.ts` conventions. No new UI library. Two of the four s
 
 ## 6. Prove it on the device
 
-`SM02E4060327059`, `adb reverse tcp:8787 tcp:8787` already set. Backend runs with `npm start` from `server/`.
+`adb reverse tcp:8787 tcp:8787` is already set. Backend runs with `npm start` from `server/`.
 
 Report, with actual output:
 

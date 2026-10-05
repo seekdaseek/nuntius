@@ -8,7 +8,7 @@
 
 - Scaffold created with `create-solana-dapp@4.8.5`, template `kit-expo-minimal`
 - Package name `app.ochinimus.nuntius`, scheme `nuntius`, both already set in `app.json`
-- Debug APK built and installed on a real Seeker, device id `SM02E4060327059`
+- Debug APK built and installed on a real Seeker
 - `adb reverse tcp:8787 tcp:8787` is set, so the Seeker can reach a Mac dev server at `http://localhost:8787`
 - `.gitignore` already excludes `android/`, `.gradle/`, `*.keystore`, `.env`, `.env.*`, `google-services.json`
 
@@ -158,7 +158,7 @@ Keep the template's existing styling conventions in `constants/app-styles.ts`. N
 
 ## Step 3 — prove it
 
-Nothing here counts as done until it has been run on the attached Seeker (`SM02E4060327059`) and the output observed. "Should work" is not a result.
+Nothing here counts as done until it has been run on the attached Seeker and the output observed. "Should work" is not a result.
 
 Report, with actual output:
 

@@ -127,7 +127,7 @@ The program account is **upgradeable** (upgrade authority `DXtFpbPjcn2hxPnw79x1P
 
 ## What is proven, and on what
 
-Nothing below is claimed from a successful build. Each line was executed and the result observed on the Seeker (`SM02E4060327059`), on chain with a signature, or against the real program on a local validator. Anything not seen on the phone is marked **UNTESTED**.
+Nothing below is claimed from a successful build. Each line was executed and the result observed on the Seeker, on chain with a signature, or against the real program on a local validator. Anything not seen on the phone is marked **UNTESTED**.
 
 **The release:** APK `nuntius-1.0.2.apk` at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.2, sha256 `fc54b8fc3badd3854e4af62bca45d04dfbc9c44901b50b06cac64da715c26faf`, signed with the release key. v1.0.1 (https://github.com/seekdaseek/nuntius/releases/tag/v1.0.1, sha256 `60aba5095d2f976e75939a3dfd1caf8f00bc7d27f49ef6533271e45cf6d6e2b8`) was signed with the same key (certificate `71:70:5E:DD…35:F8`, the one `assetlinks.json` names). The rounds below proved v1.0.0, still at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0 (sha256 `474aef66b1646419957164ea57653f3360b5936d2d13f8e52d589a626e00f9de`).
 
