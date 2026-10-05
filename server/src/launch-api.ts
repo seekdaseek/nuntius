@@ -42,6 +42,7 @@ import type { Mandate, MandateStore } from './mandate-store.js'
 import type { Rpc } from './tx.js'
 import { limitByIp, type RateLimiter } from './rate-limit.js'
 import { safeError } from './log.js'
+import { CLIENT_HEADER, clientAtLeast } from './client-version.js'
 
 const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
 const SYMBOL_RE = /^[A-Z0-9]{2,10}$/
@@ -109,8 +110,11 @@ export async function backerAccountInstruction(
 }
 
 export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void {
+  // An app older than 1.1.0 (no x-nuntius-client header, as v1.0.2 sends) falls through to
+  // the 404 it gets when launches are off: the same answer, byte for byte.
   const route = (path: string, handler: (body: Record<string, unknown>) => Promise<object>) => {
-    app.post(path, (req, res) => {
+    app.post(path, (req, res, next) => {
+      if (!clientAtLeast(req.get(CLIENT_HEADER))) return next()
       const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
       handler(body)
         .then((out) => res.json({ ok: true, ...out }))

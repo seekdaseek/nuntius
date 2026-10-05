@@ -37,6 +37,7 @@ import {
   type DelegationView,
 } from './mandate-chain.js'
 import { backerAccountInstruction, registerLaunchRoutes } from './launch-api.js'
+import { CLIENT_HEADER, launchesFor } from './client-version.js'
 import { describeBacking } from './mandate-text.js'
 import { RateLimiter, retryMessage } from './rate-limit.js'
 import type { Logger } from './log.js'
@@ -116,10 +117,10 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     return { address: s.address, sgtMint: s.sgtMint, tier, limits: LIMITS[tier] }
   }
 
-  const route = (path: string, handler: (body: Body) => Promise<Record<string, unknown>>) => {
+  const route = (path: string, handler: (body: Body, req: express.Request) => Promise<Record<string, unknown>>) => {
     app.post(path, (req, res) => {
       const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Body
-      handler(body)
+      handler(body, req)
         .then((out) => res.json({ ok: true, ...out }))
         .catch((e: unknown) => {
           if (e instanceof HttpError) {
@@ -223,6 +224,8 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
 
   // Subscription launches (Meteora): back permissions, launches, and the public read-out.
   // Off unless MANDATE_LAUNCHES=1: the routes do not exist, and the list tells the app to hide them.
+  // On, they are still off for any app older than 1.1.0 (x-nuntius-client, client-version.ts):
+  // its list says launches: false, and back, create and confirm answer it as if off.
   const launches = cfg.launches && Boolean(deps.conn)
   if (launches && deps.conn) {
     registerLaunchRoutes(app, {
@@ -513,7 +516,7 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     }
   }
 
-  route('/api/mandates/list', async (body) => {
+  route('/api/mandates/list', async (body, req) => {
     const a = auth(body)
     // A failed chain read shows the last good list and its time, never an empty one.
     const scan = await scans.orLast(a.address)
@@ -581,7 +584,7 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       mints: cfg.mints.map((m) => m.symbol),
       cluster: cfg.cluster,
       demo: cfg.demoEndpoints,
-      features: { launches },
+      features: { launches: launchesFor(launches, req.get(CLIENT_HEADER)) },
       mine,
       others,
       asOf: scan.asOfMs,
