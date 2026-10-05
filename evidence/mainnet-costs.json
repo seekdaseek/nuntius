@@ -1,0 +1,99 @@
+{
+  "measuredAt": "2026-10-05T21:57:00.939Z",
+  "slot": "453706283",
+  "rows": [
+    {
+      "step": "config SKR (executor pays)",
+      "payer": "23fstLLk5nv17NUpbsyWgEkkwHM3uKpxtvXhrLhd3SHP",
+      "bytes": 663,
+      "err": "{\"InstructionError\":[0,{\"Custom\":1}]}",
+      "unitsConsumed": 6339,
+      "costLamports": null,
+      "payerBalanceLamports": "4713000"
+    },
+    {
+      "step": "config SKR (stand-in payer cj7)",
+      "payer": "4a8o45skRPcyjAdyR8yES215Swvh8uTpZD6KLarhxCJ7",
+      "bytes": 631,
+      "err": null,
+      "unitsConsumed": 36570,
+      "costLamports": "5984080",
+      "payerBalanceLamports": "15792004"
+    },
+    {
+      "step": "config USDC (executor pays)",
+      "payer": "23fstLLk5nv17NUpbsyWgEkkwHM3uKpxtvXhrLhd3SHP",
+      "bytes": 663,
+      "err": "{\"InstructionError\":[0,{\"Custom\":1}]}",
+      "unitsConsumed": 6346,
+      "costLamports": null,
+      "payerBalanceLamports": "4713000"
+    },
+    {
+      "step": "config USDC (stand-in payer cj7)",
+      "payer": "4a8o45skRPcyjAdyR8yES215Swvh8uTpZD6KLarhxCJ7",
+      "bytes": 631,
+      "err": null,
+      "unitsConsumed": 36606,
+      "costLamports": "5984080",
+      "payerBalanceLamports": "15792004"
+    },
+    {
+      "step": "config + pool, SKR (stand-in pays both)",
+      "payer": "HLnpSz9h2S4hiLQ43rnSD9XkcUThA7B8hQMKmDaiTLcC",
+      "bytes": 1164,
+      "err": null,
+      "unitsConsumed": 139510,
+      "costLamports": "26590720",
+      "payerBalanceLamports": "175534007141"
+    },
+    {
+      "step": "executor USDC token account (stand-in payer cj7)",
+      "payer": "4a8o45skRPcyjAdyR8yES215Swvh8uTpZD6KLarhxCJ7",
+      "bytes": 338,
+      "err": null,
+      "unitsConsumed": 15018,
+      "costLamports": "1493440",
+      "payerBalanceLamports": "15792004"
+    },
+    {
+      "step": "executor SKR token account (stand-in payer cj7)",
+      "payer": "4a8o45skRPcyjAdyR8yES215Swvh8uTpZD6KLarhxCJ7",
+      "bytes": 338,
+      "err": null,
+      "unitsConsumed": 15018,
+      "costLamports": "1493440",
+      "payerBalanceLamports": "15792004"
+    },
+    {
+      "step": "back grant natX, SKR (without the launch token account)",
+      "payer": "ASCQRp616JVQKMpynYfcPVdKPext719WUf7CuFcnnatX",
+      "err": null,
+      "costLamports": "2915840",
+      "unitsConsumed": 17649
+    },
+    {
+      "step": "the launch token account a back grant adds",
+      "rentLamports": "1488440",
+      "note": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    }
+  ],
+  "fees": {
+    "pullLamports": "7000",
+    "buyLamports": "11000"
+  },
+  "migration": {
+    "step": "migration by the crank (derived; executor pays)",
+    "localCostLamports": "32524200",
+    "localFeeLamports": 21000,
+    "localRentLamports": "32503200",
+    "mainnetRentRatePerByte": 5080,
+    "derivedMainnetCostLamports": "23744600",
+    "exact": true,
+    "budget": {
+      "unitLimit": 600000,
+      "microLamportsPerUnit": 10000
+    },
+    "note": "rent = (bytes + 128) x rate; local rate 6960, mainnet rate 5080"
+  }
+}
