@@ -5,7 +5,7 @@
  */
 import { formatUnits, shortAddress } from './mandate-text.js'
 
-export type EventKind = 'pull' | 'refused' | 'granted' | 'revoked' | 'expired' | 'buy' | 'skipped'
+export type EventKind = 'pull' | 'refused' | 'granted' | 'revoked' | 'expired' | 'buy' | 'skipped' | 'migrated'
 
 export interface LedgerEvent {
   kind: EventKind
@@ -23,6 +23,8 @@ export interface LedgerEvent {
   outBaseUnits?: string | null
   outDecimals?: number | null
   outSymbol?: string | null
+  /** A skipped buy: why (meteora.ts SkipCause; an unexpected program error as `error:<code>`). */
+  note?: string | null
 }
 
 export interface LiveMandate {

@@ -44,6 +44,7 @@ export class FakeChain implements ChainPort {
   dammPool: string | null = null
   /** Swaps that miss their minimum-out, consumed one per buy: the whole transaction fails. */
   swapFailures = 0
+  swapFailureCode = 6002
   /** Balances the custody invariant is about: the executor's quote and base accounts, the backer's base. */
   delegateeQuote = 0n
   delegateeBase = 0n
@@ -143,13 +144,14 @@ export class FakeChain implements ChainPort {
         this.sendDrops--
         return
       }
-      // Atomic: a swap that misses its minimum-out fails the transaction; the pull is undone with it.
+      // Atomic: a swap that fails fails the transaction; the pull is undone with it. The code is
+      // the program's: ExceededSlippage (6002) by default, or whatever swapFailureCode says.
       if (this.swapFailures > 0) {
         this.swapFailures--
         this.landed.set(signature, {
           signature,
-          err: '{"InstructionError":[3,{"Custom":6003}]}',
-          customCode: 6003,
+          err: `{"InstructionError":[3,{"Custom":${this.swapFailureCode}}]}`,
+          customCode: this.swapFailureCode,
           logs: [],
         })
         return

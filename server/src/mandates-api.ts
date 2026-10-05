@@ -689,7 +689,8 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       reset: e.nextResetTs ?? null,
       per: e.periodLengthS ?? null,
       amount: e.amountBaseUnits ? formatUnits(BigInt(e.amountBaseUnits), e.decimals) : null,
-      signature: e.signature && !e.signature.includes(':') ? e.signature : null,
+      signature:
+        e.kind === 'migrated' ? (e.note ?? null) : e.signature && !e.signature.includes(':') ? e.signature : null,
       // A buy: what it delivered to the backer, e.g. "1234.5 NATX".
       got:
         e.outBaseUnits && e.outSymbol

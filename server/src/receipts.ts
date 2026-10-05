@@ -86,6 +86,9 @@ function receiptBody(e: LedgerEvent, x: ReceiptExtra): { title: string; body: st
   })
   // End-of-life receipts are keyed `revoked:<pda>` for dedupe; that is not a signature.
   if (e.signature && !e.signature.includes(':')) q.set('sig', e.signature)
+  // A migration receipt is keyed per permission; the migration's own signature is its note.
+  if (e.kind === 'migrated' && e.note) q.set('sig', e.note)
+  if (e.kind === 'migrated' && e.outSymbol) q.set('got', e.outSymbol)
   if (e.amountBaseUnits) q.set('amount', formatUnits(BigInt(e.amountBaseUnits), e.decimals))
   q.set('symbol', e.symbol)
   if (x.remainingBaseUnits !== undefined) q.set('remaining', formatUnits(x.remainingBaseUnits, e.decimals))
@@ -95,6 +98,7 @@ function receiptBody(e: LedgerEvent, x: ReceiptExtra): { title: string; body: st
   const got =
     e.outBaseUnits && e.outSymbol ? `${formatUnits(BigInt(e.outBaseUnits), e.outDecimals ?? 0)} ${e.outSymbol}` : ''
   if (got) q.set('got', got)
+  if (e.kind === 'skipped' && e.note) q.set('why', e.note)
   const url = `/alert?${q.toString()}`
   switch (e.kind) {
     case 'pull':
@@ -124,9 +128,11 @@ function receiptBody(e: LedgerEvent, x: ReceiptExtra): { title: string; body: st
         url,
       }
     case 'skipped':
+      return { title: `Skipped: ${who}`, body: skipWords(e.note ?? 'slippage', x.slippagePct ?? 2), url }
+    case 'migrated':
       return {
-        title: `Skipped: ${who}`,
-        body: `The price moved more than ${x.slippagePct ?? 2}%. Nothing was taken.`,
+        title: `${e.outSymbol ?? 'The token'} moved to its regular pool`,
+        body: `${who}: the curve filled and migrated to Meteora DAMM v2. Your next buys go there. You signed nothing.`,
         url,
       }
   }
@@ -167,4 +173,13 @@ export class Receipts {
     }
     return true
   }
+}
+
+/** Why a buy was skipped, in one sentence (meteora.ts swapFailure). Nothing was ever taken. */
+export function skipWords(note: string, slippagePct = 2): string {
+  if (note === 'curve_full')
+    return 'The curve filled before this buy. Nothing was taken; the next buy goes to its regular pool.'
+  if (note === 'no_room') return 'The curve had less room left than quoted. Nothing was taken.'
+  if (note.startsWith('error:')) return `The swap failed with error ${note.slice(6)}. Nothing was taken.`
+  return `The price moved more than ${slippagePct}%. Nothing was taken.`
 }

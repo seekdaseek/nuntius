@@ -14,9 +14,11 @@
  * minimum-out, the whole transaction fails and nothing is pulled.
  *
  * THE ROUTE follows the token: the bonding curve (DBC) until it fills, then nothing while
- * Meteora's keepers migrate it, then the DAMM v2 pool it migrated to. Near the end of the
- * curve the buy is cut to what the curve still takes, because an exact-in that would
- * cross the migration threshold fails.
+ * it migrates, then the DAMM v2 pool it migrated to. That pool is the one the DBC program
+ * creates at migration, derived from the curve's migration config (canonicalDammPool); a
+ * pool anyone else opens for the same pair is never bought. Near the end of the curve the
+ * buy is cut to what the curve still takes, because an exact-in that would cross the
+ * migration threshold fails.
  */
 import { ComputeBudgetProgram, Connection, PublicKey, TransactionInstruction } from '@solana/web3.js'
 import BN from 'bn.js'
@@ -70,6 +72,9 @@ export interface LaunchState {
   dammPool: string | null
   baseMint: string
   quoteMint: string
+  baseDecimals: number
+  /** Why a back permission cannot buy this pool, in one sentence; null when it can. */
+  refusal: string | null
   /** Quote raised on the curve, and the migration threshold, in quote base units. */
   quoteRaised: string
   threshold: string
@@ -247,6 +252,10 @@ export function quoteDbc(
   return { kind: 'buy', amountIn, quotedOut, minimumOut: minimumOut(quotedOut, slippageBps) }
 }
 
+/**
+ * The quote for one buy on DAMM v2. The decimals only feed the SDK's price-impact figure,
+ * never the amounts (meteora.test.ts checks that), but they are passed as they are.
+ */
 export function quoteDamm(
   conn: Connection,
   state: CPAMM.PoolState,
@@ -255,20 +264,77 @@ export function quoteDamm(
   slippageBps: number,
   nowS: number,
   slot: number,
+  decimals: { base: number; quote: number } = { base: 6, quote: 6 },
 ): BuyQuote {
+  const quoteIsA = state.tokenAMint.toBase58() === quoteMint
   const q = new CPAMM.CpAmm(conn).getQuote2({
     inputTokenMint: pk(quoteMint),
     slippage: 0,
     currentPoint: new BN(Number(state.activationType) === 1 ? nowS : slot),
     poolState: state,
-    tokenADecimal: 6,
-    tokenBDecimal: 6,
+    tokenADecimal: quoteIsA ? decimals.quote : decimals.base,
+    tokenBDecimal: quoteIsA ? decimals.base : decimals.quote,
     hasReferral: false,
     swapMode: CPAMM.SwapMode.ExactIn,
     amountIn: new BN(amount.toString()),
   })
   const quotedOut = BigInt(q.outputAmount.toString())
   return { kind: 'buy', amountIn: amount, quotedOut, minimumOut: minimumOut(quotedOut, slippageBps) }
+}
+
+/**
+ * The DAMM v2 pool a curve migrates into: the address the DBC program creates at
+ * migration, from the DAMM v2 config its migration fee option names (the SDK's
+ * migrateToDammV2 derives it the same way). Anyone can open another DAMM v2 pool for the
+ * same pair, thin or skewed; only this one is ever bought.
+ */
+export function canonicalDammPool(migrationFeeOption: number, baseMint: string, quoteMint: string): string {
+  const config = DBC.DAMM_V2_MIGRATION_FEE_ADDRESS[migrationFeeOption]
+  if (!config) throw new Error(`unknown migration fee option ${migrationFeeOption}`)
+  return DBC.deriveDammV2PoolAddress(config, pk(baseMint), pk(quoteMint)).toBase58()
+}
+
+/** A pool "Back a launch" cannot buy, with the sentence that says why. */
+export class UnsupportedLaunch extends Error {}
+
+/** The DBC account types that are not a plain virtual pool (IDL discriminators). */
+const TRANSFER_HOOK_POOL = Buffer.from([237, 219, 184, 23, 42, 189, 169, 35])
+
+/** What the refusal check reads from a curve's config and pool. */
+export interface CurveFacts {
+  tokenType: number
+  quoteTokenFlag: number
+  migrationOption: number
+  baseFeeMode: number
+  /** Rate limiter only: fee increment (bps), max duration (points), reference amount. */
+  firstFactor: number
+  secondFactor: bigint
+  thirdFactor: bigint
+  activationType: number
+  activationPoint: bigint
+}
+
+/**
+ * Why "Back a launch" cannot buy this curve, or null. The buy is built for classic SPL
+ * Token on both sides (the swap passes the SPL Token program for each), for a curve that
+ * migrates to DAMM v2 (the route it follows), and without the instructions sysvar that a
+ * curve's rate limiter needs while it is active.
+ */
+export function backRefusal(c: CurveFacts, nowS: number, slot: number): string | null {
+  if (c.tokenType !== 0) return 'This launch’s token uses Token-2022, which nuntius cannot buy yet.'
+  if (c.quoteTokenFlag !== 0) return 'This launch is priced in a Token-2022 token, which nuntius cannot pull.'
+  if (c.migrationOption !== 1)
+    return 'This launch moves to DAMM v1 when its curve fills; nuntius follows launches to DAMM v2 only.'
+  const limiterOn = !(c.firstFactor === 0 && c.secondFactor === 0n && c.thirdFactor === 0n)
+  if (c.baseFeeMode === 2 && limiterOn) {
+    const end = c.activationPoint + c.secondFactor
+    const now = BigInt(c.activationType === 1 ? nowS : slot)
+    if (now <= end) {
+      const secondsLeft = c.activationType === 1 ? Number(end - now) : Math.ceil(Number(end - now) * 0.4)
+      return `This launch limits buys in its opening window. Back it after that ends, in about ${Math.max(1, Math.ceil(secondsLeft / 60))} minutes.`
+    }
+  }
+  return null
 }
 
 /** Reads a launch: curve progress, and which pool a buy goes to now. */
@@ -278,8 +344,13 @@ export async function readLaunch(
   knownDammPool: string | null = null,
 ): Promise<LaunchState & { raw: { dbc?: { pool: DBC.VirtualPool; config: DBC.PoolConfig }; damm?: CPAMM.PoolState } }> {
   const client = new DBC.DynamicBondingCurveClient(conn, 'confirmed')
-  const vp = await client.state.getPool(pool)
-  if (!vp) throw new Error(`no DBC pool at ${pool}`)
+  const vp = await client.state.getPool(pool).catch(() => null)
+  if (!vp) {
+    const acc = await conn.getAccountInfo(pk(pool))
+    if (acc && acc.owner.toBase58() === DBC_PROGRAM && acc.data.subarray(0, 8).equals(TRANSFER_HOOK_POOL))
+      throw new UnsupportedLaunch('This launch’s token has a transfer hook, which nuntius cannot buy.')
+    throw new Error(`no DBC pool at ${pool}`)
+  }
   const ps = (
     vp as unknown as {
       poolState: {
@@ -289,6 +360,7 @@ export async function readLaunch(
         quoteVault: PublicKey
         quoteReserve: BN
         isMigrated: number
+        activationPoint: BN
       }
     }
   ).poolState
@@ -296,6 +368,23 @@ export async function readLaunch(
   if (!config) throw new Error(`no DBC config for ${pool}`)
   const quoteMint = config.quoteMint.toBase58()
   const baseMint = ps.baseMint.toBase58()
+  const fee = config.poolFees.baseFee
+  const slot = await conn.getSlot('confirmed')
+  const refusal = backRefusal(
+    {
+      tokenType: Number(config.tokenType),
+      quoteTokenFlag: Number(config.quoteTokenFlag),
+      migrationOption: Number(config.migrationOption),
+      baseFeeMode: Number(fee.baseFeeMode),
+      firstFactor: Number(fee.firstFactor),
+      secondFactor: BigInt(fee.secondFactor.toString()),
+      thirdFactor: BigInt(fee.thirdFactor.toString()),
+      activationType: Number(config.activationType),
+      activationPoint: BigInt(ps.activationPoint.toString()),
+    },
+    Math.floor(Date.now() / 1000),
+    slot,
+  )
   const threshold = config.migrationQuoteThreshold
   const raised = BN.min(ps.quoteReserve, threshold)
   const progressBps = threshold.isZero() ? 0 : raised.muln(10_000).div(threshold).toNumber()
@@ -303,6 +392,8 @@ export async function readLaunch(
     pool,
     baseMint,
     quoteMint,
+    baseDecimals: Number(config.tokenDecimal),
+    refusal,
     quoteRaised: ps.quoteReserve.toString(),
     threshold: threshold.toString(),
     progressBps,
@@ -324,29 +415,25 @@ export async function readLaunch(
       raw: { dbc: { pool: vp, config } },
     }
   }
-  if (Number(ps.isMigrated) !== 1) return { ...base, route: 'migrating', dammPool: null, swap: null, raw: {} }
-  // Migrated: the DAMM v2 pool holding this base mint against the same quote mint.
-  const cp = new CPAMM.CpAmm(conn)
-  let found: { publicKey: PublicKey; account: CPAMM.PoolState } | null = null
-  if (knownDammPool) found = { publicKey: pk(knownDammPool), account: await cp.fetchPoolState(pk(knownDammPool)) }
-  else {
-    const all = [
-      ...(await cp.fetchPoolStatesByTokenAMint(ps.baseMint)),
-      ...(await cp.fetchPoolStatesByTokenBMint(ps.baseMint)),
-    ]
-    found =
-      all.find((x) => x.account.tokenAMint.toBase58() === quoteMint || x.account.tokenBMint.toBase58() === quoteMint) ??
-      null
-  }
-  if (!found) return { ...base, route: 'migrating', dammPool: null, swap: null, raw: {} }
-  const a = found.account
+  if (Number(ps.isMigrated) !== 1 || Number(config.migrationOption) !== 1)
+    return { ...base, route: 'migrating', dammPool: null, swap: null, raw: {} }
+  // Migrated: only the pool the DBC program created at migration. A stored pool that is
+  // not that one is refused outright, never bought.
+  const dammPool = canonicalDammPool(Number(config.migrationFeeOption), baseMint, quoteMint)
+  if (knownDammPool && knownDammPool !== dammPool)
+    throw new Error(`stored DAMM v2 pool ${knownDammPool} is not the curve's migrated pool ${dammPool}`)
+  const a = await new CPAMM.CpAmm(conn).fetchPoolState(pk(dammPool)).catch(() => null)
+  if (!a) return { ...base, route: 'migrating', dammPool: null, swap: null, raw: {} }
+  const pair = [a.tokenAMint.toBase58(), a.tokenBMint.toBase58()].sort().join()
+  if (pair !== [baseMint, quoteMint].sort().join())
+    throw new Error(`the migrated pool ${dammPool} does not pair ${baseMint} with ${quoteMint}`)
   return {
     ...base,
     route: 'damm_v2',
-    dammPool: found.publicKey.toBase58(),
+    dammPool,
     swap: {
       route: 'damm_v2',
-      pool: found.publicKey.toBase58(),
+      pool: dammPool,
       tokenAMint: a.tokenAMint.toBase58(),
       tokenBMint: a.tokenBMint.toBase58(),
       tokenAVault: a.tokenAVault.toBase58(),
@@ -356,6 +443,24 @@ export async function readLaunch(
     },
     raw: { damm: a },
   }
+}
+
+/**
+ * Why a buy's swap leg failed, from the program's error code. Each cause has its own
+ * receipt and its own retry rule (executor.ts skipBuy):
+ *   slippage    the price moved past the minimum-out: tried again later in the period
+ *   curve_full  the curve completed first (DBC 6013): no retry; the next period buys after migration
+ *   no_room     less room than quoted (DBC 6033, DAMM v2 6023): re-quoted one unit smaller, once
+ *   error:<n>   anything else, named by its code: no retry in the period
+ * Codes are the programs' own (DBC IDL 0.2.1, DAMM v2 IDL 0.2.5).
+ */
+export type SkipCause = 'slippage' | 'curve_full' | 'no_room' | `error:${number}` | 'error:unknown'
+export function swapFailure(route: Route, code: number | null): SkipCause {
+  if (code === 6002) return 'slippage' // ExceededSlippage, in both programs
+  if (route === 'dbc' && code === 6013) return 'curve_full' // PoolIsCompleted
+  if (route === 'dbc' && code === 6033) return 'no_room' // InsufficientLiquidity (bonding curve)
+  if (route === 'damm_v2' && code === 6023) return 'no_room' // InsufficientLiquidity
+  return code === null ? 'error:unknown' : `error:${code}`
 }
 
 /** Index of the instruction that failed, from a recorded transaction error (JSON). */
@@ -426,6 +531,67 @@ export function launchPreset(quoteThreshold: number) {
     percentageSupplyOnMigration: 20,
     migrationQuoteThreshold: quoteThreshold,
   })
+}
+
+/**
+ * The migration crank's compute budget. The SDK's migrateToDammV2 asks for 600,000 units;
+ * the priority fee is charged on the limit, so it stays there rather than higher.
+ */
+export const MIGRATION_BUDGET = { unitLimit: 600_000, microLamportsPerUnit: 10_000 }
+
+/** Where a backed curve stands for the crank. */
+export type CurveStage =
+  { stage: 'open' } | { stage: 'complete'; dammPool: string } | { stage: 'migrated'; dammPool: string }
+
+/** Whether a curve has filled, and whether it has migrated (to its canonical DAMM v2 pool). */
+export async function curveStage(conn: Connection, pool: string): Promise<CurveStage> {
+  const client = new DBC.DynamicBondingCurveClient(conn, 'confirmed')
+  const vp = await client.state.getPool(pool)
+  if (!vp) throw new Error(`no DBC pool at ${pool}`)
+  const ps = (
+    vp as unknown as { poolState: { config: PublicKey; baseMint: PublicKey; quoteReserve: BN; isMigrated: number } }
+  ).poolState
+  const config = await client.state.getPoolConfig(ps.config)
+  if (!config) throw new Error(`no DBC config for ${pool}`)
+  if (Number(config.migrationOption) !== 1) throw new Error('this curve does not migrate to DAMM v2')
+  const dammPool = canonicalDammPool(
+    Number(config.migrationFeeOption),
+    ps.baseMint.toBase58(),
+    config.quoteMint.toBase58(),
+  )
+  if (Number(ps.isMigrated) === 1) return { stage: 'migrated', dammPool }
+  if (ps.quoteReserve.lt(config.migrationQuoteThreshold)) return { stage: 'open' }
+  return { stage: 'complete', dammPool }
+}
+
+/**
+ * The migration of a filled curve to DAMM v2, as the SDK builds it (migrateToDammV2), paid
+ * by `payer`. Migration is permissionless. The SDK's own compute-budget instruction is left
+ * out (MIGRATION_BUDGET goes first instead); the two position NFT mints are fresh keys that
+ * sign with the payer.
+ */
+export async function migrationInstructions(
+  conn: Connection,
+  pool: string,
+  payer: string,
+): Promise<{ instructions: Instruction[]; nftMints: Uint8Array[]; dammPool: string }> {
+  const client = new DBC.DynamicBondingCurveClient(conn, 'confirmed')
+  const vp = await client.state.getPool(pool)
+  if (!vp) throw new Error(`no DBC pool at ${pool}`)
+  const config = await client.state.getPoolConfig(
+    (vp as unknown as { poolState: { config: PublicKey } }).poolState.config,
+  )
+  if (!config) throw new Error(`no DBC config for ${pool}`)
+  const dammConfig = DBC.DAMM_V2_MIGRATION_FEE_ADDRESS[Number(config.migrationFeeOption)]
+  if (!dammConfig) throw new Error(`unknown migration fee option ${config.migrationFeeOption}`)
+  const m = await client.migration.migrateToDammV2({ pool: pk(pool), dammConfig, payer: pk(payer) })
+  const ixs = m.transaction.instructions.filter((ix) => !ix.programId.equals(ComputeBudgetProgram.programId))
+  const st = (vp as unknown as { poolState: { baseMint: PublicKey } }).poolState
+  return {
+    instructions: ixs.map(toKit),
+    nftMints: [m.firstPositionNftKeypair.secretKey, m.secondPositionNftKeypair.secretKey],
+    dammPool: canonicalDammPool(Number(config.migrationFeeOption), st.baseMint.toBase58(), config.quoteMint.toBase58()),
+  }
 }
 
 /** Metadata URIs above this length push the launch transaction over 1,232 bytes (spike, 1 Oct). */
@@ -536,7 +702,8 @@ export async function tokenInfo(
 /**
  * Helius deprioritizes unpaginated getProgramAccounts (1 Oct): on a Helius URL the
  * Connection's getProgramAccounts is answered by getProgramAccountsV2, paged (see
- * program-accounts.ts). Anchor's account.all() calls it for the DAMM v2 pool lookup.
+ * program-accounts.ts), for any Anchor account.all() the SDKs make. readLaunch itself no
+ * longer searches: the migrated pool is derived (canonicalDammPool).
  */
 export function pageConnection(conn: Connection, doFetch?: Fetch): Connection {
   if (!isHelius(conn.rpcEndpoint)) return conn

@@ -34,6 +34,7 @@ import {
   launchInstructions,
   readLaunch,
   tokenInfo as readTokenInfo,
+  UnsupportedLaunch,
   type MeteoraConnection,
 } from './meteora.js'
 import { buildGrantTx, readAta, readRecurring, userAtaOf } from './mandate-chain.js'
@@ -138,8 +139,10 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
     try {
       L = await readLaunch(d.conn, pool)
     } catch (e) {
+      if (e instanceof UnsupportedLaunch) throw new HttpError(400, 'launch_unsupported', e.message)
       throw new HttpError(400, 'bad_pool', safeError(e))
     }
+    if (L.refusal) throw new HttpError(400, 'launch_unsupported', L.refusal)
     const t = d.parseTerms({ ...body, payee: d.delegatee }, a.address)
     if (L.quoteMint !== t.mint.mint)
       throw new HttpError(400, 'launch_other_token', `this launch is priced in another token, not ${t.mint.symbol}`)
@@ -337,6 +340,7 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
     progressPct: L.progressBps / 100,
     quoteRaised: L.quoteRaised,
     threshold: L.threshold,
+    refusal: L.refusal,
     committed: demand(L.pool),
   })
 
@@ -351,7 +355,11 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
           null
         res.json({ ok: true, launch: launchView(L, symbol) })
       })
-      .catch((e: unknown) => res.status(404).json({ ok: false, error: 'no_launch', message: safeError(e) }))
+      .catch((e: unknown) =>
+        e instanceof UnsupportedLaunch
+          ? res.status(422).json({ ok: false, error: 'launch_unsupported', message: e.message })
+          : res.status(404).json({ ok: false, error: 'no_launch', message: safeError(e) }),
+      )
   })
 
   app.get('/m/:file', (req, res) => {

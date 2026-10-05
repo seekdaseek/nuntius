@@ -215,6 +215,8 @@ export function migrateMandates(db: Database.Database): void {
     ['out_amount', 'TEXT'],
     ['out_decimals', 'INTEGER'],
     ['out_symbol', 'TEXT'],
+    // A skipped buy: why it was skipped.
+    ['note', 'TEXT'],
   ] as const) {
     if (!cols.has(name)) db.exec(`ALTER TABLE events ADD COLUMN ${name} ${type}`)
   }
@@ -230,6 +232,16 @@ export function migrateMandates(db: Database.Database): void {
     slippage_bps INTEGER NOT NULL
   )`)
   db.exec('CREATE INDEX IF NOT EXISTS idx_backings_pool ON backings (pool)')
+  // Curves the executor's crank migrated to DAMM v2 (or found migrated): one row per pool,
+  // claimed before the send, so two processes never send two migrations.
+  db.exec(`CREATE TABLE IF NOT EXISTS migrations (
+    pool TEXT PRIMARY KEY,
+    damm_pool TEXT NOT NULL,
+    signature TEXT,
+    state TEXT NOT NULL,
+    cost_lamports TEXT,
+    at INTEGER NOT NULL
+  )`)
   // Subscription launches created in the app: the metadata JSON is served from here.
   db.exec(`CREATE TABLE IF NOT EXISTS launches (
     base_mint TEXT PRIMARY KEY,
@@ -493,9 +505,9 @@ export class MandateStore {
     const r = this.db
       .prepare(
         `INSERT OR IGNORE INTO events (address, kind, at, delegation_pda, delegatee, label, amount, decimals, symbol, signature, actor,
-                                       remaining, cap, reset_ts, period_s, mandate_id, out_amount, out_decimals, out_symbol)
+                                       remaining, cap, reset_ts, period_s, mandate_id, out_amount, out_decimals, out_symbol, note)
          VALUES (@address, @kind, @at, @delegationPda, @delegatee, @label, @amountBaseUnits, @decimals, @symbol, @signature, @actor,
-                 @remaining, @cap, @resetTs, @periodS, @mandateId, @outBaseUnits, @outDecimals, @outSymbol)`,
+                 @remaining, @cap, @resetTs, @periodS, @mandateId, @outBaseUnits, @outDecimals, @outSymbol, @note)`,
       )
       .run({
         address,
@@ -504,6 +516,7 @@ export class MandateStore {
         outBaseUnits: e.outBaseUnits ?? null,
         outDecimals: e.outDecimals ?? null,
         outSymbol: e.outSymbol ?? null,
+        note: e.note ?? null,
         remaining: w.remainingBaseUnits ?? null,
         cap: w.capBaseUnits ?? null,
         resetTs: w.nextResetTs ?? null,
@@ -541,6 +554,7 @@ export class MandateStore {
       outBaseUnits: r.out_amount == null ? null : String(r.out_amount),
       outDecimals: r.out_decimals == null ? null : Number(r.out_decimals),
       outSymbol: r.out_symbol == null ? null : String(r.out_symbol),
+      note: r.note == null ? null : String(r.note),
     }))
   }
 
@@ -591,6 +605,67 @@ export class MandateStore {
   }
 
   /** Every live backing of a launch with its mandate's terms: the launch's committed demand. */
+  /** The launch pools that live back permissions buy into. */
+  backedPools(): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT DISTINCT b.pool FROM backings b JOIN mandates m ON m.id = b.mandate_id WHERE m.status = 'active'`,
+        )
+        .all() as { pool: string }[]
+    ).map((r) => r.pool)
+  }
+
+  /**
+   * Claims a pool's migration for this signature. 'sent' rows are ours; 'keeper' rows were
+   * found already migrated. False when another claim exists.
+   */
+  claimMigration(
+    pool: string,
+    dammPool: string,
+    signature: string | null,
+    state: 'sent' | 'keeper',
+    nowMs: number,
+  ): boolean {
+    return (
+      this.db
+        .prepare('INSERT OR IGNORE INTO migrations (pool, damm_pool, signature, state, at) VALUES (?, ?, ?, ?, ?)')
+        .run(pool, dammPool, signature, state, nowMs).changes === 1
+    )
+  }
+
+  finishMigration(pool: string, state: 'landed' | 'failed', costLamports: bigint | null, nowMs: number): void {
+    this.db
+      .prepare('UPDATE migrations SET state = ?, cost_lamports = ?, at = ? WHERE pool = ?')
+      .run(state, costLamports === null ? null : costLamports.toString(), nowMs, pool)
+  }
+
+  /** A failed send is forgotten, so the crank may try again. */
+  dropMigration(pool: string): void {
+    this.db.prepare('DELETE FROM migrations WHERE pool = ?').run(pool)
+  }
+
+  migrationOf(pool: string): {
+    pool: string
+    dammPool: string
+    signature: string | null
+    state: string
+    costLamports: string | null
+    at: number
+  } | null {
+    const r = this.db.prepare('SELECT * FROM migrations WHERE pool = ?').get(pool) as Row | undefined
+    return r
+      ? {
+          pool: String(r.pool),
+          dammPool: String(r.damm_pool),
+          signature: r.signature == null ? null : String(r.signature),
+          state: String(r.state),
+          costLamports: r.cost_lamports == null ? null : String(r.cost_lamports),
+          at: Number(r.at),
+        }
+      : null
+  }
+
   backingsOfPool(pool: string): {
     backing: Backing
     amountPerPeriod: string

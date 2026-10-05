@@ -28,9 +28,16 @@ import {
   minimumOut,
   PULL_INDEX,
   quoteDbc,
+  quoteDamm,
   swapInstruction,
   SWAP_INDEX,
   meteoraConnection,
+  backRefusal,
+  canonicalDammPool,
+  swapFailure,
+  readLaunch,
+  UnsupportedLaunch,
+  type CurveFacts,
 } from './meteora.js'
 import { fakeHelius } from './test/fake-helius.js'
 import { CpAmm, cpAmmCoder, CpAmmIdl, POOL_TOKEN_A_MINT_OFFSET } from '@meteora-ag/cp-amm-sdk'
@@ -238,4 +245,200 @@ test('the Meteora DAMM v2 lookup pages on Helius too (connection.getProgramAccou
   assert.ok(
     filters.some((f) => f.memcmp?.offset === POOL_TOKEN_A_MINT_OFFSET && f.memcmp.bytes === baseMint.toBase58()),
   )
+})
+
+// --- A3b: only the pool the DBC program migrates into is ever bought -------------------
+
+test('the canonical DAMM v2 pool: derived from the migration config the fee option names', () => {
+  const base = K()
+  const want = DBC.deriveDammV2PoolAddress(
+    new PublicKey('Hv8Lmzmnju6m7kcokVKvwqz7QPmdX9XfKjJsXz8RXcjp'), // FixedBps100, option 2 (the preset's)
+    new PublicKey(base),
+    new PublicKey(USDC),
+  ).toBase58()
+  assert.equal(canonicalDammPool(2, base, USDC), want)
+  assert.equal(DBC.DAMM_V2_MIGRATION_FEE_ADDRESS[2]!.toBase58(), 'Hv8Lmzmnju6m7kcokVKvwqz7QPmdX9XfKjJsXz8RXcjp')
+  assert.notEqual(canonicalDammPool(3, base, USDC), want, 'another fee option is another config, another pool')
+  assert.throws(() => canonicalDammPool(7, base, USDC), /unknown migration fee option/)
+})
+
+type AnyCoder = {
+  size: (n: string) => number
+  decode: (n: string, b: Buffer) => any
+  encode: (n: string, v: unknown) => Promise<Buffer>
+}
+type AnyIdl = { accounts?: { name: string; discriminator: number[] }[] }
+
+/** A zeroed account of this type, decoded by the Program's own (camelCase) coder. */
+function zeroed(coder: AnyCoder, idl: AnyIdl, name: string) {
+  const acc = idl.accounts!.find((a) => a.name.toLowerCase() === name.toLowerCase())!
+  return coder.decode(name, Buffer.concat([Buffer.from(acc.discriminator), Buffer.alloc(coder.size(name) - 8)]))
+}
+
+/**
+ * Encodes an account at its full size. Anchor 0.31's coder.encode writes into a fixed
+ * 1,000-byte buffer, and a DBC PoolConfig is larger than that.
+ */
+function encoded(coder: AnyCoder, idl: AnyIdl, name: string, value: unknown): Buffer {
+  const layouts = (
+    coder as unknown as {
+      accountLayouts: Map<string, { encode?: unknown; layout?: { encode: (v: unknown, b: Buffer) => number } }>
+    }
+  ).accountLayouts
+  const key = [...layouts.keys()].find((k) => k.toLowerCase() === name.toLowerCase())!
+  const l = layouts.get(key)!
+  const enc = (l.layout ?? (l as unknown as { encode: (v: unknown, b: Buffer) => number })).encode.bind(l.layout ?? l)
+  const acc = idl.accounts!.find((a) => a.name.toLowerCase() === name.toLowerCase())!
+  const body = Buffer.alloc(coder.size(name) - 8)
+  enc(value, body)
+  return Buffer.concat([Buffer.from(acc.discriminator), body])
+}
+
+/** A connection that serves these accounts by address, as Anchor and the SDKs read them. */
+function accounts(map: Map<string, { owner: string; data: Buffer }>, slot = 1) {
+  const info = (k: PublicKey) => {
+    const a = map.get(k.toBase58())
+    return a ? { owner: new PublicKey(a.owner), data: a.data, lamports: 1, executable: false, rentEpoch: 0 } : null
+  }
+  return {
+    rpcEndpoint: 'fake',
+    commitment: 'confirmed',
+    getSlot: async () => slot,
+    getAccountInfo: async (k: PublicKey) => info(k),
+    getAccountInfoAndContext: async (k: PublicKey) => ({ context: { slot }, value: info(k) }),
+    getProgramAccounts: async () => {
+      throw new Error('readLaunch must not search pools')
+    },
+  } as unknown as Connection
+}
+
+/** A migrated curve for (base, USDC) on the preset's config, plus DAMM v2 pools at the given addresses. */
+async function migratedLaunch(dammPools: string[], base: string) {
+  const dbc = DBC.createDbcProgram(offline).program
+  const amm = new CpAmm(offline)._program
+  const dbcCoder = dbc.coder.accounts as unknown as AnyCoder
+  const ammCoder = amm.coder.accounts as unknown as AnyCoder
+  const { pool: vp0, config: cfg0 } = curve(1_000n)
+  const configKey = K()
+  const poolKey = K()
+  const cfg = { ...cfg0, migrationOption: 1, migrationFeeOption: 2, tokenDecimal: 6 }
+  const ps0 = (vp0 as unknown as { poolState: Record<string, unknown> }).poolState
+  const vp = {
+    ...vp0,
+    poolState: {
+      ...ps0,
+      config: new PublicKey(configKey),
+      baseMint: new PublicKey(base),
+      quoteReserve: cfg0.migrationQuoteThreshold,
+      isMigrated: 1,
+    },
+  }
+  const DBC_ID = DBC.DYNAMIC_BONDING_CURVE_PROGRAM_ID.toBase58()
+  const map = new Map<string, { owner: string; data: Buffer }>()
+  map.set(configKey, { owner: DBC_ID, data: encoded(dbcCoder, dbc.idl as AnyIdl, 'poolConfig', cfg) })
+  map.set(poolKey, { owner: DBC_ID, data: encoded(dbcCoder, dbc.idl as AnyIdl, 'virtualPool', vp) })
+  for (const k of dammPools) {
+    const st = {
+      ...zeroed(ammCoder, amm.idl as AnyIdl, 'pool'),
+      tokenAMint: new PublicKey(base),
+      tokenBMint: new PublicKey(USDC),
+      tokenAVault: new PublicKey(K()),
+      tokenBVault: new PublicKey(K()),
+    }
+    map.set(k, {
+      owner: 'cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG',
+      data: encoded(ammCoder, amm.idl as AnyIdl, 'pool', st),
+    })
+  }
+  return { conn: accounts(map), poolKey }
+}
+
+test('after migration the buy goes to the canonical pool, never a decoy for the same pair', async () => {
+  const base = K()
+  const decoy = K()
+  const canonical = canonicalDammPool(2, base, USDC)
+  const { conn, poolKey } = await migratedLaunch([decoy, canonical], base)
+  const L = await readLaunch(conn, poolKey)
+  assert.equal(L.route, 'damm_v2')
+  assert.equal(L.dammPool, canonical)
+  assert.equal(L.swap?.pool, canonical)
+  // A stored pool that is not the canonical one is refused, not bought.
+  await assert.rejects(readLaunch(conn, poolKey, decoy), /is not the curve's migrated pool/)
+  assert.equal((await readLaunch(conn, poolKey, canonical)).dammPool, canonical)
+})
+
+test('migrated, but the canonical pool is not readable yet: the buy waits, it does not look elsewhere', async () => {
+  const base = K()
+  const { conn, poolKey } = await migratedLaunch([K()], base)
+  const L = await readLaunch(conn, poolKey)
+  assert.equal(L.route, 'migrating')
+  assert.equal(L.swap, null)
+})
+
+// --- A5b: pools "Back a launch" cannot buy are refused with one sentence --------------
+
+const plain: CurveFacts = {
+  tokenType: 0,
+  quoteTokenFlag: 0,
+  migrationOption: 1,
+  baseFeeMode: 0,
+  firstFactor: 0,
+  secondFactor: 0n,
+  thirdFactor: 0n,
+  activationType: 1,
+  activationPoint: 1_000n,
+}
+
+test('back refusals: Token-2022, DAMM v1, an active rate limiter; a plain curve passes', () => {
+  assert.equal(backRefusal(plain, 2_000, 1), null)
+  assert.match(backRefusal({ ...plain, tokenType: 1 }, 2_000, 1)!, /Token-2022/)
+  assert.match(backRefusal({ ...plain, quoteTokenFlag: 1 }, 2_000, 1)!, /priced in a Token-2022 token/)
+  assert.match(backRefusal({ ...plain, migrationOption: 0 }, 2_000, 1)!, /DAMM v1/)
+  const limiter = { ...plain, baseFeeMode: 2, firstFactor: 10, secondFactor: 600n, thirdFactor: 1_000_000n }
+  assert.match(backRefusal(limiter, 1_300, 1)!, /opening window.*about 5 minutes/)
+  assert.equal(backRefusal(limiter, 1_601, 1), null, 'once the window has passed the limiter never applies again')
+  assert.equal(backRefusal({ ...limiter, firstFactor: 0, secondFactor: 0n, thirdFactor: 0n }, 1_300, 1), null)
+  const bySlot = { ...limiter, activationType: 0, activationPoint: 100n, secondFactor: 150n }
+  assert.match(backRefusal(bySlot, 0, 100)!, /about 1 minutes?/)
+})
+
+test('a transfer-hook pool is named as such', async () => {
+  const key = K()
+  const data = Buffer.concat([Buffer.from([237, 219, 184, 23, 42, 189, 169, 35]), Buffer.alloc(64)])
+  const conn = accounts(new Map([[key, { owner: DBC.DYNAMIC_BONDING_CURVE_PROGRAM_ID.toBase58(), data }]]))
+  await assert.rejects(
+    readLaunch(conn, key),
+    (e: unknown) => e instanceof UnsupportedLaunch && /transfer hook/.test(e.message),
+  )
+  await assert.rejects(readLaunch(conn, K()), /no DBC pool/)
+})
+
+test('the DAMM v2 quote does not depend on the decimals passed (they feed only price impact)', () => {
+  const amm = new CpAmm(offline)._program
+  const z = zeroed(amm.coder.accounts as unknown as AnyCoder, amm.idl as AnyIdl, 'pool')
+  const st = {
+    ...z,
+    tokenAMint: new PublicKey(K()),
+    tokenBMint: new PublicKey(USDC),
+    liquidity: new BN('1000000000000000000000000'),
+    sqrtPrice: new BN('18446744073709551616'),
+    sqrtMinPrice: new BN('4295048016'),
+    sqrtMaxPrice: new BN('79226673521066979257578248091'),
+  }
+  const a = quoteDamm(offline, st as never, USDC, 1_000_000n, 200, 1_800_000_000, 1, { base: 6, quote: 6 })
+  const b = quoteDamm(offline, st as never, USDC, 1_000_000n, 200, 1_800_000_000, 1, { base: 9, quote: 6 })
+  assert.equal(a.kind, 'buy')
+  if (a.kind === 'buy') assert.ok(a.quotedOut > 0n)
+  assert.deepEqual(a, b)
+})
+
+test('swap failures: classified by the program that failed and its code', () => {
+  assert.equal(swapFailure('dbc', 6002), 'slippage')
+  assert.equal(swapFailure('damm_v2', 6002), 'slippage')
+  assert.equal(swapFailure('dbc', 6013), 'curve_full')
+  assert.equal(swapFailure('dbc', 6033), 'no_room')
+  assert.equal(swapFailure('damm_v2', 6023), 'no_room')
+  assert.equal(swapFailure('damm_v2', 6013), 'error:6013', 'DAMM v2 has no curve to complete')
+  assert.equal(swapFailure('dbc', 6043), 'error:6043')
+  assert.equal(swapFailure('dbc', null), 'error:unknown')
 })

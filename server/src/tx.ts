@@ -151,6 +151,45 @@ export async function simulateWire(rpc: Rpc, wire: string): Promise<{ err: strin
  * delegation granted moments ago; 'confirmed' sees it (2 Oct audit, finding 7).
  * The executor still runs its own simulateWire before every send (Executor.sendChecked).
  */
+/**
+ * Our own simulation of signed bytes, also reading what the fee payer holds after it:
+ * what the transaction would cost that account (fee and rent), before it is sent.
+ */
+export async function simulateCost(
+  rpc: Rpc,
+  wire: string,
+  payer: Address,
+): Promise<{
+  err: string | null
+  customCode: number | null
+  balance: bigint
+  cost: bigint | null
+  unitsConsumed: number | null
+}> {
+  const balance = (await rpc.getBalance(payer, { commitment: 'confirmed' }).send()).value
+  const r = await rpc
+    .simulateTransaction(wire as never, {
+      encoding: 'base64',
+      commitment: 'confirmed',
+      sigVerify: false,
+      accounts: { encoding: 'base64', addresses: [payer] },
+    })
+    .send()
+  const v = r.value as unknown as {
+    err: unknown
+    accounts?: ({ lamports: bigint | number } | null)[] | null
+    unitsConsumed?: bigint | number
+  }
+  const after = v.accounts?.[0]?.lamports
+  return {
+    err: v.err ? JSON.stringify(v.err, (_k, x) => (typeof x === 'bigint' ? Number(x) : x)) : null,
+    customCode: customCodeOf(v.err),
+    balance: BigInt(balance),
+    cost: after === undefined || after === null ? null : BigInt(balance) - BigInt(after),
+    unitsConsumed: v.unitsConsumed === undefined ? null : Number(v.unitsConsumed),
+  }
+}
+
 export const SEND_OPTIONS = { encoding: 'base64', skipPreflight: false, preflightCommitment: 'confirmed' } as const
 
 /**

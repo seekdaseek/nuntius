@@ -22,12 +22,16 @@
  * beyond the SQLite UNIQUE claim, KMS custody of the delegatee key, fee
  * top-up monitoring.
  */
-import type { Address, TransactionSigner } from '@solana/kit'
+import { createKeyPairSignerFromBytes, type Address, type Instruction, type TransactionSigner } from '@solana/kit'
 import { effectiveWindow, ERR, pullInstruction, readAta, readRecurring, type RecurringState } from './mandate-chain.js'
 import type { Backing, Mandate, MandateStore, PullRow } from './mandate-store.js'
 import {
   budgetInstructions,
+  curveStage,
   failedInstruction,
+  MIGRATION_BUDGET,
+  migrationInstructions,
+  swapFailure,
   PULL_INDEX,
   quoteDamm,
   quoteDbc,
@@ -46,6 +50,7 @@ import {
   PULL_BUDGET,
   sendOverCapProof,
   sendWire,
+  simulateCost,
   simulateWire,
   signOnly,
   statusOf,
@@ -69,6 +74,11 @@ export interface ChainPort {
   /** Back permissions: how much of the launch token a landed buy delivered to the backer. */
   bought?(m: Mandate, b: Backing, signature: string): Promise<bigint | null>
   /**
+   * The migration crank: where a backed curve stands, and for a filled one, its migration to
+   * DAMM v2 signed and simulated, with what it would cost the executor.
+   */
+  migration?(pool: string): Promise<MigrationStep>
+  /**
    * The program's clock: the Clock sysvar's unix time at 'confirmed', the bank every
    * simulation runs on. The period is the program's, so the executor reads it here rather
    * than trusting the server's wall clock, which runs ahead of it (mainnet, 6 Oct: the
@@ -83,6 +93,19 @@ export interface ChainPort {
   sendProof(wire: string): Promise<void>
   status(signature: string, lastValidBlockHeight: bigint): Promise<TxStatus>
 }
+
+export type MigrationStep =
+  | { kind: 'open' }
+  | { kind: 'migrated'; dammPool: string }
+  | {
+      kind: 'ready'
+      signed: SignedTx
+      dammPool: string
+      /** What the simulation says the executor pays (fee and rent), and what it holds now. */
+      costLamports: bigint | null
+      balanceLamports: bigint
+      simErr: string | null
+    }
 
 export type PreparedBuy =
   | { kind: 'buy'; signed: SignedTx; amountIn: bigint; minimumOut: bigint; route: Route; dammPool: string | null }
@@ -120,13 +143,17 @@ export function rpcChain(
       if (!conn) throw new Error('back permissions need a web3 connection')
       const L = await readLaunch(conn, b.pool, b.dammPool)
       if (L.quoteMint !== m.mint) throw new Error('the launch is not priced in this permission’s token')
+      if (L.refusal) throw new Error(L.refusal)
       if (L.route === 'migrating' || !L.swap) return { kind: 'wait', reason: 'migrating' }
       const nowS = Math.floor(Date.now() / 1000)
       const slot = await conn.getSlot('confirmed')
       const q =
         L.route === 'dbc'
           ? quoteDbc(L.raw.dbc!.pool, L.raw.dbc!.config, amount, b.slippageBps, nowS, slot)
-          : quoteDamm(conn, L.raw.damm!, L.quoteMint, amount, b.slippageBps, nowS, slot)
+          : quoteDamm(conn, L.raw.damm!, L.quoteMint, amount, b.slippageBps, nowS, slot, {
+              base: L.baseDecimals,
+              quote: m.decimals,
+            })
       if (q.kind === 'wait') return q
       const pull = await pullInstruction({
         delegatee,
@@ -167,6 +194,37 @@ export function rpcChain(
       if (after === undefined) return null
       return BigInt(after) - BigInt(pick(tx?.meta?.preTokenBalances) ?? '0')
     },
+    async migration(pool) {
+      if (!conn) throw new Error('the migration crank needs a web3 connection')
+      const st = await curveStage(conn, pool)
+      if (st.stage === 'open') return { kind: 'open' }
+      if (st.stage === 'migrated') return { kind: 'migrated', dammPool: st.dammPool }
+      const m = await migrationInstructions(conn, pool, delegatee.address)
+      const signers = new Map<string, TransactionSigner>([[delegatee.address, delegatee]])
+      for (const bytes of m.nftMints) {
+        const s = await createKeyPairSignerFromBytes(bytes)
+        signers.set(s.address, s)
+      }
+      // The executor pays and signs; the two fresh position NFT mints sign with it.
+      const ixs = m.instructions.map((ix) => ({
+        ...ix,
+        accounts: ix.accounts?.map((a) => (signers.has(a.address) ? { ...a, signer: signers.get(a.address)! } : a)),
+      })) as Instruction[]
+      const signed = await signOnly(
+        delegatee,
+        [...computeBudgetInstructions(MIGRATION_BUDGET), ...ixs],
+        await latestBlockhash(rpc),
+      )
+      const sim = await simulateCost(rpc, signed.wire, delegatee.address)
+      return {
+        kind: 'ready',
+        signed,
+        dammPool: m.dammPool,
+        costLamports: sim.cost,
+        balanceLamports: sim.balance,
+        simErr: sim.err,
+      }
+    },
     async clock() {
       const { value } = await rpc.getAccountInfo(CLOCK_SYSVAR, { encoding: 'base64', commitment: 'confirmed' }).send()
       if (!value) throw new Error('no clock sysvar')
@@ -202,6 +260,15 @@ export interface ExecutorOptions {
   rebroadcastMs?: number
   sleep?: (ms: number) => Promise<void>
   random?: () => number
+  /**
+   * The migration crank. A backed curve that has filled and stays unmigrated this long is
+   * migrated by the executor (Meteora's keepers migrate only some pools). Then: never when
+   * the simulated cost is over the budget, or would leave the executor under its floor;
+   * that is logged as an alert instead.
+   */
+  migrateAfterMs?: number
+  migrationBudgetLamports?: bigint
+  floorLamports?: bigint
 }
 
 export type Outcome =
@@ -226,8 +293,6 @@ export class Executor {
   private readonly o: Required<Omit<ExecutorOptions, 'store' | 'chain' | 'receipts' | 'log'>> &
     Pick<ExecutorOptions, 'store' | 'chain' | 'receipts' | 'log'>
   private readonly backoff = new Map<string, { failures: number; nextAt: number }>()
-  /** The program's clock as read at the start of this tick (null: not read yet). */
-  private chainNowS: bigint | null = null
   private running = false
   private again = false
 
@@ -241,8 +306,35 @@ export class Executor {
       rebroadcastMs: 2_000,
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       random: Math.random,
+      migrateAfterMs: 10 * 60_000,
+      migrationBudgetLamports: 50_000_000n,
+      floorLamports: 2_000_000n,
       ...options,
     }
+  }
+
+  /** When each backed curve was first seen filled and unmigrated, by pool. */
+  private readonly filledSince = new Map<string, number>()
+  /** The program's clock as read at the start of this tick (null: not read yet). */
+  private chainNowS: bigint | null = null
+
+  /**
+   * Seconds since the epoch on the program's clock, which decides every period. A failed
+   * read falls back to the wall clock less CLOCK_MARGIN_S: late by a few seconds rather
+   * than early, because early claims a period the program has not opened yet.
+   */
+  private async readClock(): Promise<bigint> {
+    const wall = BigInt(Math.floor(this.o.now() / 1000))
+    if (!this.o.chain.clock) return wall
+    try {
+      return await this.o.chain.clock()
+    } catch (e) {
+      this.o.log.warn('executor_clock_unread', { error: safeError(e) })
+      return wall - CLOCK_MARGIN_S
+    }
+  }
+  private nowS(): bigint {
+    return this.chainNowS ?? BigInt(Math.floor(this.o.now() / 1000))
   }
 
   /** One pass over every active mandate. Never throws; never overlaps itself. */
@@ -273,6 +365,16 @@ export class Executor {
           this.fail(m, e)
         }
       }
+      if (this.o.chain.migration) {
+        for (const pool of this.o.store.backedPools()) {
+          try {
+            out[`migrate:${pool}`] = await this.crank(pool)
+          } catch (e) {
+            out[`migrate:${pool}`] = 'error'
+            this.o.log.warn('executor_crank_error', { pool, error: safeError(e) })
+          }
+        }
+      }
     } finally {
       this.running = false
       if (this.again) {
@@ -296,25 +398,6 @@ export class Executor {
       delayMs: delay,
       error: safeError(e),
     })
-  }
-
-  /**
-   * Seconds since the epoch on the program's clock, which decides every period. A failed
-   * read falls back to the wall clock less CLOCK_MARGIN_S: late by a few seconds rather
-   * than early, because early claims a period the program has not opened yet.
-   */
-  private async readClock(): Promise<bigint> {
-    const wall = BigInt(Math.floor(this.o.now() / 1000))
-    if (!this.o.chain.clock) return wall
-    try {
-      return await this.o.chain.clock()
-    } catch (e) {
-      this.o.log.warn('executor_clock_unread', { error: safeError(e) })
-      return wall - CLOCK_MARGIN_S
-    }
-  }
-  private nowS(): bigint {
-    return this.chainNowS ?? BigInt(Math.floor(this.o.now() / 1000))
   }
 
   /** Visible for tests. */
@@ -519,6 +602,95 @@ export class Executor {
     return 'failed'
   }
 
+  /**
+   * The migration crank for one backed curve: nothing while it fills; once it has filled
+   * and stayed unmigrated for migrateAfterMs, one migration, simulated first and sent
+   * through tx.ts, within the budget and above the floor. A curve someone else migrated
+   * (Meteora's keepers) is simply recorded. Idempotent: one claimed row per pool.
+   */
+  async crank(pool: string): Promise<Outcome> {
+    if (this.o.store.migrationOf(pool)?.state === 'landed') return 'period_done'
+    const step = await this.o.chain.migration!(pool)
+    if (step.kind === 'open') {
+      this.filledSince.delete(pool)
+      return 'not_started'
+    }
+    if (step.kind === 'migrated') {
+      const mine = this.o.store.migrationOf(pool)
+      if (!mine) this.o.store.claimMigration(pool, step.dammPool, null, 'keeper', this.o.now())
+      else if (mine.state === 'sent') this.o.store.finishMigration(pool, 'landed', null, this.o.now())
+      this.filledSince.delete(pool)
+      return 'period_done'
+    }
+    const since = this.filledSince.get(pool) ?? this.o.now()
+    this.filledSince.set(pool, since)
+    if (this.o.now() - since < this.o.migrateAfterMs) return 'buy_waiting'
+    if (step.simErr) {
+      // A keeper may have migrated it between our read and the simulation: read again next tick.
+      this.o.log.warn('executor_migration_refused', { pool, err: step.simErr })
+      return 'refused'
+    }
+    const cost = step.costLamports
+    if (cost === null || cost > this.o.migrationBudgetLamports || step.balanceLamports - cost < this.o.floorLamports) {
+      this.o.log.error('executor_migration_over_budget', {
+        pool,
+        costLamports: cost,
+        budgetLamports: this.o.migrationBudgetLamports,
+        balanceLamports: step.balanceLamports,
+        floorLamports: this.o.floorLamports,
+      })
+      return 'refused'
+    }
+    if (!this.o.store.claimMigration(pool, step.dammPool, step.signed.signature, 'sent', this.o.now()))
+      return 'claimed_elsewhere'
+    this.o.log.info('executor_migration_send', { pool, sig: step.signed.signature, costLamports: cost })
+    await this.o.chain.send(step.signed.wire)
+    const deadline = this.o.now() + Math.max(this.o.settleMs, 60_000)
+    for (;;) {
+      const st = await this.o.chain.status(step.signed.signature, step.signed.lastValidBlockHeight)
+      if (st.state === 'landed' && !st.landed.err) {
+        this.o.store.finishMigration(pool, 'landed', cost, this.o.now())
+        this.o.log.info('executor_migrated', { pool, dammPool: step.dammPool, sig: st.landed.signature })
+        await this.migrationReceipts(pool, st.landed.signature)
+        return 'landed'
+      }
+      if (st.state === 'expired' || (st.state === 'landed' && st.landed.err) || this.o.now() >= deadline) {
+        // Not ours: forget the claim; the next tick reads the curve again (a keeper may have won).
+        this.o.store.dropMigration(pool)
+        this.o.log.warn('executor_migration_failed', {
+          pool,
+          sig: step.signed.signature,
+          err: st.state === 'landed' ? st.landed.err : st.state,
+        })
+        return 'failed'
+      }
+      await this.o.sleep(500)
+    }
+  }
+
+  /** One receipt per backer of the pool: the token moved to its regular pool; buys follow it. */
+  private async migrationReceipts(pool: string, signature: string): Promise<void> {
+    for (const r of this.o.store.backingsOfPool(pool)) {
+      const m = this.o.store.getMandate(r.backing.mandateId)
+      if (!m) continue
+      await this.o.receipts.emit(m.address, {
+        kind: 'migrated',
+        at: this.o.now(),
+        delegationPda: m.delegationPda,
+        delegatee: m.delegatee,
+        label: m.label || null,
+        amountBaseUnits: null,
+        decimals: m.decimals,
+        symbol: m.symbol,
+        // One per permission; the migration's own signature rides in the note.
+        signature: `migrated:${pool}:${m.delegationPda}`,
+        actor: 'nuntius',
+        outSymbol: r.backing.baseSymbol,
+        note: signature,
+      })
+    }
+  }
+
   /** Compose and sign a buy; the route follows the token and is remembered when it moves. */
   private async prepareBuy(m: Mandate, b: Backing, amount: bigint): Promise<PreparedBuy> {
     if (!this.o.chain.prepareBuy) throw new Error('this chain port cannot buy')
@@ -536,11 +708,18 @@ export class Executor {
     return p
   }
 
-  /** A skipped buy, tried again later in its period with a fresh quote, up to maxAttempts. */
+  /**
+   * A skipped buy, tried again in its period with a fresh quote, up to maxAttempts: after a
+   * slippage miss, later; after a first "no room", at once and one base unit smaller than
+   * the amount that failed. A full curve, a second "no room" and any other program error
+   * end the period's buying.
+   */
   private async retryBuy(m: Mandate, b: Backing, row: PullRow, remaining: bigint): Promise<Outcome> {
     if (row.attempts >= this.o.maxAttempts) return 'period_done'
+    if (row.error && FINAL_SKIPS.has(row.error)) return 'period_done'
     if (this.o.now() < row.nextAttemptAt) return 'skipped'
-    const amount = BigInt(m.pullAmount) < remaining ? BigInt(m.pullAmount) : remaining
+    let amount = BigInt(m.pullAmount) < remaining ? BigInt(m.pullAmount) : remaining
+    if (row.error === 'swap_no_room' && BigInt(row.amount) - 1n < amount) amount = BigInt(row.amount) - 1n
     if (amount <= 0n) return 'period_done'
     const p = await this.prepareBuy(m, b, amount)
     if (p.kind === 'wait') return 'buy_waiting'
@@ -559,18 +738,36 @@ export class Executor {
   }
 
   /**
-   * A buy whose swap would miss (simulated) or missed (landed) its minimum-out: nothing
-   * was pulled. One receipt per period; tried again later in the period with a fresh quote.
+   * A buy whose swap would fail (simulated) or failed (landed): the whole transaction
+   * failed, so nothing was pulled. The program's error code says why (swapFailure), and
+   * the cause sets the receipt and the retry: see retryBuy. One receipt per period.
    */
   private async skipBuy(m: Mandate, back: Backing, row: PullRow, customCode: number | null): Promise<Outcome> {
-    this.o.store.finishPull(row.id, 'skipped', customCode, 'swap_minimum_out', this.o.now())
+    const cause = swapFailure(back.route, customCode)
+    if (cause === 'no_room' && row.error !== 'swap_no_room') {
+      // The curve took less than its quote said: re-quote one unit smaller, at once, once.
+      this.o.store.finishPull(row.id, 'skipped', customCode, 'swap_no_room', this.o.now())
+      this.o.store.backoffPull(row.id, this.o.now(), 'swap_no_room', this.o.now())
+      this.o.log.warn('executor_buy_no_room', { mandate: m.id, amount: row.amount, code: customCode })
+      return 'skipped'
+    }
+    const error =
+      cause === 'slippage'
+        ? 'swap_minimum_out'
+        : cause === 'curve_full'
+          ? 'swap_curve_full'
+          : cause === 'no_room'
+            ? 'swap_no_room_again'
+            : 'swap_failed'
+    this.o.store.finishPull(row.id, 'skipped', customCode, error, this.o.now())
     const delay = Math.min(this.o.backoffBaseMs * 2 ** row.attempts, this.o.backoffMaxMs)
     this.o.store.backoffPull(
       row.id,
-      this.o.now() + Math.round(delay * (0.5 + this.o.random() / 2)),
-      'swap_minimum_out',
+      cause === 'slippage' ? this.o.now() + Math.round(delay * (0.5 + this.o.random() / 2)) : this.o.now(),
+      error,
       this.o.now(),
     )
+    if (cause !== 'slippage') this.o.log.warn('executor_buy_skipped', { mandate: m.id, cause, code: customCode })
     await this.o.receipts.emit(
       m.address,
       {
@@ -584,6 +781,7 @@ export class Executor {
         symbol: m.symbol,
         signature: `skipped:${m.delegationPda}:${row.periodStart}`,
         actor: 'nuntius',
+        note: cause,
       },
       { slippagePct: back.slippageBps / 100 },
     )
@@ -681,6 +879,9 @@ interface TokenBal {
   owner?: string
   uiTokenAmount: { amount: string }
 }
+
+/** Skips that end a period's buying: nothing is tried again until the next period. */
+const FINAL_SKIPS = new Set(['swap_curve_full', 'swap_no_room_again', 'swap_failed'])
 
 /**
  * Seconds after a period starts before its buy is sent: up to a tenth of the period, at

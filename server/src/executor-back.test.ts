@@ -143,7 +143,7 @@ test('a buy that misses its minimum-out is skipped: nothing pulled, one receipt,
 test('a swap our simulation says would miss is skipped before it is sent: no fee, the same receipt', async () => {
   const { chain, store, pushes, clock, m, mk, jitter } = setup()
   clock.advance(jitter)
-  chain.simRefusals.push({ err: '{"InstructionError":[3,{"Custom":6003}]}', customCode: 6003 })
+  chain.simRefusals.push({ err: '{"InstructionError":[3,{"Custom":6002}]}', customCode: 6002 })
   const ex = mk()
   assert.deepEqual(await ex.tick(), { [m.id]: 'skipped' })
   assert.deepEqual(chain.sends, [], 'never sent')
@@ -189,4 +189,96 @@ test('jitter: fixed per permission and period, at most a tenth of the period and
     assert.ok(buyJitterS(`m${p}`, p * 604_800, 604_800) < 600)
   }
   assert.equal(buyJitterS('a', 0, 5), 0)
+})
+
+// --- A5b: each swap-leg failure gets its own receipt and retry rule ---------------------
+
+const refuse = (code: number) => ({ err: `{"InstructionError":[3,{"Custom":${code}}]}`, customCode: code })
+
+test('the curve completed first (6013): one receipt that says so, and no more tries this period', async () => {
+  const { chain, store, pushes, clock, m, mk, jitter } = setup()
+  clock.advance(jitter)
+  chain.simRefusals.push(refuse(6013))
+  const ex = mk()
+  assert.deepEqual(await ex.tick(), { [m.id]: 'skipped' })
+  assert.deepEqual(chain.sends, [], 'never sent: our simulation refused it')
+  assert.equal(pushes.length, 1)
+  assert.equal(pushes[0]!.title, 'Skipped: Back NATX')
+  assert.match(pushes[0]!.body, /^The curve filled before this buy\. Nothing was taken/)
+  assert.doesNotMatch(pushes[0]!.body, /price moved/)
+  assert.equal(store.events(OWNER)[0]!.note, 'curve_full')
+  assert.match(pushes[0]!.url, /why=curve_full/)
+  clock.advance(3_600)
+  assert.deepEqual(await ex.tick(), { [m.id]: 'period_done' })
+  assert.equal(chain.simulations.length, 1, 'nothing more tried this period')
+  // The next period buys again (after migration the route follows the token).
+  clock.advance(604_800)
+  const next = buyJitterS(m.id, Number(chain.delegations.get(PDA)!.periodStart) + 604_800, 604_800)
+  clock.advance(next)
+  assert.deepEqual(await ex.tick(), { [m.id]: 'landed' })
+})
+
+test('less room than quoted (6033): re-quoted one unit smaller at once, with no receipt for the miss', async () => {
+  const { chain, store, pushes, clock, m, mk, jitter } = setup()
+  clock.advance(jitter)
+  chain.simRefusals.push(refuse(6033))
+  const ex = mk()
+  assert.deepEqual(await ex.tick(), { [m.id]: 'skipped' })
+  assert.equal(pushes.length, 0, 'no receipt for a miss that is retried at once')
+  assert.deepEqual(await ex.tick(), { [m.id]: 'landed' }, 'the next tick, with no backoff')
+  const row = store.pullsFor(PDA)[0]!
+  assert.equal(row.amount, '999999', 'one base unit under the amount that failed')
+  assert.equal(chain.delegations.get(PDA)!.pulled, 999_999n, 'the pull took only what the buy spent')
+  assert.equal(chain.delegateeQuote, 0n)
+  assert.equal(pushes.length, 1)
+  assert.match(pushes[0]!.title, /^Bought /)
+})
+
+test('no room twice: one receipt that names it, and no more tries this period', async () => {
+  const { chain, store, pushes, clock, m, mk, jitter } = setup()
+  clock.advance(jitter)
+  chain.simRefusals.push(refuse(6033), refuse(6033))
+  const ex = mk()
+  assert.deepEqual(await ex.tick(), { [m.id]: 'skipped' })
+  assert.deepEqual(await ex.tick(), { [m.id]: 'skipped' })
+  assert.equal(pushes.length, 1)
+  assert.equal(pushes[0]!.body, 'The curve had less room left than quoted. Nothing was taken.')
+  assert.equal(store.events(OWNER)[0]!.note, 'no_room')
+  assert.deepEqual(await ex.tick(), { [m.id]: 'period_done' })
+  assert.equal(chain.simulations.length, 2)
+})
+
+test('any other program error is named by its code, not called slippage, and not retried', async () => {
+  const { chain, store, pushes, clock, m, mk, jitter } = setup()
+  clock.advance(jitter)
+  chain.simRefusals.push(refuse(6043))
+  const ex = mk()
+  assert.deepEqual(await ex.tick(), { [m.id]: 'skipped' })
+  assert.equal(pushes[0]!.body, 'The swap failed with error 6043. Nothing was taken.')
+  assert.equal(store.events(OWNER)[0]!.note, 'error:6043')
+  clock.advance(3_600)
+  assert.deepEqual(await ex.tick(), { [m.id]: 'period_done' })
+})
+
+test('a landed failure is classified the same way as a simulated one (6013 on chain)', async () => {
+  const { chain, store, pushes, clock, m, mk, jitter } = setup()
+  clock.advance(jitter)
+  chain.swapFailures = 1
+  chain.swapFailureCode = 6013
+  assert.deepEqual(await mk().tick(), { [m.id]: 'skipped' })
+  assert.equal(chain.delegations.get(PDA)!.pulled, 0n, 'nothing was taken')
+  assert.match(pushes[0]!.body, /curve filled/)
+  assert.equal(store.pullsFor(PDA)[0]!.error, 'swap_curve_full')
+})
+
+test('on DAMM v2, 6023 is "no room" and 6002 is slippage; 6013 there is just an error code', async () => {
+  const { chain, store, clock, m, mk, jitter } = setup()
+  clock.advance(jitter)
+  chain.buyRoute = 'damm_v2'
+  chain.dammPool = 'DammPool'
+  chain.simRefusals.push(refuse(6023))
+  const ex = mk()
+  assert.deepEqual(await ex.tick(), { [m.id]: 'skipped' })
+  assert.equal(store.pullsFor(PDA)[0]!.error, 'swap_no_room')
+  assert.deepEqual(await ex.tick(), { [m.id]: 'landed' })
 })
