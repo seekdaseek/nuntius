@@ -32,7 +32,7 @@ That run used **two** Seed Vault approvals (init, then create). This build cuts 
 
 **v1.0.2** (5 Oct: **Type it your way**, where you write the permission in your own words and tap Fill; and the **Back a Seeker builder** starter, 25 SKR a week; see README and SECURITY.md §4b) is the release below. It was installed over v1.0.1 on the Seeker on 5 Oct, and it passed the Fill, two grants with their first pulls, two revokes, sign-out and sign-in on mainnet (README, "v1.0.2"). It keeps everything in v1.0.1 (4 Oct, security hardening; SECURITY.md §7).
 
-**APK:** {{RELEASE_URL}} (`nuntius-1.0.2.apk`, sha256 `{{APK_SHA256}}`, signed with the release key). v1.0.1 stays at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.1 and v1.0.0 at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0.
+**APK:** https://github.com/seekdaseek/nuntius/releases/tag/v1.0.2 (`nuntius-1.0.2.apk`, sha256 `fc54b8fc3badd3854e4af62bca45d04dfbc9c44901b50b06cac64da715c26faf`, signed with the release key). v1.0.1 stays at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.1 and v1.0.0 at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0.
 
 1. **Install.** On the Seeker, open the release page, download `nuntius-1.0.2.apk`, allow the install. The app talks to mainnet through the nuntius backend.
 2. **Sign in** (about 20 s). Tap **Sign in with Solana** and approve in Seed Vault. The backend verifies the signature with a single-use nonce and checks the Seeker Genesis Token. A Seeker wallet shows **✓ Seeker verified**; any other wallet shows **Basic tier** and can hold one permission.
