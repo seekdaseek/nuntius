@@ -54,7 +54,7 @@ Built for the Solana Seeker. Android only: Mobile Wallet Adapter and Seed Vault 
 
 ## v1.0.1 (4 October 2026): security hardening
 
-v1.0.1 fixes every finding of the 2 Oct Radiants Align audit in code, plus two issues found while answering it. Each fix, its commit and the test that proves it are in [SECURITY.md §7](SECURITY.md). In short:
+v1.0.1 fixes every finding of the 2 Oct Radiants Align audit in code (21 findings: 4 high, 7 medium, 8 low, 2 info), plus two issues found while answering it. Each fix, its commit and the test that proves it are in [SECURITY.md §7](SECURITY.md). In short:
 
 - **The app checks every server-built transaction before Seed Vault opens** (`core/tx-check.ts`). The wallet must pay and sign alone, and every program must be on the action's allowlist. A grant's mint, amount, period, expiry, delegatee and token approval must be what the user typed and the screen showed; a revoke ends only the permission tapped. Anything else never reaches Seed Vault. The executor's address is pinned at build time (`EXPO_PUBLIC_EXECUTOR`); **a build without it refuses every grant**.
 - **Tokens move to the Android keystore** (`expo-secure-store`), moved from v1.0.0's storage on first start, so nobody is signed out.
