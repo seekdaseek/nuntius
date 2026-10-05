@@ -323,12 +323,12 @@ If the swap cannot meet its minimum-out, the whole transaction fails and nothing
 
 **Proven on mainnet by simulation, 1 October.** Read-only, from the Mac, with no signature: `tools/mac/09-spike-dbc.sh` on the ops branch.
 
-| Transaction             | Size                               | Compute                             | Result                                                                                  |
-| ----------------------- | ---------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------- |
-| Buy on a live DBC pool  | 858 B                              | 38,869 CU (pull 8,661, swap 29,908) | Executor's quote account 0 before and after; tokens with the backer                     |
-| Buy on a DAMM v2 pool   | 825 B                              | 25,611 CU                           | The same                                                                                |
-| Grant + ATA instruction | 580 B                              | 29,566 CU                           | Allowance finite (5,000,000 base units, not u64::MAX)                                   |
-| Launch                  | 1,093 B, signed once by the device | —                                   | Stopped on rent: the account had 0.0228 SOL. Proven on the device with a funded account |
+| Transaction             | Size                                    | Compute                             | Result                                                                                                                             |
+| ----------------------- | --------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Buy on a live DBC pool  | 858 B                                   | 38,869 CU (pull 8,661, swap 29,908) | Executor's quote account 0 before and after; tokens with the backer                                                                |
+| Buy on a DAMM v2 pool   | 825 B                                   | 25,611 CU                           | The same                                                                                                                           |
+| Grant + ATA instruction | 580 B                                   | 29,566 CU                           | Allowance finite (5,000,000 base units, not u64::MAX)                                                                              |
+| Launch                  | 1,093 B, built for one device signature | —                                   | **Not run on mainnet yet.** The simulation stopped on rent at instruction 3 (`Custom 1`): the creator account held 0.022817361 SOL |
 
 ## Architecture
 
