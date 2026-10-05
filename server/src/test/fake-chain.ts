@@ -118,6 +118,11 @@ export class FakeChain implements ChainPort {
   /** The next simulations to refuse, with these errors (then the send never happens). */
   simRefusals: { err: string; customCode: number | null }[] = []
 
+  /** The program's clock (what transfers are checked against): nowS. */
+  async clock(): Promise<bigint> {
+    return this.nowS
+  }
+
   async simulate(wire: string): Promise<{ err: string | null; customCode: number | null }> {
     const { signature } = JSON.parse(wire) as { signature: string }
     this.simulations.push(signature)

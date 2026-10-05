@@ -320,3 +320,48 @@ test('kick: a kick that arrives during a tick runs one more tick after it', asyn
   await new Promise((r) => setTimeout(r, 20))
   assert.equal(ticks, 2, 'the queued kick ran one more tick')
 })
+
+test('the period is the program’s: a wall clock ahead of the chain claims nothing early, and no period is lost', async () => {
+  const { chain, store, pushes, clock, m, mk } = setup()
+  const ex = mk()
+  assert.deepEqual(await ex.tick(), { [m.id]: 'landed' })
+  // The server's clock passes the period boundary 2 s before the program's does (mainnet's
+  // confirmed block time ran 1 to 2 s behind the wall clock, 6 Oct).
+  clock.advance(61)
+  chain.nowS -= 3n
+  assert.deepEqual(await ex.tick(), { [m.id]: 'period_done' }, 'the program has not opened the next period yet')
+  assert.equal(store.pullsFor(PDA).length, 1, 'nothing claimed early')
+  assert.equal(pushes.filter((p) => p.title.startsWith('Refused')).length, 0, 'no false refusal')
+  chain.nowS += 3n
+  assert.deepEqual(await ex.tick(), { [m.id]: 'landed' }, 'once the program opens it, the pull goes')
+  assert.equal(store.pullsFor(PDA).length, 2)
+  assert.equal(chain.delegations.get(PDA)!.pulled, 10_000n)
+})
+
+test('the same lag, judged by the wall clock, would lose the period (the old behaviour, kept as a control)', async () => {
+  const { chain, store, clock, m, mk } = setup()
+  const ex = mk()
+  // A chain port without a clock: the executor falls back to the wall clock.
+  ;(chain as { clock?: unknown }).clock = undefined
+  assert.deepEqual(await ex.tick(), { [m.id]: 'landed' })
+  clock.advance(61)
+  chain.nowS -= 3n
+  assert.deepEqual(await ex.tick(), { [m.id]: 'refused' }, 'claimed early: the program refuses with 0x190')
+  chain.nowS += 3n
+  assert.deepEqual(await ex.tick(), { [m.id]: 'period_done' }, 'and the period is lost')
+  assert.equal(store.pullsFor(PDA).at(-1)!.state, 'refused')
+})
+
+test('an unreadable clock: the wall clock less the margin, so a boundary is never claimed early', async () => {
+  const { chain, store, lines, clock, m, mk } = setup()
+  const ex = mk()
+  assert.deepEqual(await ex.tick(), { [m.id]: 'landed' })
+  chain.clock = async () => {
+    throw new Error('rpc down')
+  }
+  clock.advance(61)
+  chain.nowS -= 3n
+  assert.deepEqual(await ex.tick(), { [m.id]: 'period_done' })
+  assert.equal(store.pullsFor(PDA).length, 1)
+  assert.ok(lines.some((l) => l.includes('executor_clock_unread')))
+})

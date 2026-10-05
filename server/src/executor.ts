@@ -68,6 +68,13 @@ export interface ChainPort {
   prepareBuy?(m: Mandate, b: Backing, amount: bigint): Promise<PreparedBuy>
   /** Back permissions: how much of the launch token a landed buy delivered to the backer. */
   bought?(m: Mandate, b: Backing, signature: string): Promise<bigint | null>
+  /**
+   * The program's clock: the Clock sysvar's unix time at 'confirmed', the bank every
+   * simulation runs on. The period is the program's, so the executor reads it here rather
+   * than trusting the server's wall clock, which runs ahead of it (mainnet, 6 Oct: the
+   * confirmed block time was 1 to 2 s behind).
+   */
+  clock?(): Promise<bigint>
   /** Our own simulation of the signed bytes; every send but the over-cap demo runs it first. */
   simulate(wire: string): Promise<{ err: string | null; customCode: number | null }>
   /** Every normal send: the RPC node's preflight on, at 'confirmed' (tx.ts sendWire). */
@@ -80,6 +87,10 @@ export interface ChainPort {
 export type PreparedBuy =
   | { kind: 'buy'; signed: SignedTx; amountIn: bigint; minimumOut: bigint; route: Route; dammPool: string | null }
   | { kind: 'wait'; reason: 'migrating' | 'nothing_left' }
+
+const CLOCK_SYSVAR = 'SysvarC1ock11111111111111111111111111111111' as Address
+/** When the program's clock cannot be read, the wall clock less this margin stands in for it. */
+export const CLOCK_MARGIN_S = 5n
 
 export function rpcChain(
   rpc: Rpc,
@@ -156,6 +167,13 @@ export function rpcChain(
       if (after === undefined) return null
       return BigInt(after) - BigInt(pick(tx?.meta?.preTokenBalances) ?? '0')
     },
+    async clock() {
+      const { value } = await rpc.getAccountInfo(CLOCK_SYSVAR, { encoding: 'base64', commitment: 'confirmed' }).send()
+      if (!value) throw new Error('no clock sysvar')
+      const data = Buffer.from(value.data[0] as string, 'base64')
+      // Clock: slot u64, epoch_start_timestamp i64, epoch u64, leader_schedule_epoch u64, unix_timestamp i64.
+      return data.readBigInt64LE(32)
+    },
     simulate: (wire) => simulateWire(rpc, wire),
     send: (wire) => sendWire(rpc, wire),
     sendProof: (wire) => sendOverCapProof(rpc, wire),
@@ -208,6 +226,8 @@ export class Executor {
   private readonly o: Required<Omit<ExecutorOptions, 'store' | 'chain' | 'receipts' | 'log'>> &
     Pick<ExecutorOptions, 'store' | 'chain' | 'receipts' | 'log'>
   private readonly backoff = new Map<string, { failures: number; nextAt: number }>()
+  /** The program's clock as read at the start of this tick (null: not read yet). */
+  private chainNowS: bigint | null = null
   private running = false
   private again = false
 
@@ -243,6 +263,7 @@ export class Executor {
     if (this.running) return out
     this.running = true
     try {
+      this.chainNowS = await this.readClock()
       for (const m of this.o.store.activeMandates()) {
         try {
           out[m.id] = await this.processMandate(m)
@@ -277,6 +298,25 @@ export class Executor {
     })
   }
 
+  /**
+   * Seconds since the epoch on the program's clock, which decides every period. A failed
+   * read falls back to the wall clock less CLOCK_MARGIN_S: late by a few seconds rather
+   * than early, because early claims a period the program has not opened yet.
+   */
+  private async readClock(): Promise<bigint> {
+    const wall = BigInt(Math.floor(this.o.now() / 1000))
+    if (!this.o.chain.clock) return wall
+    try {
+      return await this.o.chain.clock()
+    } catch (e) {
+      this.o.log.warn('executor_clock_unread', { error: safeError(e) })
+      return wall - CLOCK_MARGIN_S
+    }
+  }
+  private nowS(): bigint {
+    return this.chainNowS ?? BigInt(Math.floor(this.o.now() / 1000))
+  }
+
   /** Visible for tests. */
   backoffOf(id: string): { failures: number; nextAt: number } | undefined {
     return this.backoff.get(id)
@@ -297,7 +337,9 @@ export class Executor {
       return 'terms_mismatch'
     }
 
-    const nowS = BigInt(Math.floor(this.o.now() / 1000))
+    // The program's clock, not the wall clock: a tick that runs ahead of the chain would claim a
+    // period the program has not opened, and its pull would be refused (0x190) and lost.
+    const nowS = this.nowS()
     const w = effectiveWindow(state, nowS)
     if (w.expired) return this.end(m, 'expired')
     if (w.periodIndex < 0n) return 'not_started'
@@ -421,7 +463,7 @@ export class Executor {
     if (!landed.err) {
       this.o.store.finishPull(row.id, 'landed', null, null, this.o.now())
       const after = await this.o.chain.read(m.delegationPda)
-      const w = after.exists ? effectiveWindow(after, BigInt(Math.floor(this.o.now() / 1000))) : null
+      const w = after.exists ? effectiveWindow(after, this.nowS()) : null
       const got = back ? await this.o.chain.bought?.(m, back, landed.signature).catch(() => null) : null
       await this.o.receipts.emit(
         m.address,
@@ -613,7 +655,7 @@ export class Executor {
   async demoOverCap(m: Mandate): Promise<{ signature: string; customCode: number | null }> {
     const state = await this.o.chain.read(m.delegationPda)
     if (!state.exists) throw new Error('delegation does not exist')
-    const w = effectiveWindow(state, BigInt(Math.floor(this.o.now() / 1000)))
+    const w = effectiveWindow(state, await this.readClock())
     const signed = await this.o.chain.signPull(m, w.remaining + 1n)
     // The one send without our simulation and without the RPC node's preflight, on purpose:
     // both would refuse it, and the refusal must land on chain with a signature to be the
