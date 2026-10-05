@@ -26,7 +26,8 @@ import {
 } from '@solana/kit'
 import { buildGrantTx, buildRevokeTx, readAta } from './mandate-chain.js'
 import { backerAccountInstruction } from './launch-api.js'
-import { launchInstructions, offlineConnection } from './meteora.js'
+import { launchInstructions } from './meteora.js'
+import { launchConnection, presetConfigAccount } from './test/dbc-fakes.js'
 import { assertOk, deviceSignAndSend, funded, mintTo, requireLocal, skipLocalnet } from './test/localnet.js'
 
 type Check = (base64: string, e: Record<string, unknown>) => Promise<void>
@@ -112,13 +113,11 @@ test(
     assert.equal(r2.revokesAuthority, true)
     await accept('revoke-last', r2.transactionBase64, revokeExpect(g2.delegationPda, null))
 
-    // 6. A launch, as the launch route composes it (the SDK reads only the quote mint's owner).
+    // 6. A launch, as the launch route composes it: one pool on nuntius's config for the quote.
     const config = getAddressDecoder().decode(randomBytes(32))
     const launchMint = getAddressDecoder().decode(randomBytes(32))
-    const ixs = await launchInstructions(offlineConnection(), {
+    const ixs = await launchInstructions(launchConnection(config, presetConfigAccount(mint, owner.address)), {
       creator: owner.address,
-      quoteMint: mint,
-      quoteThreshold: 50_000,
       name: 'natXbuilder',
       symbol: 'NATX',
       uri: `https://nuntius.ochinimus.app/m/${launchMint}.json`,
@@ -139,6 +138,7 @@ test(
       wallet: owner.address,
       baseMint: launchMint,
       quoteMint: mint,
+      config,
     })
 
     if (process.env.TX_FIXTURES_OUT)

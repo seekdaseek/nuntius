@@ -34,12 +34,14 @@ import {
   meteoraConnection,
   backRefusal,
   canonicalDammPool,
+  DBC_PROGRAM,
   swapFailure,
   readLaunch,
   UnsupportedLaunch,
   type CurveFacts,
 } from './meteora.js'
 import { fakeHelius } from './test/fake-helius.js'
+import { launchConnection, presetConfigAccount } from './test/dbc-fakes.js'
 import { CpAmm, cpAmmCoder, CpAmmIdl, POOL_TOKEN_A_MINT_OFFSET } from '@meteora-ag/cp-amm-sdk'
 
 const offline = new Connection('http://127.0.0.1:1', 'confirmed')
@@ -162,31 +164,14 @@ test('the DBC quote: full amount on an open curve, a wait once it fills', () => 
   })
 })
 
-test('the launch: preset accepted by the SDK, one transaction under 1,232 bytes, three signers', async () => {
-  // The SDK reads only the quote mint's owner program while composing; answer that offline.
-  const conn = {
-    rpcEndpoint: 'offline',
-    commitment: 'confirmed',
-    getAccountInfo: async () => ({
-      owner: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
-      data: Buffer.alloc(82),
-      lamports: 1,
-      executable: false,
-    }),
-  } as unknown as Connection
+test('the launch: one pool on the fixed config, one transaction under 1,232 bytes, two signers', async () => {
+  const config = K()
+  const conn = launchConnection(config, presetConfigAccount(SKR, K()))
   const creator = K()
-  const uri = `https://nuntius.ochinimus.app/m/${K()}.json`
+  const baseMint = K()
+  const uri = `https://nuntius.ochinimus.app/m/${baseMint}.json`
   assert.ok(uri.length <= MAX_URI)
-  const ixs = await launchInstructions(conn, {
-    creator,
-    quoteMint: SKR,
-    quoteThreshold: 50_000,
-    name: 'natXbuilder',
-    symbol: 'NATX',
-    uri,
-    config: K(),
-    baseMint: K(),
-  })
+  const ixs = await launchInstructions(conn, { creator, config, name: 'nimus', symbol: 'NIMUS', uri, baseMint })
   const msg = pipe(
     createTransactionMessage({ version: 0 }),
     (m) => setTransactionMessageFeePayerSigner(createNoopSigner(creator as Address), m),
@@ -199,18 +184,22 @@ test('the launch: preset accepted by the SDK, one transaction under 1,232 bytes,
   )
   const tx = compileTransaction(msg)
   const bytes = getTransactionEncoder().encode(tx).length
-  assert.equal(Object.keys(tx.signatures).length, 3, 'creator, config key, mint key')
+  assert.deepEqual(Object.keys(tx.signatures).sort(), [creator, baseMint].sort(), 'creator and mint key only')
   assert.ok(bytes <= 1232, `${bytes} bytes`)
+  // No config is created per launch: only the pool on nuntius's config.
+  const dbcIxs = ixs.filter((ix) => ix.programAddress === DBC_PROGRAM)
+  assert.equal(dbcIxs.length, 1)
+  assert.equal(Buffer.from(dbcIxs[0]!.data!.slice(0, 8)).toString('hex'), '8c55d7b06636684f')
+  assert.equal(dbcIxs[0]!.accounts![0]!.address, config)
+  console.log(`  launch transaction: ${bytes} bytes`)
   await assert.rejects(
     launchInstructions(conn, {
       creator,
-      quoteMint: SKR,
-      quoteThreshold: 50_000,
+      config,
       name: 'x',
       symbol: 'XX',
       uri: `https://${'a'.repeat(MAX_URI)}`,
-      config: K(),
-      baseMint: K(),
+      baseMint,
     }),
     /URI/,
   )

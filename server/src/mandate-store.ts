@@ -255,6 +255,9 @@ export function migrateMandates(db: Database.Database): void {
     status TEXT NOT NULL,
     created_at INTEGER NOT NULL
   )`)
+  // The launch's own description, served unchanged in its metadata JSON (added in place).
+  const launchCols = new Set((db.prepare('PRAGMA table_info(launches)').all() as { name: string }[]).map((c) => c.name))
+  if (!launchCols.has('description')) db.exec('ALTER TABLE launches ADD COLUMN description TEXT')
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_mandate ON events (mandate_id)')
   attributeEvents(db)
 }
@@ -333,6 +336,8 @@ export interface Launch {
   symbol: string
   image: string
   quoteMint: string
+  /** The creator's own words for the metadata JSON; null: the standard line. */
+  description: string | null
   status: 'pending' | 'live'
   createdAt: number
 }
@@ -345,6 +350,7 @@ const toLaunch = (r: Row): Launch => ({
   symbol: String(r.symbol),
   image: String(r.image),
   quoteMint: String(r.quote_mint),
+  description: r.description == null ? null : String(r.description),
   status: String(r.status) as Launch['status'],
   createdAt: Number(r.created_at),
 })
@@ -563,8 +569,8 @@ export class MandateStore {
   addLaunch(l: Omit<Launch, 'status' | 'createdAt'>, nowMs: number): void {
     this.db
       .prepare(
-        `INSERT INTO launches (base_mint, pool, config, creator, name, symbol, image, quote_mint, status, created_at)
-         VALUES (@baseMint, @pool, @config, @creator, @name, @symbol, @image, @quoteMint, 'pending', @now)`,
+        `INSERT INTO launches (base_mint, pool, config, creator, name, symbol, image, quote_mint, description, status, created_at)
+         VALUES (@baseMint, @pool, @config, @creator, @name, @symbol, @image, @quoteMint, @description, 'pending', @now)`,
       )
       .run({ ...l, now: nowMs })
   }

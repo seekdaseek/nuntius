@@ -240,6 +240,7 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       freshNonce,
       publicLimiter: new RateLimiter(60, 60_000),
       now,
+      launchConfigs: cfg.launchConfigs ?? {},
     })
   }
 

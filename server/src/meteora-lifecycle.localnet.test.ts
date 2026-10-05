@@ -14,7 +14,7 @@ import { Keypair, LAMPORTS_PER_SOL, PublicKey, sendAndConfirmTransaction, type C
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo as splMintTo } from '@solana/spl-token'
 import * as DBC from '@meteora-ag/dynamic-bonding-curve-sdk'
 import * as CPAMM from '@meteora-ag/cp-amm-sdk'
-import { createKeyPairSignerFromBytes, type Address, type KeyPairSigner } from '@solana/kit'
+import { createKeyPairSignerFromBytes, type Address, type Instruction, type KeyPairSigner } from '@solana/kit'
 import { Executor, rpcChain, type ChainPort, type PreparedBuy } from './executor.js'
 import { MandateStore, type Backing, type Mandate } from './mandate-store.js'
 import { Receipts, type PushPort } from './receipts.js'
@@ -23,9 +23,10 @@ import { buildGrantTx, buildRevokeTx, pullInstruction, userAtaOf } from './manda
 import { backerAccountInstruction } from './launch-api.js'
 import {
   canonicalDammPool,
+  configInstructions,
   DBC_PROGRAM,
   DAMM_V2_PROGRAM,
-  launchPreset,
+  launchInstructions,
   meteoraConnection,
   readLaunch,
 } from './meteora.js'
@@ -149,36 +150,79 @@ test(
     const executorQuote = (await getOrCreateAssociatedTokenAccount(conn, partner, quoteMint, executorKp.publicKey))
       .address
 
-    // --- 1. The config under test, then the pool ---------------------------------------------
+    // --- 1. The config under test, then the pool: the server's own composition ----------------
+    // configInstructions is what tools/launch-config.ts sends once per quote mint; the pool is
+    // launchInstructions on it, as /api/launch/create builds it for the device.
     const client = new DBC.DynamicBondingCurveClient(conn, 'confirmed')
+    const signersOf = async (...kps: Keypair[]) =>
+      new Map(
+        await Promise.all(
+          kps.map(async (k) => [k.publicKey.toBase58(), await createKeyPairSignerFromBytes(k.secretKey)] as const),
+        ),
+      )
+    const withSigners = (ixs: Instruction[], signers: Map<string, KeyPairSigner>) =>
+      ixs.map((ix) => ({
+        ...ix,
+        accounts: ix.accounts?.map((a) => (signers.has(a.address) ? { ...a, signer: signers.get(a.address)! } : a)),
+      })) as Instruction[]
     const configKp = Keypair.generate()
-    const cfgTx = await client.partner.createConfig({
-      ...launchPreset(THRESHOLD_UI),
-      config: configKp.publicKey,
-      feeClaimer: partner.publicKey,
-      leftoverReceiver: partner.publicKey,
-      quoteMint,
-      payer: partner.publicKey,
+    const partnerSigners = await signersOf(partner, configKp)
+    const cfgIxs = await configInstructions(conn, {
+      config: configKp.publicKey.toBase58(),
+      feeClaimer: partner.publicKey.toBase58(),
+      leftoverReceiver: partner.publicKey.toBase58(),
+      quoteMint: quoteMint.toBase58(),
+      payer: partner.publicKey.toBase58(),
+      quoteThreshold: THRESHOLD_UI,
     })
-    const cfgSig = await sendAndConfirmTransaction(conn, cfgTx, [partner, configKp], { commitment: 'confirmed' })
-    step('1a create config', { config: configKp.publicKey.toBase58(), ...(await txFacts(conn, cfgSig)) })
+    const partnerBefore = await conn.getBalance(partner.publicKey, 'confirmed')
+    const cfgLanded = await signAndLand(
+      rpc,
+      partnerSigners.get(partner.publicKey.toBase58())!,
+      withSigners(cfgIxs, partnerSigners),
+    )
+    assert.equal(cfgLanded.err, null, `config: ${cfgLanded.err}`)
+    const cfgCost = partnerBefore - (await conn.getBalance(partner.publicKey, 'confirmed'))
+    const cfgState = (await client.state.getPoolConfig(configKp.publicKey))!
+    assert.equal(cfgState.feeClaimer.toBase58(), partner.publicKey.toBase58(), 'the fee claimer is the partner')
+    assert.equal(Number(cfgState.migrationFeeOption), 2)
+    assert.equal(Number(cfgState.creatorTradingFeePercentage), 50)
+    step('1a create config (the payer pays its rent)', {
+      config: configKp.publicKey.toBase58(),
+      ...(await txFacts(conn, cfgLanded.signature)),
+      payerCostLamports: cfgCost,
+    })
     const baseKp = Keypair.generate()
-    const poolTx = await client.creator.createPool({
-      config: configKp.publicKey,
-      baseMint: baseKp.publicKey,
+    const creatorSigners = await signersOf(creator, baseKp)
+    const poolIxs = await launchInstructions(conn, {
+      creator: creator.publicKey.toBase58(),
+      config: configKp.publicKey.toBase58(),
       name: 'nuntius proof',
       symbol: 'PROOF',
       uri: 'https://nuntius.ochinimus.app/m/proof.json',
-      payer: creator.publicKey,
-      poolCreator: creator.publicKey,
+      baseMint: baseKp.publicKey.toBase58(),
     })
-    const poolSig = await sendAndConfirmTransaction(conn, poolTx, [creator, baseKp], { commitment: 'confirmed' })
+    const creatorBefore = await conn.getBalance(creator.publicKey, 'confirmed')
+    const poolLanded = await signAndLand(
+      rpc,
+      creatorSigners.get(creator.publicKey.toBase58())!,
+      withSigners(poolIxs, creatorSigners),
+    )
+    assert.equal(poolLanded.err, null, `pool: ${poolLanded.err}`)
+    const poolCost = creatorBefore - (await conn.getBalance(creator.publicKey, 'confirmed'))
     const pool = DBC.deriveDbcPoolAddress(quoteMint, baseKp.publicKey, configKp.publicKey).toBase58()
     const baseMint = baseKp.publicKey.toBase58()
-    step('1b create pool (one creator signature plus the fresh mint)', {
+    const poolFacts = await txFacts(conn, poolLanded.signature)
+    assert.deepEqual(
+      poolFacts.signers.sort(),
+      [creator.publicKey.toBase58(), baseMint].sort(),
+      'the creator and the mint key',
+    )
+    step('1b create pool on the config (the creator signs once; the mint key is fresh)', {
       pool,
       baseMint,
-      ...(await txFacts(conn, poolSig)),
+      ...poolFacts,
+      creatorCostLamports: poolCost,
     })
     const L0 = await readLaunch(conn, pool)
     assert.equal(L0.route, 'dbc')

@@ -136,11 +136,12 @@ test('a launch is refused with anything but its own pool instructions', async ()
   const { base64, expect } = fx('launch')
   await refused(tamper(base64, extraTransfer), expect, 'an extra transfer')
   await refused(
-    tamper(base64, (m) => (m.find(PROGRAMS.dbc, 0xc9).data[1] = 0)),
+    tamper(base64, (m) => (m.find(PROGRAMS.dbc, 0x8c).data[1] = 0)),
     expect,
     'another DBC instruction',
   )
   await refused(base64, { ...expect, quoteMint: fresh() } as Expect, 'another quote token')
+  await refused(base64, { ...expect, config: fresh() } as Expect, 'a pool on another config')
   await refused(
     tamper(base64, (m) => m.setFeePayer(fresh())),
     expect,

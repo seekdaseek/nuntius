@@ -210,11 +210,17 @@ export const api = {
       throw new ApiError(json.error ?? `http_${r.status}`, json.message ?? 'no launch', r.status)
     return json.launch
   },
-  launchCreate: (session: string, l: { name: string; symbol: string; image?: string; quote: string }) =>
-    post<{ transactionBase64: string; pool: string; baseMint: string; uri: string }>('/api/launch/create', {
-      session,
-      ...l,
-    }),
+  launchCreate: (
+    session: string,
+    l: { name: string; symbol: string; image?: string; description?: string; quote: string },
+  ) =>
+    post<{ transactionBase64: string; pool: string; baseMint: string; config: string; uri: string }>(
+      '/api/launch/create',
+      {
+        session,
+        ...l,
+      },
+    ),
   launchConfirm: (session: string, baseMint: string) =>
     post<{ launch: LaunchInfo }>('/api/launch/confirm', { session, baseMint }),
   /** The same pending permission with a fresh blockhash. */

@@ -58,6 +58,7 @@ test(
       guardIntervalMs: 60_000,
       demoEndpoints: false,
       launches: false,
+      launchConfigs: {},
     }
     const config = {
       port: 0,

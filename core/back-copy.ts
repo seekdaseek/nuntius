@@ -104,6 +104,9 @@ export function demandWords(c: LaunchView['committed']): string {
   )
 }
 
+/** What nuntius earns from a launch on its config; the launch screen says it before Seed Vault opens. */
+export const FEES_LINE = 'nuntius earns 0.4% of curve trades and half of the locked pool’s fees after graduation.'
+
 const SYMBOL_RE = /^[A-Z0-9]{2,10}$/
 export function checkLaunch(f: { name: string; symbol: string }): { ok: boolean; hint: string | null } {
   if (!f.name.trim() || f.name.trim().length > 32) return { ok: false, hint: 'A name, up to 32 characters' }

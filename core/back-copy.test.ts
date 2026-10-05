@@ -78,3 +78,12 @@ test('skip words name the cause; a receipt without one was a slippage miss', () 
     'Skipped: the price moved more than 2%. Nothing was taken.',
   )
 })
+
+test('the launch screen discloses the same fee line the server sends', async () => {
+  const { readFileSync } = await import('node:fs')
+  const path = await import('node:path')
+  const server = readFileSync(path.join(import.meta.dirname, '..', 'server', 'src', 'launch-api.ts'), 'utf8')
+  const { FEES_LINE } = await import('./back-copy.ts')
+  assert.ok(server.includes(`'${FEES_LINE}'`), 'server/src/launch-api.ts FEES_LINE is the same sentence')
+  assert.match(FEES_LINE, /0\.4% of curve trades and half of the locked pool’s fees/)
+})

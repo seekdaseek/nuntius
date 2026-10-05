@@ -1,9 +1,9 @@
 {
-  "ranAt": "2026-10-05T21:42:35.393Z",
+  "ranAt": "2026-10-05T21:51:07.998Z",
   "validator": {
     "rpc": "http://127.0.0.1:8899",
-    "slotAtStart": 12,
-    "slotAtEnd": 153
+    "slotAtStart": 11,
+    "slotAtEnd": 154
   },
   "programs": [
     {
@@ -30,68 +30,70 @@
   ],
   "steps": [
     {
-      "step": "1a create config",
-      "config": "8ywKJUJdoQmAVNs7A8DF6CMBGgJS81uwR6PsEsvT2mGn",
-      "signature": "2vxERMz83uyRhmZYBXCTza98CyQRHvhsUn3EZGuUGxYG7MjmjdHLDiQJ8SjZUmUqj7D6gJ8v9PUNU8a1nkYZmnF8",
+      "step": "1a create config (the payer pays its rent)",
+      "config": "5wPDwd4va339dUJSEwXrCWL1Gp9x84W4nkTvC2tbHnCS",
+      "signature": "4AdmDLuhfgbQ2MvDRdWwVAssmNrMWcLi8myp9WhtbqyCsEGMa3nxjswne6xPvN5ktgMikwxR36xWaDfxmatL9HYm",
       "err": null,
-      "computeUnits": 36609,
-      "bytes": 629,
-      "feeLamports": 0,
-      "signers": ["2hTFY6RWyaoWBx4sHJJcGPaQWEixHCt7HYKPJyQiNU1Z", "8ywKJUJdoQmAVNs7A8DF6CMBGgJS81uwR6PsEsvT2mGn"]
+      "computeUnits": 36601,
+      "bytes": 631,
+      "feeLamports": 10000,
+      "signers": ["C6nSUcMYJ5eaXRyoiVCzEfuDABowyhrKhG55G1f9yChC", "5wPDwd4va339dUJSEwXrCWL1Gp9x84W4nkTvC2tbHnCS"],
+      "payerCostLamports": 8194960
     },
     {
-      "step": "1b create pool (one creator signature plus the fresh mint)",
-      "pool": "3nkf8eXCfjdA6r6WQBdUXvTYnqziZKjViE3VNm7TD75A",
-      "baseMint": "9peYbwQENUvjoU5C3FqAmrwcCFCb3VU2QukjsvM79MAP",
-      "signature": "2L3Bat6XkKFFmJZsqn78fWjb5QEYJS6LuRVGu92gcmFpnDGL3npbgYttQjpt3QnTbkjJ31Cb1mHuYep5TeqGioJc",
+      "step": "1b create pool on the config (the creator signs once; the mint key is fresh)",
+      "pool": "2BtKVYcHM4teZLdgkRARQfHgCESeJPzU21dqFPHmEeNr",
+      "baseMint": "EkpU9KNWx9iJZCzScUXZW6y8UrdFB8pFhkCY2XYFxfHS",
+      "signature": "pyHiTegcS7r8Cu6vMr4ouE4eKP584t4n5RfVT4XHz6Vcd2XLNfmgWocERvwf1JaSd5jrmMBwyqjdgy7Eb3JJEQ2",
       "err": null,
-      "computeUnits": 116259,
-      "bytes": 713,
-      "feeLamports": 0,
-      "signers": ["DNPvFna6nzd2d49n23hXicSPZN7kTUiHZpNDBniz9cKY", "9peYbwQENUvjoU5C3FqAmrwcCFCb3VU2QukjsvM79MAP"]
+      "computeUnits": 124059,
+      "bytes": 767,
+      "feeLamports": 20000,
+      "signers": ["EkpU9KNWx9iJZCzScUXZW6y8UrdFB8pFhkCY2XYFxfHS", "HQJQCk8zJxBaaRNiRcF3H9enBLzYCxseqZYswgFA4XMy"],
+      "creatorCostLamports": 24517680
     },
     {
       "step": "2 grant, backer 1",
-      "signature": "GMuc7syrwnXmCENm9o13ozmfF3mTcEs5M8Z8TsAbTx55pps8rsQV7ou4MbVrLHqKBd7QPjHRo4nQmsVvztpTTtq",
+      "signature": "4PGb95zPS2BnfGvpEdWT1er7fmp3EW9u9RUyvcJbJMrQhxCV6Z7cEa1nqkyQ1Drv7gyM5iJEA671gSp4CJyA8TNr",
       "err": null,
-      "computeUnits": 38856,
+      "computeUnits": 53856,
       "bytes": 582,
       "feeLamports": 5000,
-      "signers": ["FtCuxk4tYNQzERrQ8DenMEPFBmjPgQx1jMfabkcu1VEH"],
-      "backerBaseAta": "4be5Ew3VmeDFWYGVMbESkmVN2CKYL9VvNxNCoNeNndsW"
+      "signers": ["AS6GmSQ1jtxktWAN5JUg4U2uNKi5DnNke2dmk1YoRjBQ"],
+      "backerBaseAta": "CcttmpSfZ5Yd9w9YpezBu83ZViX15xoAvA7nsuPJWU63"
     },
     {
       "step": "2 grant, backer 2",
-      "signature": "3a2pHorujaSRUYsaqMt1GuJqjhoiT3oT43yCRJ1rQKMhrvgMTSVxTRyaDyPzeRx3eMpFW6AuczAnxekxEm3p2yde",
-      "err": null,
-      "computeUnits": 37356,
-      "bytes": 582,
-      "feeLamports": 5000,
-      "signers": ["8NV5iproZ2CMBZfCH3EPykR3uvWSWD4C8EBdDbsrx23N"],
-      "backerBaseAta": "BThYTtTqyirmkE7quUdQbAVYQDGXFQMiaNGBRAQPqnd4"
-    },
-    {
-      "step": "2 grant, backer 3",
-      "signature": "5RC6YS3Zs25edgwt1K8CBKv4pbh3U4JuTsiCf5WGXoraWmEpYzqz5ap1P63cHkuHjE3rfF3iDqf6eHDW1CTCgE7M",
+      "signature": "3CUAosH8UXqv6rrpqjH8QGzAM1frisdfi7M9gnbtyDHeRvoJLSQfkx5GbcKtehyaDtRkaPtsS3k9279HTPVTKJrV",
       "err": null,
       "computeUnits": 43356,
       "bytes": 582,
       "feeLamports": 5000,
-      "signers": ["8Xqjjg2RiUg3XUURu3gfWY6EB4xBYq3c8c3ELdbNaW8y"],
-      "backerBaseAta": "3vX9EpCyuiuSLV4PgMWLdhvcN3uN9DAZZuD4idix8f1N"
+      "signers": ["DXDd91bEm6iGik7QzvUNZapxsLmDeWdmcrMkWX2URnEV"],
+      "backerBaseAta": "FHYWsMgzCdWMZUxTVUZUxJCMhiyTAnqJoUZdCzE9kRNP"
+    },
+    {
+      "step": "2 grant, backer 3",
+      "signature": "4ZA1NwGVr7AutgdrZKWw8NaQmgeLDhaNvocm1eRcSXRoCg14oTUjgQNPEYUn2MX9AG2fxpHpk1CyBCjvZXv1G76U",
+      "err": null,
+      "computeUnits": 44856,
+      "bytes": 582,
+      "feeLamports": 5000,
+      "signers": ["9AnMXun8hem8V2UvypyptEF3RUuW91ck29Roe2z21wma"],
+      "backerBaseAta": "GHAVuMeoaGF52StJj5vGTGwRqpEa1qX9i99PpHqtMmqn"
     },
     {
       "step": "3 period 1 buy, backer 1",
-      "signature": "TjtaQCxERejSKxVzLjTL8xXtTjvUFFUnrDS29mCbeyFFYodT6WcFmTi1MXNEoMhvuRP5vhPZiXiAbNiqCZ2Fsqg",
+      "signature": "tAPX1gyp4mHzqnkgHyRzgm3kLHuENoNYsTaPUShMCV8nWwPpVsArdy6joCdm4LT21CfbVtyUWtiM3nGUn21oT94",
       "err": null,
-      "computeUnits": 54077,
+      "computeUnits": 54058,
       "bytes": 860,
       "feeLamports": 11000,
-      "signers": ["8WAV3wUNvy1sG49fpLu8kbDNrwU7Q7SCGs5SoYHwa9Ft"],
+      "signers": ["9vXXghPmMHUDHnwfsbJ7nHpznGYrcu3DgWWFQh48ziCM"],
       "route": "dbc",
-      "pool": "3nkf8eXCfjdA6r6WQBdUXvTYnqziZKjViE3VNm7TD75A",
+      "pool": "2BtKVYcHM4teZLdgkRARQfHgCESeJPzU21dqFPHmEeNr",
       "quoteIn": "3000000",
-      "baseOut": "87264646066061",
+      "baseOut": "39201388009537",
       "executorQuote": {
         "before": "0",
         "after": "0"
@@ -103,16 +105,16 @@
     },
     {
       "step": "3 period 1 buy, backer 2",
-      "signature": "2fjSKFrtY2HsQFBMuZJLtpL4xgtU9FyzSxRH7pEmAocPWPt8MUh7tacFNNidkPm48tqxdcKt529UCi6jJWtC61E6",
+      "signature": "qjZmn4L9MPCzfbonMsLozUbV1gmseAqgxjmmEqhWdq8gfFyP1fbf8KWrKAMVDe5LGRJJzwvYAeB7B3WfsC3ZEpK",
       "err": null,
-      "computeUnits": 54075,
+      "computeUnits": 54053,
       "bytes": 860,
       "feeLamports": 11000,
-      "signers": ["8WAV3wUNvy1sG49fpLu8kbDNrwU7Q7SCGs5SoYHwa9Ft"],
+      "signers": ["9vXXghPmMHUDHnwfsbJ7nHpznGYrcu3DgWWFQh48ziCM"],
       "route": "dbc",
-      "pool": "3nkf8eXCfjdA6r6WQBdUXvTYnqziZKjViE3VNm7TD75A",
+      "pool": "2BtKVYcHM4teZLdgkRARQfHgCESeJPzU21dqFPHmEeNr",
       "quoteIn": "3000000",
-      "baseOut": "74066078178069",
+      "baseOut": "36940624596653",
       "executorQuote": {
         "before": "0",
         "after": "0"
@@ -124,16 +126,16 @@
     },
     {
       "step": "3 period 1 buy, backer 3",
-      "signature": "2YymGzDWPxEP4pW9gRfAxdvYc9nHs8wFfXzUv3SyNQK2PuNaCbBsfgNzT1tjjaMUQYqTC6jjveueJMoWT46wA5Hj",
+      "signature": "88D7M1Rpe9Y56CU1dhTgmdGtJL3HEyG2FHZ1yBCEd4xt67GnmM4VzXgxAEAwo6iNGB6S7Dm4ejHJNa7eEaR5zj5",
       "err": null,
-      "computeUnits": 57071,
+      "computeUnits": 54059,
       "bytes": 860,
       "feeLamports": 11000,
-      "signers": ["8WAV3wUNvy1sG49fpLu8kbDNrwU7Q7SCGs5SoYHwa9Ft"],
+      "signers": ["9vXXghPmMHUDHnwfsbJ7nHpznGYrcu3DgWWFQh48ziCM"],
       "route": "dbc",
-      "pool": "3nkf8eXCfjdA6r6WQBdUXvTYnqziZKjViE3VNm7TD75A",
+      "pool": "2BtKVYcHM4teZLdgkRARQfHgCESeJPzU21dqFPHmEeNr",
       "quoteIn": "3000000",
-      "baseOut": "63651362313031",
+      "baseOut": "34869948969838",
       "executorQuote": {
         "before": "0",
         "after": "0"
@@ -145,16 +147,16 @@
     },
     {
       "step": "3 period 2 buy, backer 1",
-      "signature": "2Yg7fmEnRUb1za8g9h7G9xpZZNkmeMue1z5U1D6tJokeuMv33rquAX2r695TLb8sYVaWxYuKSE1jA4U3xEy4QGLF",
+      "signature": "39RtrrD5k9ALbbYiqMTpDGVLzLoRRKfcDHPGMJePh2btS7HL2iTvc58D1FqwpSLMHAz8nmDfYWsuiFs2vK4LeeXn",
       "err": null,
-      "computeUnits": 54155,
+      "computeUnits": 54146,
       "bytes": 860,
       "feeLamports": 11000,
-      "signers": ["8WAV3wUNvy1sG49fpLu8kbDNrwU7Q7SCGs5SoYHwa9Ft"],
+      "signers": ["9vXXghPmMHUDHnwfsbJ7nHpznGYrcu3DgWWFQh48ziCM"],
       "route": "dbc",
-      "pool": "3nkf8eXCfjdA6r6WQBdUXvTYnqziZKjViE3VNm7TD75A",
+      "pool": "2BtKVYcHM4teZLdgkRARQfHgCESeJPzU21dqFPHmEeNr",
       "quoteIn": "3000000",
-      "baseOut": "55289029538809",
+      "baseOut": "32968631692859",
       "executorQuote": {
         "before": "0",
         "after": "0"
@@ -166,16 +168,16 @@
     },
     {
       "step": "3 period 2 buy, backer 2",
-      "signature": "rxJPJBuxF3fbgJvfYD8ucRAjDCD3admfwg25s7dWAgDmjq5kHb3JLA6mBKsLCzWeZnoqf9ze83ZnZSvqmmV6sus",
+      "signature": "4tsJNQGEh7EeJmof8bwmSyF5KsvBx1uaVSJ9bdnnnmAeXFKQ1FtK9qChXMBV7EVX2pjHCdEtzwXxrCqvtkiJrijZ",
       "err": null,
-      "computeUnits": 54172,
+      "computeUnits": 54135,
       "bytes": 860,
       "feeLamports": 11000,
-      "signers": ["8WAV3wUNvy1sG49fpLu8kbDNrwU7Q7SCGs5SoYHwa9Ft"],
+      "signers": ["9vXXghPmMHUDHnwfsbJ7nHpznGYrcu3DgWWFQh48ziCM"],
       "route": "dbc",
-      "pool": "3nkf8eXCfjdA6r6WQBdUXvTYnqziZKjViE3VNm7TD75A",
+      "pool": "2BtKVYcHM4teZLdgkRARQfHgCESeJPzU21dqFPHmEeNr",
       "quoteIn": "3000000",
-      "baseOut": "48473047993861",
+      "baseOut": "31218694066972",
       "executorQuote": {
         "before": "0",
         "after": "0"
@@ -187,16 +189,16 @@
     },
     {
       "step": "3 period 2 buy, backer 3",
-      "signature": "p2fn5fRccT3FbCBjJdNqpUjceCCLxzGT36iF4yyitBRgswFU74KURhcRbRXu9DsQ2w5ny9cBqJaMxzVvaAy4cN7",
+      "signature": "EukCsNy2ZND3zaAMWb1Quh6E7hBtf9hCPLqRzRj14hwrSE4JToC1m7JAZmZtHVSD1NYrXAnyBgbPiN1H5amPvNA",
       "err": null,
-      "computeUnits": 57158,
+      "computeUnits": 54142,
       "bytes": 860,
       "feeLamports": 11000,
-      "signers": ["8WAV3wUNvy1sG49fpLu8kbDNrwU7Q7SCGs5SoYHwa9Ft"],
+      "signers": ["9vXXghPmMHUDHnwfsbJ7nHpznGYrcu3DgWWFQh48ziCM"],
       "route": "dbc",
-      "pool": "3nkf8eXCfjdA6r6WQBdUXvTYnqziZKjViE3VNm7TD75A",
+      "pool": "2BtKVYcHM4teZLdgkRARQfHgCESeJPzU21dqFPHmEeNr",
       "quoteIn": "3000000",
-      "baseOut": "42844288666702",
+      "baseOut": "29604481437039",
       "executorQuote": {
         "before": "0",
         "after": "0"
@@ -208,38 +210,38 @@
     },
     {
       "step": "4a trader pushes the curve",
-      "signature": "51YC4SRhuSHKeghdghSgYUxDBV1WJrXx24jttTAG8v6nnn3GjoXLPBGFMtLnyReaJxRLZP5wayP85GgLQYjnG7Lt",
+      "signature": "S11iZWhfTLV7hVxNF5N74xhZYbXhXZh6u9P83N4CHTCXZBXZvZmoDev2i9DbDwy39hpGgwx2FKBez2sNCVeJ6aT",
       "err": null,
-      "computeUnits": 62076,
+      "computeUnits": 62064,
       "bytes": 634,
       "feeLamports": 5000,
-      "signers": ["AXkacDPBKApzkEC4XRu4DdwKDbA8VELxnMBxf37kHwBw"],
+      "signers": ["Eap11gxbtDpEGKzHyu97Bwz3aGcjCGWygAGoHhuVm67L"],
       "quoteIn": "81494949",
       "roomLeft": "1500001"
     },
     {
       "step": "4b decoy DAMM v2 pool for the same pair",
-      "decoy": "CLuLs6rtskrP8UbdSmQsnJEYRsDSZd25b3zm9AQHa19U",
-      "canonical": "6gu9uMCvjeLdW7X16zKfYzvaitXmQ9c9HCo8WD4Q1dQ5",
-      "signature": "4NiTHhtCA55jooFHm5m2yHPY6BKYjKWkAZag83d3pPoBfqMVtHoh8Ky7jfLCdisVfa6er5kdHzdfzJzgqX4m3QZX",
+      "decoy": "BnjuFcGa5dSQNRsQAg9PWNDV1ixB2ocHXyf2GytE28gV",
+      "canonical": "D3XHR61VjwZpLtHComY1qTTPpgnq2qVXNzBbZav4jhiQ",
+      "signature": "5K522SnMZ7okGroLQtquiEU7qbvgM7T8vi6Tfuo6WkcsM1Z7LuQPrXcajsp8xZJ5KzHy1EC442d6vZNWPie8JEfa",
       "err": null,
-      "computeUnits": 121267,
+      "computeUnits": 116770,
       "bytes": 957,
       "feeLamports": 10000,
-      "signers": ["AXkacDPBKApzkEC4XRu4DdwKDbA8VELxnMBxf37kHwBw", "2nFFxP1RGCmoMWb6cULt7Vx6gBnRn3vx9qA7uySksX9L"]
+      "signers": ["Eap11gxbtDpEGKzHyu97Bwz3aGcjCGWygAGoHhuVm67L", "7kqg27juTNavzfqAX4Yp39oDKDxwozqzGPjdpRpYuDTB"]
     },
     {
       "step": "5a last buy on the curve, backer 1",
-      "signature": "cHRbv18ducKspQPaUrfaMDHT6K4gkrsEA1bSDSAEPgTqvFJmP9jS7JkdANQKLpkHakmoaVTjtSGmg52XSHAHi9i",
+      "signature": "2BJYPZMKQsPoKqYvQ14tBU6q67CUzs5Epa2nC7hQgJsxXdrWsb1S4kszK8CAjfv2beiYDv98kfDATxXmK2j12Zq4",
       "err": null,
-      "computeUnits": 56316,
+      "computeUnits": 56302,
       "bytes": 860,
       "feeLamports": 11000,
-      "signers": ["8WAV3wUNvy1sG49fpLu8kbDNrwU7Q7SCGs5SoYHwa9Ft"],
+      "signers": ["9vXXghPmMHUDHnwfsbJ7nHpznGYrcu3DgWWFQh48ziCM"],
       "route": "dbc",
-      "pool": "3nkf8eXCfjdA6r6WQBdUXvTYnqziZKjViE3VNm7TD75A",
+      "pool": "2BtKVYcHM4teZLdgkRARQfHgCESeJPzU21dqFPHmEeNr",
       "quoteIn": "1515154",
-      "baseOut": "3034136048619",
+      "baseOut": "4987971442882",
       "executorQuote": {
         "before": "0",
         "after": "0"
@@ -257,31 +259,31 @@
     },
     {
       "step": "6 migration by the crank",
-      "signature": "3j1Htbi8CjzZ3KSvKG8KDdGqEmqyS9TaiQQH3Gppi9XJ4AseH6MKEeA2K1CdCb3xH5JD7QrBcv8ZD5ajfKrjsoEG",
+      "signature": "3ZRYswbDXVAcUrtwwiMMn818tzD3wuM4xN7HtVmwbX833ReHbbirARAGo7QXwgQk6sLWcHzTwCYddCnSoL24X4iG",
       "err": null,
-      "computeUnits": 272623,
+      "computeUnits": 283107,
       "bytes": 1153,
       "feeLamports": 21000,
       "signers": [
-        "8WAV3wUNvy1sG49fpLu8kbDNrwU7Q7SCGs5SoYHwa9Ft",
-        "E8higErS8P9hEqyGw4rScunKA86YQwstRPGfim5Bb5gz",
-        "GBeYnuU5jkp94rjpiQrtYxE2LEcUPDKPURmbZ13Xgzn8"
+        "9vXXghPmMHUDHnwfsbJ7nHpznGYrcu3DgWWFQh48ziCM",
+        "8A8K5zdrJkdvkxCJ6jyvxJ8oJDLw9gUrXDn5W7YhRUHE",
+        "D3epqXdnxt5oNQFtS2jYHvwPPFYz3Hyj8b4SAy8z25W8"
       ],
-      "dammPool": "6gu9uMCvjeLdW7X16zKfYzvaitXmQ9c9HCo8WD4Q1dQ5",
+      "dammPool": "D3XHR61VjwZpLtHComY1qTTPpgnq2qVXNzBbZav4jhiQ",
       "costLamports": "32524200"
     },
     {
       "step": "7 first buy on DAMM v2, backer 1",
-      "signature": "2hpFPnYgPtFjUgJrZTSd9oNCwYePyL7Mi4ShaganHECLzoSgxu1aq1V9jqV7imjioREiVWbVYK6P1oaS7bhcbeDZ",
+      "signature": "kJ7JEiuoeNRBMjKvQ6bGANwzhFFs18jR9Y3cf2jEgLrUPqSgabCWWGjjkoFNKSPzyRabEpVNSnXtm4yVcDUQV3b",
       "err": null,
-      "computeUnits": 40949,
+      "computeUnits": 40979,
       "bytes": 827,
       "feeLamports": 11000,
-      "signers": ["8WAV3wUNvy1sG49fpLu8kbDNrwU7Q7SCGs5SoYHwa9Ft"],
+      "signers": ["9vXXghPmMHUDHnwfsbJ7nHpznGYrcu3DgWWFQh48ziCM"],
       "route": "damm_v2",
-      "pool": "6gu9uMCvjeLdW7X16zKfYzvaitXmQ9c9HCo8WD4Q1dQ5",
+      "pool": "D3XHR61VjwZpLtHComY1qTTPpgnq2qVXNzBbZav4jhiQ",
       "quoteIn": "3000000",
-      "baseOut": "5768337118236",
+      "baseOut": "9517756268103",
       "executorQuote": {
         "before": "0",
         "after": "0"
@@ -293,16 +295,16 @@
     },
     {
       "step": "7 first buy on DAMM v2, backer 2",
-      "signature": "9sF8QcdXhTafvkGXf4Xqsvz9EwQ5zLburfE1cf9X4oUBkV2YZU7NR1yDdnyz9oWiL2cLC1gGr5cmTzcpFXrdesQ",
+      "signature": "Y5WsEowx5yTXGXQmfHikTQv8DNMmghgi8jCgWg7pMbzzbpGZoqFvD9y61CPBizVXpRUrp4dVfzw5Wv4kbpj7UwH",
       "err": null,
-      "computeUnits": 40934,
+      "computeUnits": 40973,
       "bytes": 827,
       "feeLamports": 11000,
-      "signers": ["8WAV3wUNvy1sG49fpLu8kbDNrwU7Q7SCGs5SoYHwa9Ft"],
+      "signers": ["9vXXghPmMHUDHnwfsbJ7nHpznGYrcu3DgWWFQh48ziCM"],
       "route": "damm_v2",
-      "pool": "6gu9uMCvjeLdW7X16zKfYzvaitXmQ9c9HCo8WD4Q1dQ5",
+      "pool": "D3XHR61VjwZpLtHComY1qTTPpgnq2qVXNzBbZav4jhiQ",
       "quoteIn": "3000000",
-      "baseOut": "5442494847770",
+      "baseOut": "8980116562735",
       "executorQuote": {
         "before": "0",
         "after": "0"
@@ -314,16 +316,16 @@
     },
     {
       "step": "7 first buy on DAMM v2, backer 3",
-      "signature": "5q8iXCjjkUna23eFZP5LhY4PFtraj43UzLf6YGZmRjobZeHG6EyNgbYXvFesxAhmY7VbY7uwJ1i477ykHcJPYWs5",
+      "signature": "458MWLwvJAkytGTgtF8d4rNXqMdT2236jSbe6372gybCDBVuBaYjegtxgteP8iy4WoYSRJL7Lgt2kQvT3iZA8fbJ",
       "err": null,
-      "computeUnits": 43939,
+      "computeUnits": 40971,
       "bytes": 827,
       "feeLamports": 11000,
-      "signers": ["8WAV3wUNvy1sG49fpLu8kbDNrwU7Q7SCGs5SoYHwa9Ft"],
+      "signers": ["9vXXghPmMHUDHnwfsbJ7nHpznGYrcu3DgWWFQh48ziCM"],
       "route": "damm_v2",
-      "pool": "6gu9uMCvjeLdW7X16zKfYzvaitXmQ9c9HCo8WD4Q1dQ5",
+      "pool": "D3XHR61VjwZpLtHComY1qTTPpgnq2qVXNzBbZav4jhiQ",
       "quoteIn": "3000000",
-      "baseOut": "5140067141767",
+      "baseOut": "8481110881899",
       "executorQuote": {
         "before": "0",
         "after": "0"
@@ -335,16 +337,16 @@
     },
     {
       "step": "8a revoke",
-      "signature": "4KwJP5uytNg6edinKiy1MargpadgB54v7oUbf6nBMi7KoKEYz4qmjeaiLqYdYRod7ayosAYvCynMKYa7UFAA1KQX",
+      "signature": "4kDfkqvnpk7zCQKygszJYFDzDDSJfNfu2wd1Q5KDTVee9GtEw5NpqtBuDm11JJ3oioKmM5vy2ymvXf4EFtG2LEYD",
       "err": null,
-      "computeUnits": 10836,
+      "computeUnits": 18336,
       "bytes": 343,
       "feeLamports": 5000,
-      "signers": ["FtCuxk4tYNQzERrQ8DenMEPFBmjPgQx1jMfabkcu1VEH"]
+      "signers": ["AS6GmSQ1jtxktWAN5JUg4U2uNKi5DnNke2dmk1YoRjBQ"]
     },
     {
       "step": "8b a pull after the revoke",
-      "signature": "4DBH2FrC3M5FsLnnCnzfNHLhfLhmqRx6vhNkP8owqJj7HKgnPn6rQzw9haPNmEPBGfQbHPbK1dMaUC4UbhvDWEfx",
+      "signature": "3QXpJ9HiU3XHpJWbAi2pkvCGudcrg1TCRXchiMXj5z2SgoktCMMvJUk3tUQXLGKqZR2vt3VvFW2EWzK7Mrcg8wN4",
       "err": "{\"InstructionError\":[0,\"InvalidAccountOwner\"]}"
     }
   ]

@@ -54,6 +54,7 @@ test('mandatum API end to end on the real program', { skip: skipLocalnet, timeou
     guardIntervalMs: 60_000,
     demoEndpoints: true,
     launches: false,
+    launchConfigs: {},
   }
   const config = {
     port: 0,

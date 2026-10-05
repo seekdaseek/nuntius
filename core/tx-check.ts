@@ -80,6 +80,8 @@ export interface LaunchExpect {
   wallet: string
   baseMint: string
   quoteMint: string
+  /** nuntius's partner config for this quote, pinned in this build (LAUNCH_CONFIGS). */
+  config: string
 }
 
 export type Expect = GrantExpect | RevokeExpect | LaunchExpect
@@ -292,13 +294,13 @@ async function checkRevoke(ixs: Ix[], e: RevokeExpect) {
     fail(`trim to ${total} is above the current ${e.allowance}`)
 }
 
-/** DBC instructions a launch may contain (Anchor discriminators): create config, create pool. */
-const DBC_LAUNCH = new Set(['c9cff3724b6f2fbd', '8c55d7b06636684f'])
+/** DBC initialize_virtual_pool_with_spl_token (Anchor discriminator): the one launch instruction. */
+const DBC_CREATE_POOL = '8c55d7b06636684f'
 const hex = (d: Uint8Array) => Array.from(d.slice(0, 8), (b) => b.toString(16).padStart(2, '0')).join('')
 
 function checkLaunch(signers: string[], ixs: Ix[], e: LaunchExpect) {
-  // The wallet plus the two fresh keys the server signs for: the config and the token's mint.
-  if (signers.length !== 3 || !signers.includes(e.baseMint)) fail('unexpected signers')
+  // The wallet plus the one fresh key the server signs for: the token's mint.
+  if (signers.length !== 2 || !signers.includes(e.baseMint)) fail('unexpected signers')
   let pools = 0
   for (const ix of ixs) {
     if (ix.program === PROGRAMS.computeBudget) {
@@ -306,15 +308,25 @@ function checkLaunch(signers: string[], ixs: Ix[], e: LaunchExpect) {
       continue
     }
     same(ix.program, PROGRAMS.dbc, 'launch program')
-    if (!DBC_LAUNCH.has(hex(ix.data))) fail(`unexpected launch instruction ${hex(ix.data)}`)
-    if (!ix.accounts.includes(e.wallet)) fail('a launch instruction without the wallet as creator')
-    if (ix.accounts.includes(e.baseMint)) {
-      pools++
-      if (!ix.accounts.includes(e.quoteMint)) fail('launch quote mint')
-    }
+    if (hex(ix.data) !== DBC_CREATE_POOL) fail(`unexpected launch instruction ${hex(ix.data)}`)
+    // config, pool authority, creator, base mint, quote mint, pool, vaults, metadata, Metaplex,
+    // payer, token programs, system, event authority, program: the IDL's 16, in its order.
+    if (ix.accounts.length !== 16) fail('launch: unexpected layout')
+    same(ix.accounts[0], e.config, 'launch config')
+    same(ix.accounts[2], e.wallet, 'launch creator')
+    same(ix.accounts[3], e.baseMint, 'launch token')
+    same(ix.accounts[4], e.quoteMint, 'launch quote mint')
+    same(ix.accounts[10], e.wallet, 'launch payer')
+    pools++
   }
   if (pools !== 1) fail('expected one pool for the token')
 }
+
+/**
+ * nuntius's partner config per quote token on mainnet, created once (tools/launch-config.ts).
+ * A launch is a pool on one of these, or nothing: a build without them refuses launches.
+ */
+export const LAUNCH_CONFIGS: Record<string, string | null> = { SKR: null, USDC: null }
 
 /** The pinned mainnet tokens the app offers: symbol -> mint and decimals. */
 export const MINTS: Record<string, { mint: string; decimals: number }> = {

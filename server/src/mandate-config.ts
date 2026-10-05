@@ -34,6 +34,12 @@ export interface MandateConfig {
    * MANDATE_LAUNCHES=1: v1.0.1 keeps them hidden until the Meteora device run.
    */
   launches: boolean
+  /**
+   * The fixed nuntius partner config each launch is created on, by quote symbol
+   * (LAUNCH_CONFIGS=SKR:<config>,USDC:<config>). One config per quote mint, created once;
+   * a quote with none cannot be launched in.
+   */
+  launchConfigs: Record<string, string>
 }
 
 const USDC_MAINNET: MintInfo = { symbol: 'USDC', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6 }
@@ -86,7 +92,23 @@ export function loadMandateConfig(env: NodeJS.ProcessEnv, heliusRpc: string | nu
     guardIntervalMs: int(env.GUARD_INTERVAL_MS, 60_000, 'GUARD_INTERVAL_MS'),
     demoEndpoints: env.DEMO_ENDPOINTS === '1',
     launches: env.MANDATE_LAUNCHES === '1',
+    launchConfigs: parseLaunchConfigs(env.LAUNCH_CONFIGS ?? '', mints),
   }
+}
+
+export function parseLaunchConfigs(raw: string, mints: MintInfo[]): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const part of raw
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)) {
+    const [symbol, config, ...rest] = part.split(':')
+    if (rest.length || !symbol || !config) throw new Error(`LAUNCH_CONFIGS: expected SYMBOL:config in "${part}"`)
+    if (!mints.some((m) => m.symbol === symbol)) throw new Error(`LAUNCH_CONFIGS: ${symbol} is not an offered token`)
+    if (!ADDRESS_RE.test(config)) throw new Error(`LAUNCH_CONFIGS: bad config address for ${symbol}`)
+    out[symbol] = config
+  }
+  return out
 }
 
 export function parseMints(raw: string): MintInfo[] {

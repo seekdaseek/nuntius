@@ -483,13 +483,14 @@ export const PULL_INDEX = 2
  *  - a flat 1% fee from the first buy: no launch fee scheduler, so a weekly backer pays
  *    the same rate as a day-one buyer and there is no early window to front-run;
  *  - fees collected in the quote token, so the creator's share accrues in SKR or USDC;
- *  - 1 billion supply, 6 decimals, 20% of it kept for the pool after migration;
+ *  - 1 billion supply, 6 decimals, 33% of it kept for the pool after migration, so the last
+ *    unit before migration costs 4.12x the first (16x at the common 20%; tools/curve-ratio.ts);
  *  - migration to DAMM v2 at `quoteThreshold` raised, so the weekly buy follows the token;
  *  - the creator gets 50% of trading fees; all LP is permanently locked at migration;
  *  - metadata immutable once created.
  */
 /** The share of supply kept for the migrated pool; it sets the curve's price ratio (tools/curve-ratio.ts). */
-export const PRESET_MIGRATION_PCT = 20
+export const PRESET_MIGRATION_PCT = 33
 
 export function launchPreset(quoteThreshold: number, percentageSupplyOnMigration: number = PRESET_MIGRATION_PCT) {
   return DBC.buildCurve({
@@ -601,41 +602,64 @@ export async function migrationInstructions(
 export const MAX_URI = 100
 
 /**
- * The launch: config + pool in one transaction. The server signs with the fresh config and
- * base-mint keys and hands the rest to the device, which signs once as creator and fee payer.
+ * A nuntius partner config: the preset, priced in `quoteMint`, migrating at `quoteThreshold`.
+ * Created once per quote mint (tools/launch-config.ts); every launch in that quote is a pool
+ * on it. `feeClaimer` takes the partner's share of trading fees and, at migration, the
+ * partner's half of the permanently locked LP; `leftoverReceiver` takes any base left over.
+ */
+export async function configInstructions(
+  conn: Connection,
+  p: {
+    config: string
+    feeClaimer: string
+    leftoverReceiver: string
+    quoteMint: string
+    payer: string
+    quoteThreshold: number
+  },
+): Promise<Instruction[]> {
+  const client = new DBC.DynamicBondingCurveClient(conn, 'confirmed')
+  const tx = await client.partner.createConfig({
+    ...launchPreset(p.quoteThreshold),
+    config: pk(p.config),
+    feeClaimer: pk(p.feeClaimer),
+    leftoverReceiver: pk(p.leftoverReceiver),
+    quoteMint: pk(p.quoteMint),
+    payer: pk(p.payer),
+  })
+  return tx.instructions.map(toKit)
+}
+
+/**
+ * The launch: one pool on nuntius's fixed config for its quote (the fun-launch pattern).
+ * The server signs with the fresh base-mint key and hands the rest to the device, which
+ * signs once as creator and fee payer.
  */
 export async function launchInstructions(
   conn: Connection,
-  p: {
-    creator: string
-    quoteMint: string
-    quoteThreshold: number
-    name: string
-    symbol: string
-    uri: string
-    config: string
-    baseMint: string
-  },
+  p: { creator: string; config: string; name: string; symbol: string; uri: string; baseMint: string },
 ): Promise<Instruction[]> {
   if (p.uri.length > MAX_URI) throw new Error(`metadata URI longer than ${MAX_URI} characters`)
   const client = new DBC.DynamicBondingCurveClient(conn, 'confirmed')
-  const tx = await client.partner.createConfigAndPool({
-    ...launchPreset(p.quoteThreshold),
+  const tx = await client.creator.createPool({
     config: pk(p.config),
-    feeClaimer: pk(p.creator),
-    leftoverReceiver: pk(p.creator),
-    quoteMint: pk(p.quoteMint),
+    baseMint: pk(p.baseMint),
+    name: p.name,
+    symbol: p.symbol,
+    uri: p.uri,
     payer: pk(p.creator),
-    tokenType: DBC.TokenType.SPLToken,
-    preCreatePoolParam: {
-      name: p.name,
-      symbol: p.symbol,
-      uri: p.uri,
-      poolCreator: pk(p.creator),
-      baseMint: pk(p.baseMint),
-    },
+    poolCreator: pk(p.creator),
   })
-  return [...budgetInstructions({ unitLimit: 400_000, microLamportsPerUnit: 50_000 }), ...tx.instructions.map(toKit)]
+  return [...budgetInstructions({ unitLimit: 200_000, microLamportsPerUnit: 50_000 }), ...tx.instructions.map(toKit)]
+}
+
+/** The quote mint and fee claimer a config account names (for the launch route's checks). */
+export async function readConfig(
+  conn: Connection,
+  config: string,
+): Promise<{ quoteMint: string; feeClaimer: string } | null> {
+  const c = await new DBC.DynamicBondingCurveClient(conn, 'confirmed').state.getPoolConfig(config).catch(() => null)
+  return c ? { quoteMint: c.quoteMint.toBase58(), feeClaimer: c.feeClaimer.toBase58() } : null
 }
 
 // --- The web3.js v1 boundary -------------------------------------------------------------

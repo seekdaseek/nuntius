@@ -48,6 +48,11 @@ import { CLIENT_HEADER, clientAtLeast } from './client-version.js'
 const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
 const SYMBOL_RE = /^[A-Z0-9]{2,10}$/
 const NAME_RE = /^[\p{L}\p{N} .'&-]{1,32}$/u
+/** A launch's own description: plain words and punctuation, no markup, no line breaks. */
+const DESCRIPTION_RE = /^[\p{L}\p{N} .,;:'’&()!?%$+/-]{1,200}$/u
+
+/** What nuntius earns from a launch on its config, in one plain line (shown before signing). */
+export const FEES_LINE = 'nuntius earns 0.4% of curve trades and half of the locked pool’s fees after graduation.'
 
 export class HttpError extends Error {
   constructor(
@@ -82,6 +87,8 @@ export interface LaunchDeps {
   freshNonce: () => number
   publicLimiter: RateLimiter
   now: () => number
+  /** nuntius's fixed partner config per quote symbol (mandate-config.ts launchConfigs). */
+  launchConfigs: Record<string, string>
 }
 
 /** The launch token's decimals and symbol, from its mint and Metaplex metadata accounts. */
@@ -247,37 +254,37 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
       typeof body.image === 'string' && /^https:\/\/[^\s"<>]{1,200}$/.test(body.image)
         ? body.image
         : `${d.origin}/identity-icon-192.png`
+    const description = typeof body.description === 'string' ? body.description.trim() : ''
+    if (description && !DESCRIPTION_RE.test(description))
+      throw new HttpError(400, 'bad_description', 'description: up to 200 characters of plain text')
     const quote = d.parseTerms(
       { symbol: body.quote, amount: '1', period: 'week', untilDays: 1, payee: d.delegatee },
       a.address,
     ).mint
-    // The curve migrates once this much quote is raised. Small on purpose: a launch backed by
-    // a few people's weekly buys should reach its regular pool.
-    const thresholdUi = quote.symbol === 'SKR' ? 50_000 : 1_000
-    const config = await generateKeyPairSigner()
+    // Every launch in a quote is a pool on nuntius's one config for it: the curve, the fees
+    // and the migration threshold are the config's, the same for every launch.
+    const config = d.launchConfigs[quote.symbol]
+    if (!config)
+      throw new HttpError(
+        503,
+        'launch_not_ready',
+        `Launches priced in ${quote.symbol} open once nuntius has its config.`,
+      )
     const baseMint = await generateKeyPairSigner()
-    const pool = dbcPoolAddress(quote.mint, baseMint.address, config.address)
+    const pool = dbcPoolAddress(quote.mint, baseMint.address, config)
     const uri = `${d.origin}/m/${baseMint.address}.json`
     const ixs = await launchInstructions(d.conn, {
       creator: a.address,
-      quoteMint: quote.mint,
-      quoteThreshold: thresholdUi,
+      config,
       name,
       symbol,
       uri,
-      config: config.address,
       baseMint: baseMint.address,
     })
-    // The two new keys sign here; the creator (fee payer) is left for the device.
+    // The fresh mint key signs here; the creator (fee payer) is left for the device.
     const withSigners = ixs.map((ix) => ({
       ...ix,
-      accounts: ix.accounts?.map((acc) =>
-        acc.address === config.address
-          ? { ...acc, signer: config }
-          : acc.address === baseMint.address
-            ? { ...acc, signer: baseMint }
-            : acc,
-      ),
+      accounts: ix.accounts?.map((acc) => (acc.address === baseMint.address ? { ...acc, signer: baseMint } : acc)),
     })) as Instruction[]
     const { value } = await d.rpc.getLatestBlockhash({ commitment: 'confirmed' }).send()
     const creator = createNoopSigner(a.address as Address) as TransactionSigner
@@ -292,16 +299,24 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
       {
         baseMint: baseMint.address,
         pool,
-        config: config.address,
+        config,
         creator: a.address,
         name,
         symbol,
         image,
         quoteMint: quote.mint,
+        description: description || null,
       },
       d.now(),
     )
-    return { transactionBase64: getBase64EncodedWireTransaction(signed), pool, baseMint: baseMint.address, uri }
+    return {
+      transactionBase64: getBase64EncodedWireTransaction(signed),
+      pool,
+      baseMint: baseMint.address,
+      config,
+      uri,
+      fees: FEES_LINE,
+    }
   })
 
   route('/api/launch/confirm', async (body) => {
@@ -366,11 +381,14 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
     const mint = String(req.params.file).replace(/\.json$/, '')
     const l = ADDRESS_RE.test(mint) ? d.mandates.launchByMint(mint) : null
     if (!l) return void res.status(404).json({ ok: false, error: 'not_found' })
+    // Served exactly as stored at launch: the on-chain URI never changes, and neither does this.
     res.json({
       name: l.name,
       symbol: l.symbol,
       image: l.image,
-      description: `${l.name}: a subscription launch on nuntius. Backed by capped weekly buys, approved once in Seed Vault.`,
+      description:
+        l.description ??
+        `${l.name}: a subscription launch on nuntius. Backed by capped weekly buys, approved once in Seed Vault.`,
     })
   })
 }

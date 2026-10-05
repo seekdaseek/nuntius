@@ -72,6 +72,7 @@ const cfg = {
   guardIntervalMs: 60_000,
   demoEndpoints: true,
   launches: false,
+  launchConfigs: {},
 }
 const config = {
   port: PORT,
