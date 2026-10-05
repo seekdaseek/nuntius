@@ -17,7 +17,6 @@ import {
   readAta,
   readRecurring,
 } from './mandate-chain.js'
-import { signAndSend } from './tx.js'
 import { withPagedProgramAccounts } from './program-accounts.js'
 import {
   assertOk,
@@ -28,6 +27,7 @@ import {
   mintTo,
   requireLocal,
   requiredSigners,
+  signAndLand,
   skipLocalnet,
   tokenBalance,
 } from './test/localnet.js'
@@ -81,8 +81,9 @@ test('mandate life cycle on the real program', { skip: skipLocalnet, timeout: 12
     assert.notEqual(ata.delegatedAmount, U64_MAX)
   })
 
+  // Pulls sent by hand to the program, refusals included, so they land as evidence.
   const pull = async (amount: bigint, signer = delegatee, pda = () => delegationPda) =>
-    signAndSend(rpc, signer, [
+    signAndLand(rpc, signer, [
       await pullInstruction({
         delegatee: signer,
         delegationPda: pda(),

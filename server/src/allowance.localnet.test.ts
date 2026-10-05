@@ -4,7 +4,7 @@ import { createNoopSigner, type Address } from '@solana/kit'
 import { getApproveCheckedInstruction } from '@solana-program/token'
 import { buildGrantTx, buildRevokeTx, pullInstruction, readAta, readRecurring } from './mandate-chain.js'
 import { recurringLifetime } from './allowance.js'
-import { signAndSend, compileUnsigned } from './tx.js'
+import { compileUnsigned } from './tx.js'
 import {
   assertOk,
   ataFor,
@@ -12,6 +12,7 @@ import {
   funded,
   mintTo,
   requireLocal,
+  signAndLand,
   skipLocalnet,
   sleep,
   tokenBalance,
@@ -65,7 +66,7 @@ test(
           receiverAta: payeeAta,
           mint,
           amount,
-        }).then((ix) => signAndSend(rpc, exec, [ix]))
+        }).then((ix) => signAndLand(rpc, exec, [ix])) // refusals land, as evidence
       const revoke = async (pda: Address) => {
         const r = await buildRevokeTx(rpc, owner.address, pda, mint)
         assertOk(await deviceSignAndSend(rpc, owner, r.transactionBase64))

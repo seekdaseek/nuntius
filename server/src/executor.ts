@@ -44,6 +44,7 @@ import {
   computeBudgetInstructions,
   latestBlockhash,
   PULL_BUDGET,
+  sendOverCapProof,
   sendWire,
   simulateWire,
   signOnly,
@@ -69,7 +70,10 @@ export interface ChainPort {
   bought?(m: Mandate, b: Backing, signature: string): Promise<bigint | null>
   /** Our own simulation of the signed bytes; every send but the over-cap demo runs it first. */
   simulate(wire: string): Promise<{ err: string | null; customCode: number | null }>
+  /** Every normal send: the RPC node's preflight on, at 'confirmed' (tx.ts sendWire). */
   send(wire: string): Promise<void>
+  /** The over-cap demo only: preflight off, so the refusal lands as proof (tx.ts sendOverCapProof). */
+  sendProof(wire: string): Promise<void>
   status(signature: string, lastValidBlockHeight: bigint): Promise<TxStatus>
 }
 
@@ -154,6 +158,7 @@ export function rpcChain(
     },
     simulate: (wire) => simulateWire(rpc, wire),
     send: (wire) => sendWire(rpc, wire),
+    sendProof: (wire) => sendOverCapProof(rpc, wire),
     status: (sig, lvbh) => statusOf(rpc, sig, lvbh),
   }
 }
@@ -610,9 +615,10 @@ export class Executor {
     if (!state.exists) throw new Error('delegation does not exist')
     const w = effectiveWindow(state, BigInt(Math.floor(this.o.now() / 1000)))
     const signed = await this.o.chain.signPull(m, w.remaining + 1n)
-    // The one send without our simulation, on purpose: the simulation would refuse it,
-    // and the refusal must land on chain with a signature to be the 0x190 proof.
-    await this.o.chain.send(signed.wire)
+    // The one send without our simulation and without the RPC node's preflight, on purpose:
+    // both would refuse it, and the refusal must land on chain with a signature to be the
+    // 0x190 proof.
+    await this.o.chain.sendProof(signed.wire)
     const deadline = this.o.now() + this.o.settleMs
     for (;;) {
       const st = await this.o.chain.status(signed.signature, signed.lastValidBlockHeight)

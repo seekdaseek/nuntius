@@ -6,8 +6,16 @@ import { MandateStore } from './mandate-store.js'
 import { Receipts, type PushPort } from './receipts.js'
 import { createLogger } from './log.js'
 import { buildGrantTx, buildRevokeTx, pullInstruction } from './mandate-chain.js'
-import { signAndSend } from './tx.js'
-import { assertOk, ataFor, deviceSignAndSend, funded, mintTo, requireLocal, skipLocalnet } from './test/localnet.js'
+import {
+  assertOk,
+  ataFor,
+  deviceSignAndSend,
+  funded,
+  mintTo,
+  requireLocal,
+  signAndLand,
+  skipLocalnet,
+} from './test/localnet.js'
 
 test('guard: receipts for delegations nuntius did not create', { skip: skipLocalnet, timeout: 120_000 }, async (t) => {
   const rpc = requireLocal()
@@ -28,8 +36,9 @@ test('guard: receipts for delegations nuntius did not create', { skip: skipLocal
       startTs: 0n,
       expiryTs,
     })
+  // The foreign merchant's own sends: its over-cap pull must land for the guard to see it.
   const merchantPull = async (pda: string, amount: bigint) =>
-    signAndSend(rpc, merchant, [
+    signAndLand(rpc, merchant, [
       await pullInstruction({
         delegatee: merchant,
         delegationPda: pda as never,

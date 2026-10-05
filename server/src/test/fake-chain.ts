@@ -31,6 +31,8 @@ export class FakeChain implements ChainPort {
   sent: { sig: string; pda: string; amount: bigint }[] = []
   /** Every send() call, rebroadcasts included. */
   sends: string[] = []
+  /** Every sendProof() call: the over-cap demo's send without preflight. */
+  proofSends: string[] = []
   receiverValid = true
   /** Transport faults, consumed one per call. */
   readFailures = 0
@@ -173,6 +175,13 @@ export class FakeChain implements ChainPort {
       this.sendThrowsAfterApply--
       throw new Error('socket hang up')
     }
+  }
+
+  async sendProof(wire: string): Promise<void> {
+    this.proofSends.push((JSON.parse(wire) as { signature: string }).signature)
+    const n = this.sends.length
+    await this.send(wire)
+    this.sends.length = n // a proof send, not a normal one
   }
 
   private apply(signature: string, pda: string, amount: bigint, ix = 0): Landed {

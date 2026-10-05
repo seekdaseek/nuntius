@@ -28,7 +28,30 @@ import {
   getMintToInstruction,
   TOKEN_PROGRAM_ADDRESS,
 } from '@solana-program/token'
-import { sendWire, signAndSend, waitFor, type Landed, type Rpc } from '../tx.js'
+import { latestBlockhash, signAndSend, signOnly, waitFor, type Landed, type Rpc } from '../tx.js'
+
+/**
+ * Test harness only. The harness plays actors whose sends are not the server's: the
+ * wallet (Seed Vault) and a foreign delegatee. Several tests need a refusal to land
+ * on chain as evidence (0x190, SPL error 1, a late grant), which the RPC node's
+ * preflight would stop at the door. The server's own sends never skip it (tx.ts
+ * sendWire; sends.test.ts) except the over-cap demo.
+ */
+async function landWire(rpc: Rpc, wire: string): Promise<void> {
+  await rpc.sendTransaction(wire as never, { encoding: 'base64', skipPreflight: true }).send()
+}
+
+/** A foreign actor's sign-and-send that lands even when the program refuses it. */
+export async function signAndLand(
+  rpc: Rpc,
+  signer: KeyPairSigner,
+  instructions: Parameters<typeof signOnly>[1],
+  timeoutMs = 30_000,
+): Promise<Landed> {
+  const signed = await signOnly(signer, instructions, await latestBlockhash(rpc))
+  await landWire(rpc, signed.wire)
+  return waitFor(rpc, signed.signature, signed.lastValidBlockHeight, timeoutMs)
+}
 
 export const LOCALNET_RPC = process.env.LOCALNET_RPC ?? ''
 export const skipLocalnet = LOCALNET_RPC ? false : 'LOCALNET_RPC not set — run scripts/localnet.sh (see README.md)'
@@ -107,7 +130,7 @@ export async function deviceSignAndSend(rpc: Rpc, owner: KeyPairSigner, transact
   const signed = await signTransaction([owner.keyPair], tx)
   const { value } = await rpc.getLatestBlockhash().send()
   // The lifetime check below uses a fresh height; the tx's own blockhash is older or equal.
-  await sendWire(rpc, getBase64EncodedWireTransaction(signed))
+  await landWire(rpc, getBase64EncodedWireTransaction(signed))
   const sigBytes = Object.values(signed.signatures)[0]
   if (!sigBytes) throw new Error('no signature')
   const { getBase58Decoder } = await import('@solana/kit')

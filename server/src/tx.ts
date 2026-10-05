@@ -146,14 +146,29 @@ export async function simulateWire(rpc: Rpc, wire: string): Promise<{ err: strin
 }
 
 /**
- * Sends pre-signed wire bytes with preflight off. Callers simulate first with
- * simulateWire; preflight off then only means the RPC node does not simulate a
- * second time. The one send that skips our simulation on purpose is the over-cap
- * demo (Executor.demoOverCap), whose refusal must land to be proof. The RPC node
- * keeps forwarding until the blockhash expires (no maxRetries: 0, which let a
- * dropped pull sit for 40 s on 30 Sep).
+ * How every normal send goes out: with the RPC node's preflight on, at 'confirmed'
+ * like simulateWire. The default 'finalized' bank lags, so it can reject a pull on a
+ * delegation granted moments ago; 'confirmed' sees it (2 Oct audit, finding 7).
+ * The executor still runs its own simulateWire before every send (Executor.sendChecked).
+ */
+export const SEND_OPTIONS = { encoding: 'base64', skipPreflight: false, preflightCommitment: 'confirmed' } as const
+
+/**
+ * Sends pre-signed wire bytes. A preflight refusal throws, like a transport error: the
+ * executor backs off and settles the claimed period later. The RPC node keeps forwarding
+ * until the blockhash expires (no maxRetries: 0, which let a dropped pull sit for 40 s
+ * on 30 Sep).
  */
 export async function sendWire(rpc: Rpc, wire: string): Promise<void> {
+  await rpc.sendTransaction(wire as never, SEND_OPTIONS).send()
+}
+
+/**
+ * The one send with preflight off: Executor.demoOverCap's over-cap pull. Its refusal
+ * must land on chain with a signature to be the 0x190 proof, and preflight would stop
+ * it at the RPC node instead. Nothing else may use it (sends.test.ts checks).
+ */
+export async function sendOverCapProof(rpc: Rpc, wire: string): Promise<void> {
   await rpc.sendTransaction(wire as never, { encoding: 'base64', skipPreflight: true }).send()
 }
 

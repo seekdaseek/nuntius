@@ -223,6 +223,9 @@ test('demoOverCap lands a real refusal and produces the refused receipt', async 
   assert.equal(store.events(OWNER)[0]!.kind, 'refused')
   // The one send without our simulation, on purpose: the refusal must land to be proof.
   assert.deepEqual(chain.simulations, [])
+  // And without the RPC node's preflight: it goes out through sendProof, never send.
+  assert.equal(chain.proofSends.length, 1)
+  assert.deepEqual(chain.sends, [])
 })
 
 test('every send is simulated first; a transaction the program would refuse is never sent', async () => {
@@ -234,6 +237,7 @@ test('every send is simulated first; a transaction the program would refuse is n
   chain.simRefusals.push({ err: '{"InstructionError":[2,{"Custom":400}]}', customCode: 400 })
   assert.deepEqual(await ex.tick(), { [m.id]: 'refused' })
   assert.equal(chain.sends.length, 1, 'the refused pull was never sent, so no fee was paid')
+  assert.deepEqual(chain.proofSends, [], 'a scheduled pull never takes the preflight-off path')
   assert.equal(chain.sent.length, 1)
   const row =
     store.pullsFor(PDA).find((r) => r.periodStart > store.pullsFor(PDA)[0]!.periodStart) ?? store.pullsFor(PDA)[1]!
@@ -279,6 +283,7 @@ test('a dropped pull is rebroadcast with the same bytes and lands in seconds, no
   assert.deepEqual(Object.values(out), ['landed'])
   assert.equal(new Set(chain.sends).size, 1, 'one signature: the rebroadcast is the same signed transaction')
   assert.ok(chain.sends.length >= 2, 'it was sent again')
+  assert.deepEqual(chain.proofSends, [], 'rebroadcasts keep preflight on')
   assert.equal(chain.sent.length, 1, 'and landed exactly once')
   assert.ok(slept <= 3_000, `landed within about 2 s of the drop (waited ${slept} ms)`)
   assert.equal(pushes.filter((p) => /received/.test(p.title)).length, 1)
