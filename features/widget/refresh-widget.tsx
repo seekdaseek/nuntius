@@ -2,6 +2,7 @@ import React from 'react'
 import { Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { AppConfig } from '@/constants/app-config'
+import { clientHeaders } from '@/core/client-version'
 import { widgetView, type WidgetSnapshot } from '@/core/widget-model'
 import { tzOffsetMin } from '@/core/format'
 import { loadAuth } from '@/features/account/auth-storage'
@@ -30,7 +31,7 @@ export async function loadWidgetData(): Promise<WidgetData> {
   try {
     const r = await fetch(`${AppConfig.apiBase}/api/widget`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...clientHeaders },
       body: JSON.stringify({ session: auth.session, tzOffsetMin: tzOffsetMin() }),
     })
     const json = (await r.json()) as Omit<WidgetSnapshot, 'fetchedAt'> & { ok: boolean }

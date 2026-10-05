@@ -1,4 +1,5 @@
 import { AppConfig } from '@/constants/app-config'
+import { clientHeaders } from '@/core/client-version'
 
 /** SIWS payload as issued by GET /api/siws-payload. Signed as-is; never modified client-side. */
 export interface SiwsPayload {
@@ -18,7 +19,10 @@ export interface WireSignInResult {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${AppConfig.apiBase}${path}`, init)
+  const response = await fetch(`${AppConfig.apiBase}${path}`, {
+    ...init,
+    headers: { ...(init?.headers as Record<string, string> | undefined), ...clientHeaders },
+  })
   const body = (await response.json()) as T & { ok: boolean; error?: string }
   if (!response.ok || !body.ok) {
     throw new Error(`${path} failed: ${body.error ?? `http ${response.status}`}`)

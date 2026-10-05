@@ -1,4 +1,5 @@
 import { AppConfig } from '@/constants/app-config'
+import { clientHeaders } from '@/core/client-version'
 import type { ParsedTerms, PeriodKey } from '@/core/mandate-form'
 
 /** Typed client for the server's mandatum routes (server/src/mandates-api.ts). */
@@ -16,7 +17,7 @@ export class ApiError extends Error {
 export async function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const response = await fetch(`${AppConfig.apiBase}${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...clientHeaders },
     body: JSON.stringify(body),
   })
   const json = (await response.json()) as T & { ok: boolean; error?: string; message?: string }
@@ -199,7 +200,7 @@ export const api = {
       text: MandateText
     }>(t.pool ? '/api/mandates/back' : '/api/mandates/create', { session, ...t }),
   launch: async (pool: string) => {
-    const r = await fetch(`${AppConfig.apiBase}/api/launch/${pool}`)
+    const r = await fetch(`${AppConfig.apiBase}/api/launch/${pool}`, { headers: { ...clientHeaders } })
     const json = (await r.json()) as { ok: boolean; launch?: LaunchInfo; error?: string; message?: string }
     if (!r.ok || !json.ok || !json.launch)
       throw new ApiError(json.error ?? `http_${r.status}`, json.message ?? 'no launch', r.status)
