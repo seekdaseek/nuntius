@@ -17,7 +17,7 @@
  *   POST /api/clock-in                records today, returns the streak
  *   POST /api/widget                  compact snapshot for the home-screen widget
  */
-import type { MeteoraConnection } from './meteora.js'
+import { DAMM_V2_PROGRAM, DBC_PROGRAM, type MeteoraConnection } from './meteora.js'
 import type express from 'express'
 import type { Address } from '@solana/kit'
 import type { Store } from './db.js'
@@ -305,7 +305,29 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     return { terms: parsed.terms, reasons: parsed.reasons }
   })
 
-  route('/api/mandates/create', async (body) => {
+  /**
+   * Why the payee cannot be paid. A Meteora pool pasted as the payee (6 Oct: the nimus pool,
+   * on New permission instead of Back a launch) gets its own sentence: paying a pool's address
+   * buys nothing.
+   */
+  const payeeRefusal = async (payee: string, symbol: string, launchesOn: boolean): Promise<HttpError> => {
+    const info = await rpc
+      .getAccountInfo(payee as Address, { encoding: 'base64', dataSlice: { offset: 0, length: 0 } })
+      .send()
+      .catch(() => null)
+    const owner = info?.value?.owner
+    if (owner === DBC_PROGRAM || owner === DAMM_V2_PROGRAM)
+      return new HttpError(
+        400,
+        'payee_is_pool',
+        launchesOn
+          ? 'that address is a Meteora launch pool, not a wallet. To buy its token every period, use Back a launch and paste it there.'
+          : 'that address is a Meteora pool, not a wallet, so it cannot be paid.',
+      )
+    return new HttpError(400, 'payee_has_no_account', `the payee has no ${symbol} account yet`)
+  }
+
+  route('/api/mandates/create', async (body, req) => {
     const a = auth(body)
     gate(a)
     const t = parseTerms(body, a.address)
@@ -315,7 +337,7 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     ])
     const r = await readAta(rpc, receiverAta)
     if (!r.exists || r.owner !== t.payee || r.mint !== t.mint.mint) {
-      throw new HttpError(400, 'payee_has_no_account', `the payee has no ${t.mint.symbol} account yet`)
+      throw await payeeRefusal(t.payee, t.mint.symbol, launchesFor(launches, req.get(CLIENT_HEADER)))
     }
     // A fresh random seed for every grant, and never one whose address has an
     // account: a new permission must not land on an old PDA and inherit its

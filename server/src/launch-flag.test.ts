@@ -19,14 +19,19 @@ import { CLIENT_HEADER, clientAtLeast, launchesFor, parseVersion } from './clien
 const SESSION = 'S'.repeat(43)
 const WALLET = 'Backer11111111111111111111111111111111111111'
 
-async function serve(launches: boolean) {
+async function serve(launches: boolean, owners: Record<string, string> = {}) {
   const db = openDb(':memory:')
   const store = new Store(db)
   store.createSession(SESSION, WALLET, Date.now())
   const config = { port: 0, domain: 'x.app', heliusRpc: null, fcmServiceAccount: null, fcmProjectId: null }
   const lim = () => new RateLimiter(100, 60_000)
   // Just enough chain for the list: no delegations, and no token account for the one mint.
-  const rpc = { getAccountInfo: () => ({ send: async () => ({ value: null }) }) }
+  // `owners` gives some addresses an account owned by that program (a pool, for the payee check).
+  const rpc = {
+    getAccountInfo: (address: string) => ({
+      send: async () => ({ value: owners[address] ? { owner: owners[address] } : null }),
+    }),
+  }
   const scans = { orLast: async () => ({ list: [], asOfMs: Date.now(), stale: false }) }
   const app = createApp(
     config as unknown as Config,
@@ -37,6 +42,7 @@ async function serve(launches: boolean) {
       cfg: {
         cluster: 'localnet',
         mints: [{ symbol: 'USDC', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6 }],
+        maxPerPeriodUi: '100',
         demoEndpoints: false,
         launches,
       },
@@ -193,6 +199,38 @@ test('the web backing page: /l/<pool> with a strict CSP and this server’s conf
     assert.equal((await fetch(`${s.base}/l/not-a-pool`)).status, 404)
     assert.equal((await fetch(`${s.base}/l/assets/index.html`)).status, 404)
     assert.equal((await fetch(`${s.base}/l/assets/..%2F..%2Fpackage.json`)).status, 404)
+  } finally {
+    s.close()
+  }
+})
+
+test('a Meteora pool pasted as a payee: the refusal says so, and names Back a launch only to an app that has it', async () => {
+  const POOL = 'BpYoKpXwvM4gvD1VxenZAZ9vzV9QWdqZWKXm8DW3dPPU'
+  const PERSON = 'Ana1111111111111111111111111111111111111111'
+  const s = await serve(true, { [POOL]: 'dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN' })
+  const create = async (payee: string, client?: string) => {
+    const r = await post(s.base, '/api/mandates/create', client, {
+      session: SESSION,
+      label: 'Nimus',
+      payee,
+      symbol: 'USDC',
+      amount: '1',
+      period: 'day',
+      untilDays: 30,
+    })
+    return { status: r.status, ...((await r.json()) as { error: string; message: string }) }
+  }
+  try {
+    const onNew = await create(POOL, '1.1.0')
+    assert.equal(onNew.status, 400)
+    assert.equal(onNew.error, 'payee_is_pool')
+    assert.match(onNew.message, /Meteora launch pool, not a wallet\. To buy its token every period, use Back a launch/)
+    const onOld = await create(POOL)
+    assert.equal(onOld.error, 'payee_is_pool')
+    assert.equal(onOld.message, 'that address is a Meteora pool, not a wallet, so it cannot be paid.')
+    // A wallet without the token account: the answer it always had.
+    const person = await create(PERSON, '1.1.0')
+    assert.deepEqual([person.error, person.message], ['payee_has_no_account', 'the payee has no USDC account yet'])
   } finally {
     s.close()
   }
