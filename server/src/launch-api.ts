@@ -445,14 +445,28 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
   // server writes in its own executor and tokens, which the page's transaction check uses.
   const pageDir = path.join(staticDir, 'l')
   let template: string | null = null
+  // The Mobile Wallet Adapter's dialogs (Chrome on Android) style themselves with fixed <style>
+  // blocks and two style attributes: allowed by hash only, as computed by web/build.mjs from the
+  // bundled package. Their Google Fonts stylesheet stays blocked; they fall back to system fonts.
+  const mwa = (() => {
+    try {
+      return JSON.parse(readFileSync(path.join(pageDir, 'mwa-csp.json'), 'utf8')) as {
+        styles: string[]
+        attributes: string[]
+      }
+    } catch {
+      return null
+    }
+  })()
   const PAGE_CSP = [
     "default-src 'none'",
     "script-src 'self'",
-    "style-src 'self'",
+    mwa ? ["style-src 'self' 'unsafe-hashes'", ...mwa.styles, ...mwa.attributes].join(' ') : "style-src 'self'",
     "font-src 'self'",
     "img-src 'self' data: https:",
-    // ws://localhost: the Mobile Wallet Adapter's local association with the phone's wallet.
-    "connect-src 'self' ws://localhost:*",
+    // The Mobile Wallet Adapter's local association: http://localhost is the request that makes
+    // Chrome ask for local network access, ws://localhost:* the socket to the phone's wallet.
+    "connect-src 'self' ws://localhost:* http://localhost",
     "base-uri 'none'",
     "form-action 'none'",
     "frame-ancestors 'none'",

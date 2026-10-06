@@ -1,0 +1,15 @@
+{
+  "package": "@solana-mobile/wallet-standard-mobile",
+  "styles": [
+    "'sha256-tmRbhDKtp/NkzzwS7ghxJMe1VTkenFoPVs4i/8YUH9Y='",
+    "'sha256-sen7ZoAG9PuEEbYrzXrC+mgAQtKbEdz27Vl9VDk22b4='",
+    "'sha256-a3+3UU0WYPDxSAQsmQ2ZP+l7uHX0qqkn0B97M/lHa2Y='",
+    "'sha256-JL4jR/a9x8E6RvQBgmpjIKwquuV9zBrwhVjG11+WErU='",
+    "'sha256-CACOqzaoOcVwb7G9L7SR0SyuuGDH9QvC/UgBFwkG5/w='",
+    "'sha256-9y+0omBcAXmVSpYuadfUp/k8GxCIDiw2wrEyqM1cQnc='"
+  ],
+  "attributes": [
+    "'sha256-fpg83YZxyBh7zNCICwdKi5D7eUkxQ9wk3mpUiNPhP3g='",
+    "'sha256-QIjW/+aUzfg58HcITJNHkkCTGmLovNUIQbL+Zq2TsIE='"
+  ]
+}

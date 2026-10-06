@@ -461,6 +461,16 @@ test(
         const body = (await r.text()).replace('"cluster":"localnet"', '"cluster":"mainnet"')
         await route.fulfill({ response: r, body })
       })
+      await page.addInitScript(() => {
+        // Chrome has not been asked for local network access yet.
+        const query = navigator.permissions.query.bind(navigator.permissions)
+        navigator.permissions.query = (d) =>
+          d.name === 'loopback-network' ? Promise.resolve({ state: 'prompt', onchange: null }) : query(d)
+        const attach = Element.prototype.attachShadow
+        Element.prototype.attachShadow = function (o) {
+          return attach.call(this, { ...o, mode: 'open' })
+        }
+      })
       await page.goto(`${env.base}/l/${env.pool}`)
       await page.waitForFunction(() =>
         document.getElementById('route')?.textContent?.startsWith('On its bonding curve'),
@@ -468,9 +478,30 @@ test(
       const wallets = await page.$$eval('#wallets .wallet', (bs) => bs.map((b) => b.textContent))
       assert.deepEqual(wallets, ['Mobile Wallet Adapter'])
       assert.equal(await page.isHidden('#nowallet'), true)
-      assert.match(csp, /connect-src 'self' ws:\/\/localhost:\*;/)
+      assert.match(csp, /connect-src 'self' ws:\/\/localhost:\* http:\/\/localhost;/)
       await shot(page, '06-backing-android-mwa')
       assert.deepEqual(problems, [], 'no console errors, and no CSP violation')
+
+      // The first connection on a phone: Chrome has not granted local network access yet, so
+      // MWA shows its "Allow connections to your wallet" dialog, whose button requests
+      // http://localhost to make Chrome ask (6 Oct: our CSP blocked that request, and every
+      // attempt timed out). The dialog's shadow root is opened above only so the test can press it.
+      const csps = []
+      page.on('console', (m) => /Content Security Policy/i.test(m.text()) && csps.push(m.text()))
+      await page.click('#wallets .wallet')
+      await page.waitForSelector('#mobile-wallet-adapter-launch-action', { timeout: 15_000 })
+      await shot(page, '07-backing-mwa-permission-dialog')
+      const fetched = page.waitForRequest((r) => r.url() === 'http://localhost/', { timeout: 15_000 })
+      await page.click('#mobile-wallet-adapter-launch-action')
+      await fetched
+      await page.waitForTimeout(1_000)
+      // Only the dialog's Google Fonts stylesheet is refused, on purpose; its styles and the
+      // request to http://localhost are allowed.
+      assert.deepEqual(
+        csps.filter((t) => !/fonts\.googleapis\.com/.test(t)),
+        [],
+        `CSP refused something the dialog needs: ${csps.join(' | ')}`,
+      )
     } finally {
       await browser.close()
       env.server.close()

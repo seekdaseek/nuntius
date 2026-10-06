@@ -189,12 +189,19 @@ test('the web backing page: /l/<pool> with a strict CSP and this server’s conf
     const r = await fetch(`${s.base}/l/5qeAeoorEHpwecPkehAVedeYaWhMVpJaFMD52A8oAtHX`)
     assert.equal(r.status, 200)
     const csp = r.headers.get('content-security-policy') ?? ''
-    // The whole policy, so any widening is a decision: only connect-src gained the Mobile Wallet
-    // Adapter's local association socket.
+    // The whole policy, so any widening is a decision: the Mobile Wallet Adapter's local
+    // association in connect-src, and its dialogs' own styles by hash (web/build.mjs).
+    const mwa = JSON.parse(
+      readFileSync(path.join(import.meta.dirname, '..', 'static', 'l', 'mwa-csp.json'), 'utf8'),
+    ) as { styles: string[]; attributes: string[] }
+    assert.ok(mwa.styles.length >= 5 && mwa.attributes.length >= 1)
+    assert.ok([...mwa.styles, ...mwa.attributes].every((h) => /^'sha256-[A-Za-z0-9+/]{43}='$/.test(h)))
     assert.equal(
       csp,
-      "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data: https:; " +
-        "connect-src 'self' ws://localhost:*; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      "default-src 'none'; script-src 'self'; " +
+        `style-src 'self' 'unsafe-hashes' ${[...mwa.styles, ...mwa.attributes].join(' ')}; ` +
+        "font-src 'self'; img-src 'self' data: https:; " +
+        "connect-src 'self' ws://localhost:* http://localhost; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     )
     assert.match(csp, /script-src 'self'/)
     assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval/)
