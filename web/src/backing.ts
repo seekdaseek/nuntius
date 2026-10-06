@@ -701,6 +701,9 @@ async function back() {
       await signIn()
       approveLabel()
       status('Signed in. Tap “Approve in your wallet” to approve the permission.')
+      // Signed in now: show what this wallet already granted here, so a revoke is one tap away
+      // (6 Oct: the list stayed hidden until the page was reloaded).
+      await refreshMine()
       return
     }
     status('Sign in with your wallet…')

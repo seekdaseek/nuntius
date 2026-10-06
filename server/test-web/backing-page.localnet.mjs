@@ -191,13 +191,13 @@ async function setup() {
 }
 
 /** A Wallet Standard wallet in the page; every signature is made in Node with the backer's key. */
-function walletInitScript(address, publicKey) {
+function walletInitScript(address, publicKey, name = 'nuntius test wallet') {
   return `(() => {
     const b64 = { to: (u) => btoa(String.fromCharCode(...u)), from: (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0)) }
     const account = { address: ${JSON.stringify(address)}, publicKey: new Uint8Array(${JSON.stringify(Array.from(publicKey))}),
       chains: ['solana:localnet', 'solana:mainnet'], features: ['solana:signIn', 'solana:signAndSendTransaction'] }
     const wallet = {
-      version: '1.0.0', name: 'nuntius test wallet', chains: ['solana:localnet', 'solana:mainnet'], accounts: [account],
+      version: '1.0.0', name: ${JSON.stringify(name)}, chains: ['solana:localnet', 'solana:mainnet'], accounts: [account],
       icon: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#4F3BF6"/></svg>'),
       features: {
         'standard:connect': { version: '1.0.0', connect: async () => ({ accounts: [account] }) },
@@ -219,7 +219,7 @@ function walletInitScript(address, publicKey) {
   })()`
 }
 
-async function openPage(env, tamper) {
+async function openPage(env, tamper, walletName) {
   const browser = await chromium.launch(CHROME ? { executablePath: CHROME } : {})
   // A browser-extension wallet is a desktop browser: the panel is in view beside the page.
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
@@ -256,7 +256,9 @@ async function openPage(env, tamper) {
     const bytes = Object.values(signed.signatures)[0]
     return Buffer.from(bytes).toString('base64')
   })
-  await page.addInitScript(walletInitScript(env.backer.address, getAddressEncoder().encode(env.backer.address)))
+  await page.addInitScript(
+    walletInitScript(env.backer.address, getAddressEncoder().encode(env.backer.address), walletName),
+  )
   if (tamper)
     await page.route('**/l/' + env.pool, async (route) => {
       const r = await route.fetch()
@@ -347,14 +349,33 @@ test(
         await ogDescription(),
         '1 backer commits 5 TQ a week to WEBT. Capped recurring buys on Meteora: nothing deposited, revoke any time.',
       )
-      // Revoke from the page.
-      await page.click('#mine-list .revoke')
-      await page.waitForFunction(() => /^Revoked\./.test(document.getElementById('status')?.textContent ?? ''), null, {
-        timeout: 120_000,
-      })
-      await shot(page, '03-backing-revoked')
-      assert.equal(await page.isHidden('#mine'), true)
       assert.deepEqual(problems, [], 'no console errors, and no CSP violation')
+      // Revoke from the page, as a phone does it: the same wallet through the Mobile Wallet
+      // Adapter (named as MWA names itself), in a browser with no session. Sign in is its own
+      // tap, and the permission must appear right after it, with no reload (6 Oct: it did not).
+      const phone = await openPage(env, false, 'Mobile Wallet Adapter')
+      try {
+        const p2 = phone.page
+        await p2.waitForFunction(() =>
+          document.getElementById('route')?.textContent?.startsWith('On its bonding curve'),
+        )
+        await p2.click('text=Wallet app on this phone')
+        await p2.waitForSelector('#step-back:not([hidden])')
+        assert.equal(await p2.isHidden('#mine'), true, 'no session yet, so no list')
+        assert.equal(await p2.textContent('#approve'), 'Sign in')
+        await p2.click('#approve')
+        await p2.waitForSelector('#mine-list li', { timeout: 30_000 })
+        assert.equal(await p2.textContent('#approve'), 'Approve in your wallet')
+        await p2.click('#mine-list .revoke')
+        await p2.waitForFunction(() => /^Revoked\./.test(document.getElementById('status')?.textContent ?? ''), null, {
+          timeout: 120_000,
+        })
+        await shot(p2, '03-backing-revoked')
+        assert.equal(await p2.isHidden('#mine'), true)
+        assert.deepEqual(phone.problems, [], 'no console errors, and no CSP violation')
+      } finally {
+        await phone.browser.close()
+      }
       // The delegations the backer ever had on this program are gone.
       const { listDelegations } = await import('../dist/mandate-chain.js')
       assert.deepEqual(await listDelegations(env.rpc, env.backer.address), [])
