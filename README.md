@@ -363,14 +363,16 @@ Push is sent as **`notification` + `data`**, not data-only. A data-only FCM mess
 ### Tests
 
 ```bash
-npm ci && npm run test:core                 # 46 app-logic tests: taps, widget model, form checks, the fill, transaction check, storage, shims
+npm ci && npm run test:core                 # 50 app-logic tests: taps, widget model, form checks, the fill, transaction check, client version, storage, shims
 npm run test:e2e                            # 12 tests on the web build: cold-start tap, fonts, layout, BACK, the builder starter, Fill offline
 npx tsc --noEmit && npx expo lint && npx prettier --check .
 
 cd server && npm ci
-npm test                                    # 89 unit tests (Type it your way with a mocked model); the 7 localnet suites report "skipped"
+npm test                                    # 131 unit tests (Type it your way with a mocked model); the 9 localnet tests report "skipped"
 ../scripts/localnet.sh &                    # validator + the program built from 364a419 (first run builds it)
-npm run test:localnet                       # all 130, against the real program
+npm run test:localnet                       # 174: 172 against the real program; the 2 Meteora tests skip here
+npm run test:meteora                        # those 2, on DBC, DAMM v2 and Metaplex cloned from mainnet: launch to migration and the buy after it
+cd .. && bash scripts/backing-page-e2e.sh   # 3 tests: the web backing page in headless Chromium, on the same cloned programs
 ```
 
 ### Backend
