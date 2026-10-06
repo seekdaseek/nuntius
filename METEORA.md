@@ -52,3 +52,7 @@ The trade-off, plainly: a smaller edge for the earliest backers, more tokens in 
 - **DLMM.** "Conviction Pools" appears in Meteora's listing as an example idea. Recurring capped buying needs a curve that sells and a pool that follows it, which DBC and DAMM v2 are; DLMM is out of our scope.
 - **Compounding DAMM v2** (migration fee option 6, compounding collect mode). It reinvests part of the locked LP's fees into the pool, which would break the line we disclose to every launcher and backer: nuntius earns half of the locked pool's fees after graduation. And it could not be proven on mainnet with our small proof config before a real launch used it. We keep the fixed 1% option.
 - **Partner metadata** on the configs. Creating it needs a signature from the treasury's Seed Vault for a transaction type the app does not otherwise build; the configs are identified here instead.
+
+## Feedback for Meteora
+
+What we hit in the SDKs and docs, with versions and evidence, and our receiver PR ([MeteoraAg/dynamic-bonding-curve-sdk#121](https://github.com/MeteoraAg/dynamic-bonding-curve-sdk/pull/121)): [FEEDBACK.md](FEEDBACK.md).
