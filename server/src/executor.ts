@@ -78,6 +78,8 @@ export interface ChainPort {
    * DAMM v2 signed and simulated, with what it would cost the executor.
    */
   migration?(pool: string): Promise<MigrationStep>
+  /** The executor's own SOL, in lamports: it pays every pull, buy and migration. */
+  balance?(): Promise<bigint>
   /**
    * The program's clock: the Clock sysvar's unix time at 'confirmed', the bank every
    * simulation runs on. The period is the program's, so the executor reads it here rather
@@ -225,6 +227,9 @@ export function rpcChain(
         simErr: sim.err,
       }
     },
+    async balance() {
+      return (await rpc.getBalance(delegatee.address, { commitment: 'confirmed' }).send()).value
+    },
     async clock() {
       const { value } = await rpc.getAccountInfo(CLOCK_SYSVAR, { encoding: 'base64', commitment: 'confirmed' }).send()
       if (!value) throw new Error('no clock sysvar')
@@ -269,6 +274,9 @@ export interface ExecutorOptions {
   migrateAfterMs?: number
   migrationBudgetLamports?: bigint
   floorLamports?: bigint
+  /** Below this the executor logs executor_low_balance, at most once per gasCheckEveryMs. */
+  gasWarnLamports?: bigint
+  gasCheckEveryMs?: number
 }
 
 export type Outcome =
@@ -309,12 +317,34 @@ export class Executor {
       migrateAfterMs: 10 * 60_000,
       migrationBudgetLamports: 50_000_000n,
       floorLamports: 2_000_000n,
+      gasWarnLamports: 10_000_000n,
+      gasCheckEveryMs: 10 * 60_000,
       ...options,
     }
   }
 
   /** When each backed curve was first seen filled and unmigrated, by pool. */
   private readonly filledSince = new Map<string, number>()
+  private lastGasCheck = -Infinity
+
+  /**
+   * The executor's SOL, read at most once per gasCheckEveryMs. Below gasWarnLamports it logs
+   * executor_low_balance with how many buys (11,000 lamports each) and pulls (7,000) it covers.
+   */
+  async checkGas(): Promise<bigint | null> {
+    if (!this.o.chain.balance || this.o.now() - this.lastGasCheck < this.o.gasCheckEveryMs) return null
+    this.lastGasCheck = this.o.now()
+    const lamports = await this.o.chain.balance()
+    if (lamports < this.o.gasWarnLamports)
+      this.o.log.warn('executor_low_balance', {
+        lamports,
+        warnLamports: this.o.gasWarnLamports,
+        buysLeft: lamports / 11_000n,
+        pullsLeft: lamports / 7_000n,
+      })
+    return lamports
+  }
+
   /** The program's clock as read at the start of this tick (null: not read yet). */
   private chainNowS: bigint | null = null
 
@@ -365,6 +395,7 @@ export class Executor {
           this.fail(m, e)
         }
       }
+      await this.checkGas().catch((e: unknown) => this.o.log.warn('executor_gas_unread', { error: safeError(e) }))
       if (this.o.chain.migration) {
         for (const pool of this.o.store.backedPools()) {
           try {

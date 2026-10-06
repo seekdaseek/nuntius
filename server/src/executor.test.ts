@@ -365,3 +365,20 @@ test('an unreadable clock: the wall clock less the margin, so a boundary is neve
   assert.equal(store.pullsFor(PDA).length, 1)
   assert.ok(lines.some((l) => l.includes('executor_clock_unread')))
 })
+
+test('executor gas: a warning below the threshold, at most once per interval; quiet above it', async () => {
+  const { chain, lines, clock, mk } = setup()
+  let lamports = 9_000_000n
+  ;(chain as { balance?: () => Promise<bigint> }).balance = async () => lamports
+  const ex = mk()
+  await ex.tick()
+  const warns = () => lines.filter((l) => l.includes('executor_low_balance'))
+  assert.equal(warns().length, 1)
+  assert.match(warns()[0]!, /"buysLeft":"?818"?/)
+  await ex.tick()
+  assert.equal(warns().length, 1, 'not again within the interval')
+  clock.advance(601)
+  lamports = 50_000_000n
+  await ex.tick()
+  assert.equal(warns().length, 1, 'quiet above the threshold')
+})
