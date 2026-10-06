@@ -27,6 +27,17 @@ export function createApp(
   const app = express()
   const limits = options.limits ?? defaultLimits()
   app.disable('x-powered-by')
+  // No error is ever cacheable. Cloudflare stretches a cacheable answer to 4 hours in the
+  // browser, and a 400 for the stylesheet, answered while a deploy swapped files, kept a
+  // browser's copy of the page unstyled (6 Oct). Any status from 400 up says no-store.
+  app.use((_req, res, next) => {
+    const status = res.status.bind(res)
+    res.status = ((code: number) => {
+      if (code >= 400) res.setHeader('Cache-Control', 'no-store')
+      return status(code)
+    }) as typeof res.status
+    next()
+  })
   app.use(express.json({ limit: '8kb' }))
 
   // App identity for MWA: Digital Asset Links + the identity icon, on this host.
@@ -201,9 +212,10 @@ export function createApp(
   })
 
   // mandatum: one-signature grant/revoke, guard, receipts, digest, widget.
-  if (mandates) registerMandateRoutes(app, { ...mandates, store, limits })
+  if (mandates) registerMandateRoutes(app, { ...mandates, store, limits, staticDir: options.staticDir })
 
   app.use((_req, res) => {
+    res.setHeader('Cache-Control', 'no-store')
     res.status(404).json({ ok: false, error: 'not_found' })
   })
 
@@ -211,6 +223,7 @@ export function createApp(
   // with filesystem paths. Malformed JSON and anything unexpected land here.
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     const status = typeof err === 'object' && err !== null && (err as { status?: unknown }).status === 413 ? 413 : 400
+    res.setHeader('Cache-Control', 'no-store')
     res.status(status).json({ ok: false, error: 'bad_request' })
   })
 

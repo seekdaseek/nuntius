@@ -27,6 +27,7 @@ async function serve(
   launches: boolean,
   owners: Record<string, string> = {},
   tokenAccounts: Record<string, object> = {},
+  staticDir?: string,
 ) {
   const db = openDb(':memory:')
   const store = new Store(db)
@@ -70,7 +71,10 @@ async function serve(
       executor: null,
       conn: {},
     } as never,
-    { limits: { rpc: lim(), siwsPayload: lim(), siwsVerify: lim(), demoPerIp: lim(), demoPerMandate: lim() } },
+    {
+      limits: { rpc: lim(), siwsPayload: lim(), siwsVerify: lim(), demoPerIp: lim(), demoPerMandate: lim() },
+      staticDir,
+    },
   )
   const server = app.listen(0, '127.0.0.1')
   await new Promise((r) => server.once('listening', r))
@@ -217,15 +221,32 @@ test('the web backing page: /l/<pool> with a strict CSP and this server’s conf
       config.mints.map((m) => m.symbol),
       ['USDC'],
     )
-    // Script and stylesheet by content hash, so no browser runs a script from another deploy.
-    const js = /src="(\/l\/assets\/backing\.js\?v=[0-9a-f]{12})"/.exec(html)?.[1]
-    const css = /href="(\/l\/assets\/backing\.css\?v=[0-9a-f]{12})"/.exec(html)?.[1]
-    assert.ok(js && css, 'versioned asset URLs')
+    // Script and stylesheet by content hash in the name, so no browser runs a script from
+    // another deploy, and a copy cached under an old URL is simply not asked for again.
+    const js = /src="(\/l\/assets\/backing\.[0-9a-f]{12}\.js)"/.exec(html)?.[1]
+    const css = /href="(\/l\/assets\/backing\.[0-9a-f]{12}\.css)"/.exec(html)?.[1]
+    assert.ok(js && css, 'content-addressed asset URLs')
     const bundle = readFileSync(path.join(import.meta.dirname, '..', 'static', 'l', 'backing.js'))
-    assert.equal(js.slice(-12), createHash('sha256').update(bundle).digest('hex').slice(0, 12))
-    assert.equal((await fetch(`${s.base}${js}`)).status, 200)
-    assert.equal((await fetch(`${s.base}${css}`)).status, 200)
+    assert.equal(js.slice(-15, -3), createHash('sha256').update(bundle).digest('hex').slice(0, 12))
+    const jsRes = await fetch(`${s.base}${js}`)
+    assert.equal(jsRes.status, 200)
+    assert.equal(jsRes.headers.get('cache-control'), 'public, max-age=31536000, immutable')
+    assert.deepEqual(Buffer.from(await jsRes.arrayBuffer()), bundle, 'exactly the bytes that were hashed')
+    const cssRes = await fetch(`${s.base}${css}`)
+    assert.equal(cssRes.status, 200)
+    assert.match(cssRes.headers.get('content-type') ?? '', /^text\/css/)
     assert.equal((await fetch(`${s.base}/l/assets/backing.js`)).status, 200)
+    // A hash the file no longer has, and a name that is not an asset: 404s nobody caches.
+    for (const p of ['/l/assets/backing.000000000000.css', '/l/assets/nope.css', '/nope']) {
+      const r = await fetch(`${s.base}${p}`)
+      assert.deepEqual([r.status, r.headers.get('cache-control')], [404, 'no-store'], p)
+    }
+    const bad = await fetch(`${s.base}/api/siws-verify`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{not json',
+    })
+    assert.deepEqual([bad.status, bad.headers.get('cache-control')], [400, 'no-store'], 'the uniform error')
     assert.equal((await fetch(`${s.base}/l/not-a-pool`)).status, 404)
     assert.equal((await fetch(`${s.base}/l/assets/index.html`)).status, 404)
     assert.equal((await fetch(`${s.base}/l/assets/..%2F..%2Fpackage.json`)).status, 404)
@@ -273,5 +294,30 @@ test('a Meteora pool pasted as a payee, its token account created: refused first
     assert.deepEqual([person.error, person.message], ['payee_has_no_account', 'the payee has no USDC account yet'])
   } finally {
     s.close()
+  }
+})
+
+test('a deploy in progress: a stylesheet missing on disk is a 404 nobody caches, never a cacheable error', async () => {
+  // A copy of static/ with the stylesheet gone, as during the old deploy's rm -rf and copy.
+  const { cpSync, mkdtempSync, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const dir = mkdtempSync(path.join(tmpdir(), 'nuntius-static-'))
+  cpSync(path.join(import.meta.dirname, '..', 'static'), dir, { recursive: true })
+  const s = await serve(true, {}, {}, dir)
+  try {
+    const html = await (await fetch(`${s.base}/l/5qeAeoorEHpwecPkehAVedeYaWhMVpJaFMD52A8oAtHX`)).text()
+    const css = /href="(\/l\/assets\/backing\.[0-9a-f]{12}\.css)"/.exec(html)![1]!
+    rmSync(path.join(dir, 'l', 'backing.css'))
+    rmSync(path.join(dir, 'identity-icon-192.png'))
+    for (const p of ['/l/assets/backing.css', '/identity-icon-192.png']) {
+      const r = await fetch(`${s.base}${p}`)
+      assert.deepEqual([r.status, r.headers.get('cache-control')], [404, 'no-store'], p)
+    }
+    // The hashed name still answers with the bytes it was hashed from, or not at all.
+    const r = await fetch(`${s.base}${css}`)
+    assert.ok(r.status === 200 || (r.status === 404 && r.headers.get('cache-control') === 'no-store'), css)
+  } finally {
+    s.close()
+    rmSync(dir, { recursive: true, force: true })
   }
 })

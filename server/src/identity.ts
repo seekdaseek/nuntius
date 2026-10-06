@@ -48,17 +48,18 @@ export function registerIdentityRoutes(app: express.Express, fingerprint: string
     }
     res.type('application/json').send(JSON.stringify(assetLinks(fingerprint)))
   })
+  // A cache header only on the file itself: a failed send is a 404 nobody caches.
   app.get(ICON_PATH, (_req, res) => {
-    res.setHeader('Cache-Control', 'public, max-age=86400')
-    res.sendFile(path.join(staticDir, 'identity-icon-192.png'))
+    res.sendFile(path.join(staticDir, 'identity-icon-192.png'), { maxAge: 86_400_000 }, (err) => {
+      if (err && !res.headersSent) res.status(404).json({ ok: false, error: 'not_found' })
+    })
   })
   // Launch token assets that live in this repository (static/tokens): images, and the fixed
   // metadata JSON of tokens nuntius creates itself (the proof pool). Plain names only.
   app.get('/t/:file', (req, res) => {
     const file = String(req.params.file)
     if (!TOKEN_FILE_RE.test(file)) return void res.status(404).json({ ok: false, error: 'not_found' })
-    res.setHeader('Cache-Control', 'public, max-age=3600')
-    res.sendFile(path.join(staticDir, 'tokens', file), (err) => {
+    res.sendFile(path.join(staticDir, 'tokens', file), { maxAge: 3_600_000 }, (err) => {
       if (err && !res.headersSent) res.status(404).json({ ok: false, error: 'not_found' })
     })
   })

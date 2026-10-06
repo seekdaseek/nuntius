@@ -13,7 +13,7 @@
  */
 import type express from 'express'
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import {
   createNoopSigner,
@@ -471,24 +471,55 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
     "form-action 'none'",
     "frame-ancestors 'none'",
   ].join('; ')
+  // The page's script and stylesheet are content-addressed: backing.<hash>.js. The server keeps
+  // the bytes it hashed and serves exactly those, so a name can never carry other content, even
+  // while a deploy swaps files; they are cached for a year. A hash the file on disk no longer
+  // has is a 404. Other assets carry a cache header only when the file was sent, and every
+  // failure is a 404 nobody caches (app.ts).
+  const built = new Map<string, { mtimeMs: number; size: number; bytes: Buffer; hash: string }>()
+  const builtAsset = (file: 'backing.js' | 'backing.css') => {
+    const st = statSync(path.join(pageDir, file))
+    const c = built.get(file)
+    if (c && c.mtimeMs === st.mtimeMs && c.size === st.size) return c
+    const bytes = readFileSync(path.join(pageDir, file))
+    const next = {
+      mtimeMs: st.mtimeMs,
+      size: st.size,
+      bytes,
+      hash: createHash('sha256').update(bytes).digest('hex').slice(0, 12),
+    }
+    built.set(file, next)
+    return next
+  }
+  const assetNotFound = (res: express.Response) => res.status(404).json({ ok: false, error: 'not_found' })
   app.get('/l/assets/:file', (req, res) => {
     const file = String(req.params.file)
-    if (!PAGE_ASSETS.has(file)) return void res.status(404).json({ ok: false, error: 'not_found' })
-    res.setHeader('Cache-Control', 'public, max-age=300')
-    res.sendFile(path.join(pageDir, file))
+    const hashed = /^backing\.([0-9a-f]{12})\.(js|css)$/.exec(file)
+    if (hashed) {
+      let a: ReturnType<typeof builtAsset> | null = null
+      try {
+        a = builtAsset(`backing.${hashed[2] as 'js' | 'css'}`)
+      } catch {
+        a = null
+      }
+      if (!a || a.hash !== hashed[1]) return void assetNotFound(res)
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+      res.setHeader('X-Content-Type-Options', 'nosniff')
+      return void res.type(hashed[2] === 'js' ? 'application/javascript' : 'text/css').send(a.bytes)
+    }
+    if (!PAGE_ASSETS.has(file)) return void assetNotFound(res)
+    res.sendFile(path.join(pageDir, file), { maxAge: 300_000 }, (err) => {
+      if (err && !res.headersSent) assetNotFound(res)
+    })
   })
   app.get('/l/:pool', (req, res) => {
     const pool = String(req.params.pool)
     if (!ADDRESS_RE.test(pool)) return void res.status(404).json({ ok: false, error: 'not_found' })
-    // The script and stylesheet are named with their content hash: Cloudflare stretches their
-    // browser cache to 4 hours, and a page from one deploy must never run another's script.
+    // The script and stylesheet by their content hash, from the files in place when the
+    // template is first built (after a deploy's swap, at the first request after the restart).
     template ??= readFileSync(path.join(pageDir, 'index.html'), 'utf8').replace(
-      /\/l\/assets\/(backing\.(?:js|css))"/g,
-      (_m, file: string) =>
-        `/l/assets/${file}?v=${createHash('sha256')
-          .update(readFileSync(path.join(pageDir, file)))
-          .digest('hex')
-          .slice(0, 12)}"`,
+      /\/l\/assets\/backing\.(js|css)"/g,
+      (_m, ext: 'js' | 'css') => `/l/assets/backing.${builtAsset(`backing.${ext}`).hash}.${ext}"`,
     )
     const config = JSON.stringify({
       executor: d.delegatee,

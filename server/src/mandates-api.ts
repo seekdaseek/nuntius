@@ -80,6 +80,8 @@ export interface MandateApiDeps {
   origin?: string
   /** The public committed-demand feed's bus and the operator's own wallets (launch-feed.ts). */
   feed?: { bus: FeedBus; own: Set<string> }
+  /** Where static/ lives; the repository's own when absent (tests point it elsewhere). */
+  staticDir?: string
   /** The last good delegation scan per wallet, shared with the guard. */
   scans?: DelegationScans
   /** "Type it your way": the model call, or null when no key is configured. */
@@ -245,6 +247,7 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       now,
       launchConfigs: cfg.launchConfigs ?? {},
       feed: deps.feed,
+      staticDir: deps.staticDir,
       page: {
         cluster: cfg.cluster,
         mints: cfg.mints.map((m) => ({
