@@ -71,7 +71,7 @@ test('skip words name the cause; a receipt without one was a slippage miss', () 
   assert.equal(skipWords('error:6043'), 'The swap failed with error 6043. Nothing was taken.')
   assert.equal(
     buyLine({ kind: 'skipped', amount: '1', symbol: 'USDC', note: 'curve_full' }),
-    'Skipped: the curve filled before this buy. Nothing was taken; the next buy goes to its regular pool.',
+    'Skipped: the curve filled before this buy. Nothing was taken; it buys in the regular pool once the token moves there.',
   )
   assert.equal(
     buyLine({ kind: 'skipped', amount: '1', symbol: 'USDC' }),

@@ -711,8 +711,10 @@ export class Executor {
   /**
    * A skipped buy, tried again in its period with a fresh quote, up to maxAttempts: after a
    * slippage miss, later; after a first "no room", at once and one base unit smaller than
-   * the amount that failed. A full curve, a second "no room" and any other program error
-   * end the period's buying.
+   * the amount that failed; after the curve completed first (6013), once the token trades in
+   * its canonical DAMM v2 pool, and nothing is tried while it migrates. A second "no room"
+   * and any other program error end the period's buying. The ledger row stays one per
+   * (delegation, period), whatever the retries.
    */
   private async retryBuy(m: Mandate, b: Backing, row: PullRow, remaining: bigint): Promise<Outcome> {
     if (row.attempts >= this.o.maxAttempts) return 'period_done'
@@ -723,6 +725,8 @@ export class Executor {
     if (amount <= 0n) return 'period_done'
     const p = await this.prepareBuy(m, b, amount)
     if (p.kind === 'wait') return 'buy_waiting'
+    // Lost the race at completion: buy again only in the pool the curve migrated into.
+    if (row.error === 'swap_curve_full' && p.route !== 'damm_v2') return 'buy_waiting'
     this.o.store.reattemptPull(
       row.id,
       p.signed.signature,
@@ -881,7 +885,7 @@ interface TokenBal {
 }
 
 /** Skips that end a period's buying: nothing is tried again until the next period. */
-const FINAL_SKIPS = new Set(['swap_curve_full', 'swap_no_room_again', 'swap_failed'])
+const FINAL_SKIPS = new Set(['swap_no_room_again', 'swap_failed'])
 
 /**
  * Seconds after a period starts before its buy is sent: up to a tenth of the period, at

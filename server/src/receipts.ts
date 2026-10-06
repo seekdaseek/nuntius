@@ -178,7 +178,7 @@ export class Receipts {
 /** Why a buy was skipped, in one sentence (meteora.ts swapFailure). Nothing was ever taken. */
 export function skipWords(note: string, slippagePct = 2): string {
   if (note === 'curve_full')
-    return 'The curve filled before this buy. Nothing was taken; the next buy goes to its regular pool.'
+    return 'The curve filled before this buy. Nothing was taken; it buys in the regular pool once the token moves there.'
   if (note === 'no_room') return 'The curve had less room left than quoted. Nothing was taken.'
   if (note.startsWith('error:')) return `The swap failed with error ${note.slice(6)}. Nothing was taken.`
   return `The price moved more than ${slippagePct}%. Nothing was taken.`

@@ -195,7 +195,7 @@ test('jitter: fixed per permission and period, at most a tenth of the period and
 
 const refuse = (code: number) => ({ err: `{"InstructionError":[3,{"Custom":${code}}]}`, customCode: code })
 
-test('the curve completed first (6013): one receipt that says so, and no more tries this period', async () => {
+test('the curve completed first (6013): one receipt, nothing while it migrates, then the same period buys on DAMM v2', async () => {
   const { chain, store, pushes, clock, m, mk, jitter } = setup()
   clock.advance(jitter)
   chain.simRefusals.push(refuse(6013))
@@ -204,18 +204,52 @@ test('the curve completed first (6013): one receipt that says so, and no more tr
   assert.deepEqual(chain.sends, [], 'never sent: our simulation refused it')
   assert.equal(pushes.length, 1)
   assert.equal(pushes[0]!.title, 'Skipped: Back NATX')
-  assert.match(pushes[0]!.body, /^The curve filled before this buy\. Nothing was taken/)
+  assert.match(pushes[0]!.body, /^The curve filled before this buy\. Nothing was taken; it buys in the regular pool/)
   assert.doesNotMatch(pushes[0]!.body, /price moved/)
   assert.equal(store.events(OWNER)[0]!.note, 'curve_full')
   assert.match(pushes[0]!.url, /why=curve_full/)
-  clock.advance(3_600)
-  assert.deepEqual(await ex.tick(), { [m.id]: 'period_done' })
-  assert.equal(chain.simulations.length, 1, 'nothing more tried this period')
-  // The next period buys again (after migration the route follows the token).
-  clock.advance(604_800)
-  const next = buyJitterS(m.id, Number(chain.delegations.get(PDA)!.periodStart) + 604_800, 604_800)
-  clock.advance(next)
+  // While the curve migrates: nothing is built, simulated or sent, and no attempt is spent.
+  chain.buyWait = 'migrating'
+  clock.advance(60)
+  assert.deepEqual(await ex.tick(), { [m.id]: 'buy_waiting' })
+  assert.deepEqual(await ex.tick(), { [m.id]: 'buy_waiting' })
+  assert.equal(chain.simulations.length, 1)
+  assert.equal(store.pullsFor(PDA)[0]!.attempts, 1)
+  // Migrated: the same period buys in the canonical DAMM v2 pool.
+  chain.buyWait = null
+  chain.buyRoute = 'damm_v2'
+  chain.dammPool = 'DammPool'
   assert.deepEqual(await ex.tick(), { [m.id]: 'landed' })
+  const rows = store.pullsFor(PDA)
+  assert.equal(rows.length, 1, 'still one ledger row for the period')
+  assert.equal(rows[0]!.attempts, 2)
+  assert.equal(rows[0]!.state, 'landed')
+  assert.equal(store.backingOf(m.id)!.route, 'damm_v2')
+  assert.equal(chain.delegations.get(PDA)!.pulled, 1_000_000n, 'one pull this period')
+  assert.equal(chain.delegateeQuote, 0n)
+  assert.deepEqual(
+    store
+      .events(OWNER)
+      .map((e) => e.kind)
+      .sort(),
+    ['buy', 'skipped'],
+    'the skip receipt, then the buy receipt',
+  )
+  // Idempotent: the period is done.
+  assert.deepEqual(await ex.tick(), { [m.id]: 'period_done' })
+  assert.equal(chain.sent.length, 1)
+})
+
+test('after 6013, a route that is still the curve is not bought: only the migrated pool is', async () => {
+  const { chain, store, clock, m, mk, jitter } = setup()
+  clock.advance(jitter)
+  chain.simRefusals.push(refuse(6013))
+  const ex = mk()
+  assert.deepEqual(await ex.tick(), { [m.id]: 'skipped' })
+  clock.advance(60)
+  assert.deepEqual(await ex.tick(), { [m.id]: 'buy_waiting' }, 'a DBC quote is not taken after the curve completed')
+  assert.equal(store.pullsFor(PDA)[0]!.attempts, 1)
+  assert.equal(chain.sends.length, 0)
 })
 
 test('less room than quoted (6033): re-quoted one unit smaller at once, with no receipt for the miss', async () => {

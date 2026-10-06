@@ -449,7 +449,7 @@ export async function readLaunch(
  * Why a buy's swap leg failed, from the program's error code. Each cause has its own
  * receipt and its own retry rule (executor.ts skipBuy):
  *   slippage    the price moved past the minimum-out: tried again later in the period
- *   curve_full  the curve completed first (DBC 6013): no retry; the next period buys after migration
+ *   curve_full  the curve completed first (DBC 6013): retried in the period once it trades on DAMM v2
  *   no_room     less room than quoted (DBC 6033, DAMM v2 6023): re-quoted one unit smaller, once
  *   error:<n>   anything else, named by its code: no retry in the period
  * Codes are the programs' own (DBC IDL 0.2.1, DAMM v2 IDL 0.2.5).

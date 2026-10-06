@@ -482,6 +482,21 @@ test(
     assert.equal(migrated.dammPool, canonical, 'the canonical pool, not the decoy')
     assert.ok(pushes.some((x) => x.title === 'PROOF moved to its regular pool'))
 
+    // --- 6b. The same period, after the migration: the buy that lost the race and the one that
+    // waited both go through, on the canonical DAMM v2 pool; backer 1's period is already done.
+    const raceStart = BigInt(store.pullsFor(second.delegationPda).at(-1)!.periodStart)
+    const left = raceStart + BigInt(PERIOD_S) - (await real.clock!())
+    assert.ok(left > 1n, `still inside the race's period (${left} s left), so this is the same period`)
+    const out6 = await tickAndCheck('6b same period, after migration')
+    assert.equal(out6[first.id], 'period_done')
+    assert.equal(out6[second.id], 'landed', 'the buy that lost the race buys on DAMM v2 in the same period')
+    assert.equal(out6[third.id], 'landed', 'the buy that waited buys on DAMM v2 in the same period')
+    const retried = store.pullsFor(second.delegationPda).at(-1)!
+    assert.equal(BigInt(retried.periodStart), raceStart, 'the same ledger row: one per delegation and period')
+    assert.equal(retried.attempts, 2)
+    assert.equal(retried.state, 'landed')
+    for (const m of [second, third]) assert.equal(store.backingOf(m.id)!.dammPool, canonical)
+
     // --- 7. The next buy goes to the canonical DAMM v2 pool ----------------------------------
     await nextPeriod()
     const out7 = await tickAndCheck('7 first buy on DAMM v2')

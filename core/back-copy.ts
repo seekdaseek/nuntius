@@ -57,7 +57,7 @@ export function backSentence(f: BackForm, token: string | null, quote: string): 
  */
 export function skipWords(why: string | null | undefined): string {
   if (why === 'curve_full')
-    return 'The curve filled before this buy. Nothing was taken; the next buy goes to its regular pool.'
+    return 'The curve filled before this buy. Nothing was taken; it buys in the regular pool once the token moves there.'
   if (why === 'no_room') return 'The curve had less room left than quoted. Nothing was taken.'
   if (why?.startsWith('error:')) return `The swap failed with error ${why.slice(6)}. Nothing was taken.`
   return 'The price moved more than 2%. Nothing was taken.'
