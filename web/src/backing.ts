@@ -18,6 +18,7 @@ import {
   createDefaultChainSelector,
   createDefaultWalletNotFoundHandler,
   registerMwa,
+  SolanaMobileWalletAdapterWalletName,
 } from '@solana-mobile/wallet-standard-mobile'
 import { baseUnits, checkTransaction, TxMismatch, type GrantExpect } from '../../core/tx-check'
 
@@ -366,7 +367,11 @@ async function signIn(): Promise<string> {
     signIn?: (...i: object[]) => Promise<{ account: WalletAccount; signedMessage: Uint8Array; signature: Uint8Array }[]>
     signMessage?: (...i: object[]) => Promise<{ signedMessage: Uint8Array; signature: Uint8Array }[]>
   }>
-  if (f['solana:signIn']?.signIn) {
+  // MWA answers solana:signIn from the authorization it cached at connect, which carries no
+  // sign-in result (6 Oct, Seed Vault from Chrome: "no sign in result returned by wallet"), so
+  // with MWA the same sign-in text is signed as a message; the server verifies it either way.
+  const mwa = wallet!.name === SolanaMobileWalletAdapterWalletName
+  if (!mwa && f['solana:signIn']?.signIn) {
     const [out] = await f['solana:signIn'].signIn({ ...payload, address: account!.address })
     signedMessage = out!.signedMessage
     signature = out!.signature
@@ -597,6 +602,22 @@ bindSegments('periods', 'period')
 bindSegments('durations', 'untilDays')
 sentence()
 $('approve').addEventListener('click', () => void back())
+// Back to the wallet list. The wallet forgets this site (MWA clears its cached authorization),
+// so the next connection can pick another account.
+$('switch').addEventListener('click', () => {
+  const w = wallet
+  wallet = null
+  account = null
+  session = null
+  store.set('nuntius-session', null)
+  store.set('nuntius-session-wallet', null)
+  $('step-back').hidden = true
+  $('step-wallet').hidden = false
+  $('mine').hidden = true
+  status('')
+  const disconnect = (w?.features as Feature<{ disconnect: () => Promise<void> }> | undefined)?.['standard:disconnect']
+  void disconnect?.disconnect().catch(() => {})
+})
 // Chrome on Android has no injected wallet: the Mobile Wallet Adapter registers the phone's own
 // wallet (Seed Vault on a Seeker) before the list is built. It registers only where local
 // association works (a secure, non-webview Android browser); elsewhere it does nothing. The

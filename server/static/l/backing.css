@@ -360,3 +360,12 @@ label {
 .foot {
   margin-top: 8px;
 }
+.linkish {
+  background: none;
+  border: 0;
+  padding: 0 0 0 6px;
+  color: var(--signal);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
