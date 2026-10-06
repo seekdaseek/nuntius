@@ -108,6 +108,14 @@ interface Launch {
   /** The token's image from its metadata: a path on this origin or an https URL. */
   image?: string | null
   progressPct: number
+  /** The token's promises, read from its mint and metadata accounts on this request; null: not read. */
+  trust?: {
+    mint: string
+    metadata: string | null
+    mintAuthorityDisabled: boolean | null
+    freezeAuthorityDisabled: boolean | null
+    metadataPermanent: boolean | null
+  } | null
   /** Quote raised on the curve and the threshold that completes it, in base units. */
   quoteRaised?: string
   threshold?: string
@@ -136,6 +144,7 @@ async function loadLaunch() {
   const q = quote()
   $('symbol').textContent = launch.symbol ?? short(launch.baseMint)
   showLogo(launch.image ?? null)
+  showTrust(launch.trust ?? null)
   // 25 a period to start with, or this token's ceiling when that is lower.
   if (!amountTouched && q && Number(form.amount) > Number(q.maxPerPeriodUi)) {
     form.amount = q.maxPerPeriodUi
@@ -196,6 +205,37 @@ function curveWords(l: Launch, q: PageConfig['mints'][number] | null): string {
   const ui = (base: string) =>
     (Number(BigInt(base)) / 10 ** q.decimals).toLocaleString('en-US', { maximumFractionDigits: 2 })
   return `On its bonding curve: ${ui(l.quoteRaised)} of ${ui(l.threshold)} ${q.symbol} raised`
+}
+
+/** An account on Solscan (mainnet) or on the explorer pointed at this validator. */
+const accountUrl = (address: string, token: boolean) =>
+  config.cluster === 'mainnet'
+    ? `https://solscan.io/${token ? 'token' : 'account'}/${address}`
+    : `https://explorer.solana.com/address/${address}?cluster=custom`
+
+/**
+ * A badge for each promise the chain confirmed on this load, linked to the account that holds
+ * it. A fact that was not read (null) or does not hold (false) shows nothing: no guesses.
+ */
+function showTrust(t: Launch['trust'] | null) {
+  const list = $('trust')
+  const badges: [string, string][] = []
+  if (t?.mintAuthorityDisabled === true) badges.push(['Mint authority disabled', accountUrl(t.mint, true)])
+  if (t?.freezeAuthorityDisabled === true) badges.push(['Freeze authority disabled', accountUrl(t.mint, true)])
+  if (t?.metadataPermanent === true && t.metadata) badges.push(['Metadata permanent', accountUrl(t.metadata, false)])
+  list.replaceChildren(
+    ...badges.map(([words, href]) => {
+      const li = document.createElement('li')
+      const a = document.createElement('a')
+      a.href = href
+      a.target = '_blank'
+      a.rel = 'noopener'
+      a.textContent = words
+      li.append(a)
+      return li
+    }),
+  )
+  list.hidden = badges.length === 0
 }
 
 /** The token's own image beside its name; shown once it has loaded, never a broken icon. */

@@ -9,7 +9,8 @@ import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { chromium } from 'playwright-core'
 import Database from 'better-sqlite3'
-import { Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js'
+import { Keypair, LAMPORTS_PER_SOL, sendAndConfirmTransaction } from '@solana/web3.js'
+import * as DBC from '@meteora-ag/dynamic-bonding-curve-sdk'
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from '@solana/spl-token'
 import {
   createKeyPairSignerFromBytes,
@@ -30,7 +31,13 @@ import { Receipts } from '../dist/receipts.js'
 import { createLogger } from '../dist/log.js'
 import { Executor, rpcChain } from '../dist/executor.js'
 import { readRecurring } from '../dist/mandate-chain.js'
-import { configInstructions, launchInstructions, meteoraConnection, dbcPoolAddress } from '../dist/meteora.js'
+import {
+  configInstructions,
+  launchInstructions,
+  launchPreset,
+  meteoraConnection,
+  dbcPoolAddress,
+} from '../dist/meteora.js'
 import { PULL_BUDGET, signAndSend } from '../dist/tx.js'
 
 const RPC = process.env.LOCALNET_RPC ?? ''
@@ -98,6 +105,35 @@ async function setup() {
   )
   const pool = dbcPoolAddress(quoteMint.toBase58(), baseKp.publicKey.toBase58(), configKp.publicKey.toBase58())
 
+  // A second pool whose metadata the creator can still change: what an outside launchpad may
+  // hand a backer. Built with the SDK, on the deployed program. (A pool that keeps a mint
+  // authority cannot be built this way: the SDK allows that only for transfer-hook configs,
+  // which nuntius refuses.)
+  const client = new DBC.DynamicBondingCurveClient(conn, 'confirmed')
+  const openCfg = Keypair.generate()
+  const cfgTx = await client.partner.createConfig({
+    ...launchPreset(1_000),
+    tokenUpdateAuthority: DBC.TokenAuthorityOption.CreatorUpdateAuthority,
+    config: openCfg.publicKey,
+    feeClaimer: partner.publicKey,
+    leftoverReceiver: partner.publicKey,
+    quoteMint,
+    payer: partner.publicKey,
+  })
+  await sendAndConfirmTransaction(conn, cfgTx, [partner, openCfg], { commitment: 'confirmed' })
+  const openBase = Keypair.generate()
+  const openPoolTx = await client.creator.createPool({
+    config: openCfg.publicKey,
+    baseMint: openBase.publicKey,
+    name: 'still mutable',
+    symbol: 'OPEN',
+    uri: 'https://nuntius.test/t/proof.json',
+    payer: creatorKp.publicKey,
+    poolCreator: creatorKp.publicKey,
+  })
+  await sendAndConfirmTransaction(conn, openPoolTx, [creatorKp, openBase], { commitment: 'confirmed' })
+  const openPool = dbcPoolAddress(quoteMint.toBase58(), openBase.publicKey.toBase58(), openCfg.publicKey.toBase58())
+
   // The real server, on this validator, with launches on.
   const executor = await createKeyPairSignerFromBytes(executorKp.secretKey)
   const db = openDb(':memory:')
@@ -151,7 +187,7 @@ async function setup() {
   await new Promise((r) => server.once('listening', r))
   const base = `http://127.0.0.1:${server.address().port}`
   const backer = await createKeyPairSignerFromBytes(backerKp.secretKey)
-  return { rpc, pool, base, server, backer, executor }
+  return { rpc, pool, base, server, backer, executor, openPool, baseMint: baseKp.publicKey.toBase58() }
 }
 
 /** A Wallet Standard wallet in the page; every signature is made in Node with the backer's key. */
@@ -230,6 +266,10 @@ async function openPage(env, tamper) {
   return { browser, page, problems }
 }
 
+/** The trust badges as shown: words and link. */
+const trustBadges = (page) =>
+  page.$$eval('#trust a', (as) => as.map((a) => ({ words: a.textContent, href: a.getAttribute('href') })))
+
 const shot = async (page, name) => {
   if (!SHOTS) return
   mkdirSync(SHOTS, { recursive: true })
@@ -255,6 +295,14 @@ test(
       await page.waitForSelector('#logo:not([hidden])')
       const logo = await page.$eval('#logo', (i) => ({ src: i.getAttribute('src'), w: i.naturalWidth }))
       assert.deepEqual(logo, { src: '/t/nimus.png', w: 512 })
+      // The token's own accounts, read from the chain: all three promises hold for our preset.
+      const badges = await trustBadges(page)
+      assert.deepEqual(
+        badges.map((b) => b.words),
+        ['Mint authority disabled', 'Freeze authority disabled', 'Metadata permanent'],
+      )
+      assert.ok(badges[0].href.includes(env.baseMint) && badges[1].href.includes(env.baseMint))
+      assert.ok(!badges[2].href.includes(env.baseMint), 'the metadata badge links the metadata account')
       await shot(page, '01-backing-page')
       await page.fill('#amount', '5')
       await page.click('#durations button[data-v="30"]')
@@ -312,6 +360,74 @@ test(
       )
       assert.equal(await page.evaluate(() => window.__walletCalls ?? 0), 0, 'the wallet never saw it')
       await shot(page, '04-backing-refused')
+    } finally {
+      await browser.close()
+      env.server.close()
+    }
+  },
+)
+
+test(
+  'a token whose metadata its creator can still change: no "Metadata permanent"; a mint authority or an unread fact shows nothing',
+  { skip, timeout: 300_000 },
+  async () => {
+    const env = await setup()
+    const browser = await chromium.launch(CHROME ? { executablePath: CHROME } : {})
+    try {
+      const page = await browser.newPage({ viewport: { width: 420, height: 900 } })
+      await page.goto(`${env.base}/l/${env.openPool}`)
+      await page.waitForFunction(() =>
+        document.getElementById('route')?.textContent?.startsWith('On its bonding curve'),
+      )
+      assert.equal(await page.textContent('#symbol'), 'OPEN')
+      assert.deepEqual(
+        (await trustBadges(page)).map((b) => b.words),
+        ['Mint authority disabled', 'Freeze authority disabled'],
+      )
+      await shot(page, '05-backing-mutable-token')
+
+      // What the page does with a live mint authority and with a failed read. The first is SKR's
+      // own read on mainnet (6 Oct: mint authority set, no freeze authority, metadata mutable).
+      for (const [trust, expected] of [
+        [
+          {
+            mint: 'SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3',
+            metadata: 'J753AwzZP1mrHgnfuujQTd7a3jEWQaUCzskMxLwsVYVj',
+            mintAuthorityDisabled: false,
+            freezeAuthorityDisabled: true,
+            metadataPermanent: false,
+          },
+          ['Freeze authority disabled'],
+        ],
+        [
+          {
+            mint: 'x',
+            metadata: null,
+            mintAuthorityDisabled: null,
+            freezeAuthorityDisabled: null,
+            metadataPermanent: null,
+          },
+          [],
+        ],
+        [null, []],
+      ]) {
+        await page.route(`**/api/launch/${env.openPool}`, async (route) => {
+          const r = await route.fetch()
+          const j = await r.json()
+          j.launch.trust = trust
+          await route.fulfill({ response: r, json: j })
+        })
+        await page.reload()
+        await page.waitForFunction(() =>
+          document.getElementById('route')?.textContent?.startsWith('On its bonding curve'),
+        )
+        assert.deepEqual(
+          (await trustBadges(page)).map((b) => b.words),
+          expected,
+        )
+        assert.equal(await page.isHidden('#trust'), expected.length === 0)
+        await page.unroute(`**/api/launch/${env.openPool}`)
+      }
     } finally {
       await browser.close()
       env.server.close()

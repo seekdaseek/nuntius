@@ -92,6 +92,41 @@ h1 {
 .logo[hidden] {
   display: none;
 }
+.trust {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0 12px;
+  padding: 0;
+}
+.trust[hidden] {
+  display: none;
+}
+.trust a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  color: #fff;
+  font:
+    600 13px/1.2 Figtree,
+    system-ui,
+    sans-serif;
+  text-decoration: none;
+}
+.trust a::before {
+  content: '✓';
+  color: #8ff0c4;
+  font-weight: 800;
+}
+.trust a:hover,
+.trust a:focus-visible {
+  background: rgba(255, 255, 255, 0.24);
+}
 .lede {
   margin: 0;
   opacity: 0.88;

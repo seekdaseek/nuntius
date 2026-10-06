@@ -49,6 +49,7 @@ import { safeError } from './log.js'
 import { CLIENT_HEADER, clientAtLeast } from './client-version.js'
 import { FeedBus, parseOwnWallets, registerFeedRoutes } from './launch-feed.js'
 import { readMetadataUri, TokenImages } from './token-image.js'
+import { readTokenTrust, type TokenTrust } from './token-trust.js'
 
 const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
 /** The web backing page's files (static/l), served by name only. */
@@ -381,6 +382,7 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
     L: Awaited<ReturnType<typeof readLaunch>>,
     symbol: string | null,
     image: string | null = null,
+    trust: TokenTrust | null = null,
   ) => ({
     pool: L.pool,
     route: L.route,
@@ -389,6 +391,7 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
     quoteMint: L.quoteMint,
     symbol,
     image,
+    trust,
     progressPct: L.progressBps / 100,
     quoteRaised: L.quoteRaised,
     threshold: L.threshold,
@@ -401,14 +404,16 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
     if (!ADDRESS_RE.test(pool)) return void res.status(400).json({ ok: false, error: 'bad_pool' })
     readLaunch(d.conn, pool)
       .then(async (L) => {
-        const [symbol, image] = await Promise.all([
+        // The token's promises are read on every request, never cached: they are the page's claims.
+        const [symbol, image, trust] = await Promise.all([
           d.mandates.launchByPool(pool)?.symbol ??
             tokenInfo(d.conn, L.baseMint)
               .then((t) => t.symbol)
               .catch(() => null),
           images.imageOf(L.baseMint),
+          readTokenTrust(d.conn, L.baseMint),
         ])
-        res.json({ ok: true, launch: launchView(L, symbol, image) })
+        res.json({ ok: true, launch: launchView(L, symbol, image, trust) })
       })
       .catch((e: unknown) =>
         e instanceof UnsupportedLaunch
