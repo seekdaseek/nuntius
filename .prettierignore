@@ -15,3 +15,6 @@ server/node_modules
 # Vendored packages keep their upstream formatting, so they diff cleanly against it.
 shims/braces/
 shims/decode-uri-component/
+
+# Built by web/build.mjs (minified)
+server/static/l/backing.js

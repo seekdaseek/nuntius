@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Back a launch · nuntius</title>
+    <meta
+      name="description"
+      content="Back a token launch on Meteora with a capped weekly buy you approve once and revoke any time."
+    />
+    <link rel="icon" href="/identity-icon-192.png" />
+    <link rel="stylesheet" href="/l/assets/backing.css" />
+    <script type="application/json" id="config">
+      __CONFIG__
+    </script>
+  </head>
+  <body>
+    <header class="hero">
+      <div class="wrap">
+        <a class="brand" href="https://github.com/seekdaseek/nuntius/blob/main/METEORA.md">nuntius</a>
+        <h1>Back <span id="symbol">a launch</span></h1>
+        <p class="lede">
+          A capped buy every week or every day, straight into your own wallet. One approval; revoke any time.
+        </p>
+      </div>
+    </header>
+    <main class="wrap">
+      <section class="card" aria-labelledby="now">
+        <h2 id="now">Now</h2>
+        <p id="route" class="big">Reading the curve…</p>
+        <div class="track"><div id="bar" class="fill"></div></div>
+        <dl class="facts">
+          <div>
+            <dt>Committed</dt>
+            <dd id="committed">…</dd>
+          </div>
+          <div>
+            <dt>Buys</dt>
+            <dd id="buys">No buys yet</dd>
+          </div>
+          <div>
+            <dt>Priced in</dt>
+            <dd id="quote">…</dd>
+          </div>
+          <div>
+            <dt>Pool</dt>
+            <dd id="pool">…</dd>
+          </div>
+        </dl>
+        <ul id="recent" class="recent"></ul>
+        <p id="state" class="state"></p>
+      </section>
+
+      <section id="back" class="card" aria-labelledby="backh">
+        <h2 id="backh">Back it</h2>
+        <p id="sentence" class="sentence">Back this launch: … every week, for 90 days.</p>
+        <label for="amount">Amount each period</label>
+        <div class="amount">
+          <input id="amount" inputmode="decimal" autocomplete="off" placeholder="25" /><span data-quote></span>
+        </div>
+        <p id="hint" class="hint"></p>
+        <label>Every</label>
+        <div id="periods" class="seg">
+          <button data-v="day" aria-pressed="false">day</button><button data-v="week" aria-pressed="true">week</button>
+        </div>
+        <label>For</label>
+        <div id="durations" class="seg">
+          <button data-v="7" aria-pressed="false">7 days</button
+          ><button data-v="30" aria-pressed="false">30 days</button
+          ><button data-v="90" aria-pressed="true">90 days</button>
+        </div>
+        <p class="small">
+          Each period one transaction takes your amount and buys the token with it, straight into your own wallet. The
+          Solana Subscriptions program caps what can be taken; if the price moves more than 2% first, that buy is
+          skipped and nothing is taken.
+        </p>
+
+        <div id="step-wallet">
+          <h3>Connect a wallet</h3>
+          <div id="wallets" class="wallets"></div>
+          <p id="nowallet" class="small" hidden>
+            No Solana wallet found in this browser. Install Phantom, Solflare or Backpack, or use the app.
+          </p>
+        </div>
+        <div id="step-back" hidden>
+          <p class="small">Connected: <strong id="connected"></strong></p>
+          <button id="approve" class="primary" disabled>Sign in and approve</button>
+        </div>
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="mine" class="card" hidden aria-labelledby="mineh">
+        <h2 id="mineh">Your permissions on this launch</h2>
+        <ul id="mine-list" class="mine"></ul>
+      </section>
+
+      <p class="small foot">
+        On a Solana Seeker? <a id="apk" href="#">Get the nuntius app</a>. nuntius earns 0.4% of curve trades and half of
+        the locked pool’s fees after graduation. Not investment advice: a launch token can go to zero.
+      </p>
+    </main>
+    <script src="/l/assets/backing.js"></script>
+  </body>
+</html>

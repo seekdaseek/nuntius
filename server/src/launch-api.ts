@@ -12,6 +12,8 @@
  * Launching is for verified Seeker owners only (the SGT tier), so a launch is one device.
  */
 import type express from 'express'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import {
   createNoopSigner,
   generateKeyPairSigner,
@@ -47,6 +49,16 @@ import { CLIENT_HEADER, clientAtLeast } from './client-version.js'
 import { FeedBus, parseOwnWallets, registerFeedRoutes } from './launch-feed.js'
 
 const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
+/** The web backing page's files (static/l), served by name only. */
+const PAGE_ASSETS = new Set([
+  'backing.js',
+  'backing.css',
+  'BricolageGrotesque_800ExtraBold.ttf',
+  'Figtree_400Regular.ttf',
+  'Figtree_600SemiBold.ttf',
+  'OFL-bricolage.txt',
+  'OFL-figtree.txt',
+])
 const SYMBOL_RE = /^[A-Z0-9]{2,10}$/
 const NAME_RE = /^[\p{L}\p{N} .'&-]{1,32}$/u
 /** A launch's own description: plain words and punctuation, no markup, no line breaks. */
@@ -92,6 +104,10 @@ export interface LaunchDeps {
   launchConfigs: Record<string, string>
   /** The public feed's bus and own wallets; without them the feed serves numbers and a quiet stream. */
   feed?: { bus: FeedBus; own: Set<string> }
+  /** What the web backing page is told: this server's executor, cluster and tokens. */
+  page?: { cluster: string; mints: { symbol: string; mint: string; decimals: number; maxPerPeriodUi: string }[] }
+  /** Where static/l lives (tests point it at the repository's own). */
+  staticDir?: string
 }
 
 /** The launch token's decimals and symbol, from its mint and Metaplex metadata accounts. */
@@ -397,6 +413,44 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
       }
     },
     limiter: d.publicLimiter,
+  })
+
+  // The web backing page: /l/<pool>, for any Wallet Standard wallet. The page is static; the
+  // server writes in its own executor and tokens, which the page's transaction check uses.
+  const pageDir = path.join(d.staticDir ?? path.join(import.meta.dirname, '..', 'static'), 'l')
+  let template: string | null = null
+  const PAGE_CSP = [
+    "default-src 'none'",
+    "script-src 'self'",
+    "style-src 'self'",
+    "font-src 'self'",
+    "img-src 'self' data: https:",
+    "connect-src 'self'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+  ].join('; ')
+  app.get('/l/assets/:file', (req, res) => {
+    const file = String(req.params.file)
+    if (!PAGE_ASSETS.has(file)) return void res.status(404).json({ ok: false, error: 'not_found' })
+    res.setHeader('Cache-Control', 'public, max-age=300')
+    res.sendFile(path.join(pageDir, file))
+  })
+  app.get('/l/:pool', (req, res) => {
+    const pool = String(req.params.pool)
+    if (!ADDRESS_RE.test(pool)) return void res.status(404).json({ ok: false, error: 'not_found' })
+    template ??= readFileSync(path.join(pageDir, 'index.html'), 'utf8')
+    const config = JSON.stringify({
+      executor: d.delegatee,
+      cluster: d.page?.cluster ?? 'mainnet',
+      mints: d.page?.mints ?? [],
+      apk: 'https://github.com/seekdaseek/nuntius/releases',
+    }).replace(/</g, '\\u003c')
+    res.setHeader('Content-Security-Policy', PAGE_CSP)
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Referrer-Policy', 'no-referrer')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.type('html').send(template.replace('__CONFIG__', config))
   })
 
   app.get('/m/:file', (req, res) => {

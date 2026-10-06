@@ -1,0 +1,12 @@
+{
+  "name": "nuntius-web",
+  "private": true,
+  "description": "The web backing page (/l/<pool>), bundled into server/static/l. The app's own core/tx-check.ts checks every transaction before the wallet sees it.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10"
+  }
+}

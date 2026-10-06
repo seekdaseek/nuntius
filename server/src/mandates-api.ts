@@ -245,6 +245,15 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       now,
       launchConfigs: cfg.launchConfigs ?? {},
       feed: deps.feed,
+      page: {
+        cluster: cfg.cluster,
+        mints: cfg.mints.map((m) => ({
+          symbol: m.symbol,
+          mint: m.mint,
+          decimals: m.decimals,
+          maxPerPeriodUi: m.maxPerPeriodUi ?? cfg.maxPerPeriodUi,
+        })),
+      },
     })
   }
 

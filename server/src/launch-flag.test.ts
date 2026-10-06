@@ -156,3 +156,33 @@ test('launches on, an older app: back, create and confirm answer exactly as with
     off.close()
   }
 })
+
+test('the web backing page: /l/<pool> with a strict CSP and this server’s config; assets by name only', async () => {
+  const s = await serve(true)
+  try {
+    const r = await fetch(`${s.base}/l/5qeAeoorEHpwecPkehAVedeYaWhMVpJaFMD52A8oAtHX`)
+    assert.equal(r.status, 200)
+    const csp = r.headers.get('content-security-policy') ?? ''
+    assert.match(csp, /connect-src 'self'/)
+    assert.match(csp, /script-src 'self'/)
+    assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval/)
+    const html = await r.text()
+    const config = JSON.parse(
+      /<script type="application\/json" id="config">\s*([\s\S]*?)\s*<\/script>/.exec(html)![1]!,
+    ) as {
+      executor: string
+      mints: { symbol: string }[]
+    }
+    assert.equal(config.executor, 'D', 'the executor this server pulls with')
+    assert.deepEqual(
+      config.mints.map((m) => m.symbol),
+      ['USDC'],
+    )
+    assert.equal((await fetch(`${s.base}/l/assets/backing.js`)).status, 200)
+    assert.equal((await fetch(`${s.base}/l/not-a-pool`)).status, 404)
+    assert.equal((await fetch(`${s.base}/l/assets/index.html`)).status, 404)
+    assert.equal((await fetch(`${s.base}/l/assets/..%2F..%2Fpackage.json`)).status, 404)
+  } finally {
+    s.close()
+  }
+})
