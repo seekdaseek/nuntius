@@ -221,7 +221,8 @@ function walletInitScript(address, publicKey) {
 
 async function openPage(env, tamper) {
   const browser = await chromium.launch(CHROME ? { executablePath: CHROME } : {})
-  const page = await browser.newPage({ viewport: { width: 420, height: 900 } })
+  // A browser-extension wallet is a desktop browser: the panel is in view beside the page.
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
   const problems = []
   page.on(
     'console',
@@ -291,7 +292,10 @@ test(
       assert.equal(await page.textContent('#route'), 'On its bonding curve: 0 of 1,000 TQ raised')
       // The sentence is whole on first load, and the token's own image sits beside its name.
       assert.equal(await page.inputValue('#amount'), '25')
-      assert.equal(await page.textContent('#sentence'), 'Back WEBT: 25 TQ every week, for 90 days.')
+      assert.equal(
+        await page.textContent('#sentence'),
+        '25 TQ a week for 90 days · at most 325 TQ in total · nothing is deposited',
+      )
       await page.waitForSelector('#logo:not([hidden])')
       const logo = await page.$eval('#logo', (i) => ({ src: i.getAttribute('src'), w: i.naturalWidth }))
       assert.deepEqual(logo, { src: '/t/nimus.png', w: 512 })
@@ -306,7 +310,10 @@ test(
       await shot(page, '01-backing-page')
       await page.fill('#amount', '5')
       await page.click('#durations button[data-v="30"]')
-      assert.equal(await page.textContent('#sentence'), 'Back WEBT: 5 TQ every week, for 30 days.')
+      assert.equal(
+        await page.textContent('#sentence'),
+        '5 TQ a week for 30 days · at most 25 TQ in total · nothing is deposited',
+      )
       await page.click('text=nuntius test wallet')
       await page.waitForSelector('#step-back:not([hidden])')
       // The backer holds TQ, so no "you need" note; the setup line comes from the server's numbers.
@@ -493,6 +500,8 @@ test(
       // attempt timed out). The dialog's shadow root is opened above only so the test can press it.
       const csps = []
       page.on('console', (m) => /Content Security Policy/i.test(m.text()) && csps.push(m.text()))
+      // On a phone the panel is a sheet: the fixed Back button opens it.
+      await page.click('#openSheet')
       await page.click('#wallets .wallet')
       await page.waitForSelector('#mobile-wallet-adapter-launch-action', { timeout: 15_000 })
       await shot(page, '07-backing-mwa-permission-dialog')
@@ -533,6 +542,7 @@ test(
         ['Open in Solflare', `https://solflare.com/ul/v1/browse/${here}?ref=${ref}`],
         ['Open in Backpack', `https://backpack.app/ul/v1/browse/${here}?ref=${ref}`],
       ])
+      await bare.click('#openSheet')
       await shot(bare, '08-backing-no-wallet')
       // A wallet that holds none of the quote token.
       const opened = await openPage(env, false)

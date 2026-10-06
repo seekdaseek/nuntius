@@ -29,7 +29,11 @@ import {
   type Instruction,
   type TransactionSigner,
 } from '@solana/kit'
-import { getCreateAssociatedTokenIdempotentInstruction, TOKEN_PROGRAM_ADDRESS } from '@solana-program/token'
+import {
+  getCreateAssociatedTokenIdempotentInstruction,
+  getTokenSize,
+  TOKEN_PROGRAM_ADDRESS,
+} from '@solana-program/token'
 import {
   ataOf,
   dbcPoolAddress,
@@ -47,11 +51,11 @@ import type { Rpc } from './tx.js'
 import { limitByIp, type RateLimiter } from './rate-limit.js'
 import { safeError } from './log.js'
 import { CLIENT_HEADER, clientAtLeast } from './client-version.js'
-import { FeedBus, parseOwnWallets, registerFeedRoutes } from './launch-feed.js'
+import { FeedBus, feedFromDb, parseOwnWallets, registerFeedRoutes } from './launch-feed.js'
 import { readMetadataUri, TokenImages } from './token-image.js'
 import { readTokenTrust, type TokenTrust } from './token-trust.js'
+import { priceInQuote, UsdPrices } from './launch-market.js'
 import { getRecurringDelegationCodec, getSubscriptionAuthorityCodec } from '@solana/subscriptions'
-import { getTokenSize } from '@solana-program/token'
 
 /** The base fee per signature; a back grant has one, the backer's. */
 const LAMPORTS_PER_SIGNATURE = 5_000n
@@ -63,6 +67,7 @@ const PAGE_ASSETS = new Set([
   'backing.css',
   'BricolageGrotesque_800ExtraBold.ttf',
   'Figtree_400Regular.ttf',
+  'og-card.png',
   'Figtree_600SemiBold.ttf',
   'OFL-bricolage.txt',
   'OFL-figtree.txt',
@@ -118,6 +123,8 @@ export interface LaunchDeps {
   staticDir?: string
   /** Token images for the backing page's header (token-image.ts); built from conn and origin when absent. */
   images?: TokenImages
+  /** The quote tokens' USD prices (launch-market.ts); Jupiter's, cached, when absent. */
+  usd?: UsdPrices
 }
 
 /** The launch token's decimals and symbol, from its mint and Metaplex metadata accounts. */
@@ -148,6 +155,7 @@ export async function backerAccountInstruction(
 
 export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void {
   const staticDir = d.staticDir ?? path.join(import.meta.dirname, '..', 'static')
+  const usd = d.usd ?? new UsdPrices()
   const images =
     d.images ??
     new TokenImages({
@@ -410,15 +418,33 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
     readLaunch(d.conn, pool)
       .then(async (L) => {
         // The token's promises are read on every request, never cached: they are the page's claims.
-        const [symbol, image, trust] = await Promise.all([
+        const quote = d.page?.mints.find((m) => m.mint === L.quoteMint) ?? null
+        const [symbol, image, trust, quoteUsd] = await Promise.all([
           d.mandates.launchByPool(pool)?.symbol ??
             tokenInfo(d.conn, L.baseMint)
               .then((t) => t.symbol)
               .catch(() => null),
           images.imageOf(L.baseMint),
           readTokenTrust(d.conn, L.baseMint),
+          quote ? usd.of(quote.mint) : Promise.resolve(null),
         ])
-        res.json({ ok: true, launch: launchView(L, symbol, image, trust) })
+        // The market, after what only nuntius shows: price from the pool's own sqrt price, the
+        // market cap from the mint's supply, both in the quote token; USD from Jupiter, cached.
+        const priceQuote = quote ? priceInQuote(L, quote.decimals) : null
+        const supply =
+          trust.supply !== null && trust.decimals !== null ? Number(trust.supply) / 10 ** trust.decimals : null
+        res.json({
+          ok: true,
+          launch: {
+            ...launchView(L, symbol, image, trust),
+            market: {
+              priceQuote,
+              quoteUsd,
+              marketCapQuote: priceQuote !== null && supply !== null ? priceQuote * supply : null,
+            },
+            curve: curveShape(L),
+          },
+        })
       })
       .catch((e: unknown) =>
         e instanceof UnsupportedLaunch
@@ -571,7 +597,24 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
     res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Referrer-Policy', 'no-referrer')
     res.setHeader('Cache-Control', 'no-cache')
-    res.type('html').send(template.replace('__CONFIG__', config))
+    // Link previews (X, Telegram): per launch, from the store, escaped; a fixed 1200x630 card.
+    const f = feedFromDb(d.mandates.database, own).find((x) => x.pool === pool)
+    const sym = f?.symbol || d.mandates.launchByPool(pool)?.symbol || 'a launch'
+    const ogTitle = `Back ${sym} on nuntius`
+    const ogDesc =
+      f && f.backers.all > 0
+        ? `${f.backers.all} ${f.backers.all === 1 ? 'backer commits' : 'backers commit'} ${f.committedPerWeek.all} ${f.quoteSymbol} a week to ${sym}. Capped recurring buys on Meteora: nothing deposited, revoke any time.`
+        : `Back ${sym} with a capped recurring buy on Meteora: nothing deposited, revoke any time.`
+    const esc = (t: string) =>
+      t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    res.type('html').send(
+      template
+        .replace('__CONFIG__', config)
+        .replaceAll('__OG_TITLE__', esc(ogTitle))
+        .replaceAll('__OG_DESC__', esc(ogDesc))
+        .replaceAll('__OG_URL__', esc(`${d.origin}/l/${pool}`))
+        .replaceAll('__OG_IMAGE__', esc(`${d.origin}/l/assets/og-card.png`)),
+    )
   })
 
   app.get('/m/:file', (req, res) => {
@@ -588,6 +631,22 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
         `${l.name}: a subscription launch on nuntius. Backed by capped weekly buys, approved once in Seed Vault.`,
     })
   })
+}
+
+/**
+ * The curve's price path, from its own config: how many times the last token costs the first
+ * (the migration sqrt price over the start one, squared) and where the price is now on that
+ * scale. Null once the pool has left its curve.
+ */
+function curveShape(L: Awaited<ReturnType<typeof readLaunch>>): { priceRatio: number; nowRatio: number | null } | null {
+  const cfg = L.raw.dbc?.config as unknown as
+    { sqrtStartPrice?: { toString(): string }; migrationSqrtPrice?: { toString(): string } } | undefined
+  const now = (L.raw.dbc?.pool as unknown as { poolState?: { sqrtPrice?: { toString(): string } } } | undefined)
+    ?.poolState?.sqrtPrice
+  const start = Number(cfg?.sqrtStartPrice?.toString() ?? 0)
+  const end = Number(cfg?.migrationSqrtPrice?.toString() ?? 0)
+  if (L.route !== 'dbc' || !(start > 0) || !(end > start)) return null
+  return { priceRatio: (end / start) ** 2, nowRatio: now ? (Number(now.toString()) / start) ** 2 : null }
 }
 
 export const _forTests = { tokenInfo, parseUnits }

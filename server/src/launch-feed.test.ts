@@ -7,6 +7,7 @@ import express from 'express'
 import Database from 'better-sqlite3'
 import { MandateStore } from './mandate-store.js'
 import { FeedBus, feedFromDb, registerFeedRoutes, type FeedEvent } from './launch-feed.js'
+import { buyJitterS } from './executor.js'
 import { RateLimiter } from './rate-limit.js'
 
 const OWN = 'Own1111111111111111111111111111111111111111'
@@ -195,4 +196,31 @@ test('streams are capped per IP', async () => {
     ac.abort()
     server.close()
   }
+})
+
+test("the next buys: each live backing once, at the executor's own jitter, soonest first; buys carry their backer", () => {
+  const { db, store } = seed()
+  // Ana's weekly backing was active from 1,000 ms; her pull for the period starting at 1 s landed.
+  const now = 700_000 * 1000
+  const [p] = feedFromDb(db, new Set([OWN]), now)
+  assert.ok(p)
+  const ana = store.getMandateByPda('Pda2')!
+  // Her last claimed period started at 1 s; at 700,000 s the current period starts at 604,801 s,
+  // which she has not claimed: that one is next, at buyJitterS past its start.
+  const want = (604_801 + buyJitterS(ana.id, 604_801, 604_800)) * 1000
+  const hers = p.nextBuys.find((n) => n.backer === ANA)
+  assert.deepEqual(hers, { at: want, quoteIn: '25', own: false, backer: ANA })
+  assert.ok(
+    p.nextBuys.every((n, i, a) => i === 0 || a[i - 1]!.at <= n.at),
+    'soonest first',
+  )
+  assert.equal(new Set(p.nextBuys.map((n) => n.backer)).size, p.nextBuys.length, 'one per backing')
+  assert.ok(p.lastBuys.every((b) => [OWN, ANA, BOB].includes(b.backer)))
+  // A revoked backing is not scheduled.
+  store.setStatus(ana.id, 'revoked', 3_000)
+  const [q] = feedFromDb(db, new Set([OWN]), now)
+  assert.equal(
+    q!.nextBuys.some((n) => n.backer === ANA),
+    false,
+  )
 })

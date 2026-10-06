@@ -16,6 +16,7 @@ import type Database from 'better-sqlite3'
 import { formatUnits } from './mandate-text.js'
 import { clientIp, limitByIp, type RateLimiter } from './rate-limit.js'
 import type { LedgerEvent } from './digest.js'
+import { buyJitterS } from './executor.js'
 
 export const DEFAULT_OWN_WALLETS = [
   '4a8o45skRPcyjAdyR8yES215Swvh8uTpZD6KLarhxCJ7', // cj7, the treasury
@@ -38,6 +39,16 @@ export interface FeedBuy {
   quoteIn: string
   baseOut: string | null
   own: boolean
+  /** The backer's wallet: every buy lands in it, so it is public on chain anyway. */
+  backer: string
+}
+
+/** A buy the executor will send: when, how much, for whom. */
+export interface FeedNextBuy {
+  at: number
+  quoteIn: string
+  own: boolean
+  backer: string
 }
 
 export interface FeedPool {
@@ -54,12 +65,18 @@ export interface FeedPool {
   buysExecuted: { all: number; thirdParty: number }
   volumeQuote: { all: string; thirdParty: string }
   lastBuys: FeedBuy[]
+  /** The next scheduled buys, soonest first: each live backing's next period, at the executor's jitter. */
+  nextBuys: FeedNextBuy[]
 }
 
 type Row = Record<string, unknown>
 
 /** The feed's numbers, from the store alone (chain state is joined in by the route). */
-export function feedFromDb(db: Database.Database, own: Set<string>): Omit<FeedPool, 'chain'>[] {
+export function feedFromDb(
+  db: Database.Database,
+  own: Set<string>,
+  nowMs: number = Date.now(),
+): Omit<FeedPool, 'chain'>[] {
   const launches = db.prepare("SELECT * FROM launches WHERE status = 'live'").all() as Row[]
   const backings = db
     .prepare(
@@ -104,6 +121,7 @@ export function feedFromDb(db: Database.Database, own: Set<string>): Omit<FeedPo
         buysExecuted: { all: 0, thirdParty: 0 },
         volumeQuote: { all: '0', thirdParty: '0' },
         lastBuys: [],
+        nextBuys: [],
         _decimals: decimals,
         _perWeek: 0n,
         _perWeek3: 0n,
@@ -162,7 +180,41 @@ export function feedFromDb(db: Database.Database, own: Set<string>): Omit<FeedPo
         quoteIn: formatUnits(amount, p._decimals),
         baseOut: r.out_amount == null ? null : String(r.out_amount),
         own: isOwn,
+        backer: String(r.address),
       })
+  }
+  // The next buy of each live backing: the period after the last one the executor claimed (or
+  // the current one when it has not claimed it yet), at the same jitter the executor uses.
+  const live = db
+    .prepare(
+      `SELECT b.pool, m.id, m.address, m.amount_per_period, m.period_length_s, m.expiry_ts, m.activated_at, m.decimals,
+              (SELECT MAX(p.period_start) FROM pulls p WHERE p.mandate_id = m.id) AS last_start
+         FROM backings b JOIN mandates m ON m.id = b.mandate_id
+        WHERE m.status = 'active'`,
+    )
+    .all() as Row[]
+  const nowS = Math.floor(nowMs / 1000)
+  for (const r of live) {
+    const p = pools.get(String(r.pool))
+    if (!p) continue
+    const len = Number(r.period_length_s)
+    const last = r.last_start == null ? null : Number(r.last_start)
+    const start = last ?? Math.floor(Number(r.activated_at ?? 0) / 1000)
+    if (!len || !start) continue
+    const current = start + Math.max(0, Math.floor((nowS - start) / len)) * len
+    const next = last !== null && current === last ? current + len : current
+    const expiry = Number(r.expiry_ts ?? 0)
+    if (expiry && next >= expiry) continue
+    p.nextBuys.push({
+      at: (next + buyJitterS(String(r.id), next, len)) * 1000,
+      quoteIn: formatUnits(BigInt(String(r.amount_per_period)), Number(r.decimals)),
+      own: own.has(String(r.address)),
+      backer: String(r.address),
+    })
+  }
+  for (const p of pools.values()) {
+    p.nextBuys.sort((a, b) => a.at - b.at)
+    p.nextBuys.splice(5)
   }
   return [...pools.values()].map(({ _decimals, _perWeek, _perWeek3, _vol, _vol3, _backers, ...p }) => ({
     ...p,

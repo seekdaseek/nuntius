@@ -354,3 +354,23 @@ test("the page knows a first grant's setup cost, and a wallet's balance of a quo
     s.close()
   }
 })
+
+test('link previews: every og: and twitter: tag filled for the launch, the card served', async () => {
+  const s = await serve(true)
+  try {
+    const html = await (await fetch(`${s.base}/l/5qeAeoorEHpwecPkehAVedeYaWhMVpJaFMD52A8oAtHX`)).text()
+    assert.doesNotMatch(html, /__OG_[A-Z]+__/, 'no placeholder left')
+    const meta = (k: string) => new RegExp(`<meta (?:property|name)="${k}" content="([^"]*)"`).exec(html)?.[1]
+    assert.equal(meta('twitter:card'), 'summary_large_image')
+    assert.equal(meta('og:title'), 'Back a launch on nuntius')
+    assert.match(meta('og:description')!, /nothing deposited, revoke any time/)
+    assert.match(meta('og:url')!, /\/l\/5qeAeoorEHpwecPkehAVedeYaWhMVpJaFMD52A8oAtHX$/)
+    assert.match(meta('og:image')!, /\/l\/assets\/og-card\.png$/)
+    assert.equal(meta('og:image:width'), '1200')
+    const card = await fetch(`${s.base}/l/assets/og-card.png`)
+    assert.equal(card.status, 200)
+    assert.equal(card.headers.get('content-type'), 'image/png')
+  } finally {
+    s.close()
+  }
+})

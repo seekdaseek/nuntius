@@ -124,22 +124,54 @@ interface Launch {
     mintAuthorityDisabled: boolean | null
     freezeAuthorityDisabled: boolean | null
     metadataPermanent: boolean | null
+    supply?: string | null
+    decimals?: number | null
   } | null
   /** Quote raised on the curve and the threshold that completes it, in base units. */
   quoteRaised?: string
   threshold?: string
   refusal?: string | null
   committed: { backers: number; perWeek: string; symbol: string | null }
+  /** Price in the quote token, the quote token's USD price, market cap in the quote token; null: not read. */
+  market?: { priceQuote: number | null; quoteUsd: number | null; marketCapQuote: number | null }
+  /** The curve's price path: last token over first, and where the price is now on that scale. */
+  curve?: { priceRatio: number; nowRatio: number | null } | null
 }
 interface FeedPool {
   pool: string
   committedPerWeek: { all: string; thirdParty: string }
   backers: { all: number; thirdParty: number }
   buysExecuted: { all: number; thirdParty: number }
-  lastBuys: { at: number; signature: string; quoteIn: string; own: boolean }[]
+  lastBuys: { at: number; signature: string; quoteIn: string; baseOut: string | null; own: boolean; backer?: string }[]
+  nextBuys?: { at: number; quoteIn: string; own: boolean; backer: string }[]
 }
 let launch: Launch | null = null
+let feed: FeedPool | null = null
 const quote = () => config.mints.find((m) => m.mint === launch?.quoteMint) ?? null
+const symbolOf = () => launch?.symbol ?? 'this launch'
+
+/** Numbers as a person reads them: grouped, a sensible number of digits, tiny prices in full. */
+function num(n: number, digits = 2): string {
+  if (!Number.isFinite(n)) return '—'
+  if (n !== 0 && Math.abs(n) < 0.01) return n.toLocaleString('en-US', { maximumSignificantDigits: 3 })
+  return n.toLocaleString('en-US', { maximumFractionDigits: digits })
+}
+const usd = (n: number | null) => (n === null ? '' : `≈ $${num(n, n < 1 ? 6 : 2)}`)
+function ago(ms: number): string {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000))
+  if (s < 90) return 'just now'
+  if (s < 5400) return `${Math.round(s / 60)} min ago`
+  if (s < 129_600) return `${Math.round(s / 3600)} h ago`
+  return `${Math.round(s / 86_400)} d ago`
+}
+function countdown(ms: number): string {
+  const s = Math.round((ms - Date.now()) / 1000)
+  if (s <= 60) return 'due now'
+  const d = Math.floor(s / 86_400)
+  const h = Math.floor((s % 86_400) / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  return d > 0 ? `in ${d} d ${h} h` : h > 0 ? `in ${h} h ${m} m` : `in ${m} m`
+}
 
 async function loadLaunch() {
   try {
@@ -148,31 +180,59 @@ async function loadLaunch() {
     $('state').textContent =
       e instanceof ApiError && e.code === 'launch_unsupported' ? e.message : 'This is not a launch nuntius can read.'
     $('back').hidden = true
+    $('mbar').hidden = true
     return
   }
   const q = quote()
   $('symbol').textContent = launch.symbol ?? short(launch.baseMint)
+  document.querySelectorAll<HTMLElement>('[data-symbol]').forEach((el) => (el.textContent = symbolOf()))
   showLogo(launch.image ?? null)
   showTrust(launch.trust ?? null)
+  const mint = $<HTMLButtonElement>('copymint')
+  mint.textContent = `${short(launch.baseMint)} ⧉`
+  mint.hidden = false
+  const routePill = $('routepill')
+  routePill.textContent =
+    launch.route === 'dbc' ? 'On its bonding curve' : launch.route === 'migrating' ? 'Graduating' : 'On DAMM v2'
+  routePill.hidden = false
   // 25 a period to start with, or this token's ceiling when that is lower.
   if (!amountTouched && q && Number(form.amount) > Number(q.maxPerPeriodUi)) {
     form.amount = q.maxPerPeriodUi
     $<HTMLInputElement>('amount').value = form.amount
   }
-  $('quote').textContent = q?.symbol ?? '?'
+  $('quote').textContent =
+    q && launch.quoteRaised !== undefined
+      ? `${num(Number(BigInt(launch.quoteRaised)) / 10 ** q.decimals)} ${q.symbol} raised`
+      : ''
   document.querySelectorAll<HTMLElement>('[data-quote]').forEach((el) => (el.textContent = q?.symbol ?? ''))
   const pct = Math.max(0, Math.min(100, launch.progressPct))
   $('bar').style.width = `${pct}%`
+  $('curvePct').textContent = launch.route === 'dbc' ? `${num(pct)}%` : 'graduated'
   $('route').textContent =
     launch.route === 'dbc'
       ? curveWords(launch, q)
       : launch.route === 'migrating'
         ? 'Curve filled: moving to its regular pool'
         : 'Trading in its regular pool (Meteora DAMM v2)'
+  if (q && launch.threshold)
+    $('graduation').textContent =
+      `Graduates to DAMM v2 at ${num(Number(BigInt(launch.threshold)) / 10 ** q.decimals)} ${q.symbol}`
+  drawCurve(launch.curve ?? null, pct)
+  // Market numbers, after the ones only nuntius has.
+  const m = launch.market
+  if (m && q) {
+    $('price').textContent = m.priceQuote === null ? '—' : `${num(m.priceQuote)} ${q.symbol}`
+    $('priceUsd').textContent = m.priceQuote === null ? '' : usd(m.quoteUsd === null ? null : m.priceQuote * m.quoteUsd)
+    $('mcap').textContent = m.marketCapQuote === null ? '—' : `${num(m.marketCapQuote, 0)} ${q.symbol}`
+    $('mcapUsd').textContent =
+      m.marketCapQuote === null ? '' : usd(m.quoteUsd === null ? null : m.marketCapQuote * m.quoteUsd)
+  }
   $('committed').textContent =
     launch.committed.backers === 0
       ? 'No backers yet. Be the first.'
       : `${launch.committed.backers} ${launch.committed.backers === 1 ? 'backer commits' : 'backers commit'} ${launch.committed.perWeek} ${launch.committed.symbol ?? ''} a week`
+  $('committedWeek').textContent = `${launch.committed.perWeek} ${launch.committed.symbol ?? q?.symbol ?? ''}`
+  $('backers').textContent = String(launch.committed.backers)
   if (launch.refusal || !q || launch.route === 'migrating') {
     $('state').textContent =
       launch.refusal ??
@@ -180,31 +240,134 @@ async function loadLaunch() {
         ? 'This launch is priced in a token nuntius does not pull.'
         : 'Backing opens again once the token is in its regular pool.')
     $('back').hidden = true
+    $('mbar').hidden = true
   }
   sentence()
   try {
-    const feed = await api<{ launches: FeedPool[] }>('/api/launches')
-    const f = feed.launches.find((x) => x.pool === pool)
-    if (f) {
-      $('buys').textContent = `${f.buysExecuted.all} ${f.buysExecuted.all === 1 ? 'buy' : 'buys'} executed`
-      const list = $('recent')
-      list.replaceChildren(
-        ...f.lastBuys.slice(0, 5).map((b) => {
-          const li = document.createElement('li')
-          const a = document.createElement('a')
-          a.href = explorer(b.signature)
-          a.target = '_blank'
-          a.rel = 'noopener'
-          a.textContent = `${b.quoteIn} ${q?.symbol ?? ''} · ${new Date(b.at).toUTCString().slice(5, 22)} UTC`
-          li.append(a)
-          if (b.own) li.append(' (the builder’s own)')
-          return li
-        }),
-      )
-    }
+    const all = await api<{ launches: FeedPool[] }>('/api/launches')
+    feed = all.launches.find((x) => x.pool === pool) ?? null
   } catch {
-    /* the numbers above stand without the feed */
+    feed = null /* the numbers above stand without the feed */
   }
+  showFeed()
+}
+
+/** Committed backers, the next buys with a countdown, and every buy with its backer and tag. */
+function showFeed() {
+  const q = quote()
+  const sym = launch?.symbol ?? ''
+  const f = feed
+  const third = f?.backers.thirdParty ?? 0
+  const all = f?.backers.all ?? launch?.committed.backers ?? 0
+  $('backersNote').textContent =
+    all === 0 ? 'nobody yet' : third === 0 ? "all the builder's own" : `${third} from other wallets`
+  const next = f?.nextBuys ?? []
+  $('nextBuy').textContent = next[0] ? countdown(next[0].at) : '—'
+  $('nextBuyNote').textContent = next[0]
+    ? `${next[0].quoteIn} ${q?.symbol ?? ''} · ${short(next[0].backer)}`
+    : 'once someone backs it'
+  $('buys').textContent = f
+    ? `${f.buysExecuted.all} ${f.buysExecuted.all === 1 ? 'buy' : 'buys'} executed`
+    : 'No buys yet'
+  const tag = (own: boolean) => {
+    const t = document.createElement('span')
+    t.className = own ? 'tag own' : 'tag backer'
+    t.textContent = own ? 'builder’s own' : 'backer'
+    return t
+  }
+  const row = (when: string, what: (string | Node)[], who: string | undefined, own: boolean, link?: string) => {
+    const li = document.createElement('li')
+    const w = document.createElement('span')
+    w.className = 'when'
+    w.textContent = when
+    const x = document.createElement('span')
+    x.className = 'what'
+    x.append(...what, tag(own))
+    const b = document.createElement('span')
+    b.className = 'who'
+    b.textContent = who ? short(who) : ''
+    li.append(w, x, b)
+    if (link) {
+      const a = document.createElement('a')
+      a.className = 'tx'
+      a.href = link
+      a.target = '_blank'
+      a.rel = 'noopener'
+      a.textContent = '↗'
+      a.title = 'See it on Explorer'
+      li.append(a)
+    }
+    return li
+  }
+  const bold = (t: string) => {
+    const e = document.createElement('b')
+    e.textContent = t
+    return e
+  }
+  const baseDec = launch?.trust?.decimals ?? 6
+  $('upcoming').replaceChildren(
+    ...next
+      .slice(0, 3)
+      .map((n) =>
+        row(countdown(n.at), ['Buys ', bold(`${n.quoteIn} ${q?.symbol ?? ''}`), ' of ', sym], n.backer, n.own),
+      ),
+  )
+  $('recent').replaceChildren(
+    ...(f?.lastBuys ?? [])
+      .slice(0, 8)
+      .map((b) =>
+        row(
+          ago(b.at),
+          b.baseOut
+            ? [
+                'Bought ',
+                bold(`${num(Number(BigInt(b.baseOut)) / 10 ** baseDec, 0)} ${sym}`),
+                ` for ${b.quoteIn} ${q?.symbol ?? ''}`,
+              ]
+            : ['Bought for ', bold(`${b.quoteIn} ${q?.symbol ?? ''}`)],
+          b.backer,
+          b.own,
+          explorer(b.signature),
+        ),
+      ),
+  )
+}
+
+/** The curve's price path, √price rising evenly with what is raised, from ×1 to ×priceRatio, with "now". */
+function drawCurve(c: Launch['curve'] | null, pct: number) {
+  const svg = $('curveSvg')
+  // An SVG element has no hidden property: the attribute itself is what hides it.
+  if (!c || !(c.priceRatio > 1)) {
+    svg.setAttribute('hidden', '')
+    $('curveLegend').hidden = true
+    return
+  }
+  const W = 900
+  const top = 16
+  const bottom = 176
+  const k = Math.sqrt(c.priceRatio) - 1
+  const y = (x: number) => bottom - (((1 + k * x) ** 2 - 1) / (c.priceRatio - 1)) * (bottom - top)
+  const pts = Array.from({ length: 41 }, (_, i) => [8 + (i / 40) * (W - 16), y(i / 40)] as const)
+  const line = pts.map(([px, py], i) => `${i ? 'L' : 'M'}${px.toFixed(1)} ${py.toFixed(1)}`).join(' ')
+  $('curveLine').setAttribute('d', line)
+  $('curveFill').setAttribute('d', `${line} L${W - 8} ${bottom} L8 ${bottom} Z`)
+  const nx = 8 + (Math.max(0, Math.min(100, pct)) / 100) * (W - 16)
+  const ny = y(pct / 100)
+  const set = (id: string, a: Record<string, string | number>) => {
+    for (const [n, v] of Object.entries(a)) $(id).setAttribute(n, String(v))
+  }
+  set('nowLine', { x1: nx, x2: nx, y1: ny, y2: bottom })
+  set('nowDot', { cx: nx, cy: ny })
+  $('endText').replaceChildren(
+    'last token ',
+    Object.assign(document.createElement('b'), { textContent: `×${num(c.priceRatio, 1)}` }),
+  )
+  svg.removeAttribute('hidden')
+  $('curveLegend').hidden = false
+  $('nowLegend').replaceChildren(
+    'now ',
+    Object.assign(document.createElement('b'), { textContent: `×${num(c.nowRatio ?? 1, 2)}` }),
+  )
 }
 
 /** "On its bonding curve: 24.75 of 50,000 SKR raised": a percentage reads as nothing at the start. */
@@ -269,10 +432,18 @@ const PERIODS: Record<string, { s: number; words: string }> = {
 const form = { amount: '25', period: 'week', untilDays: 90 }
 let amountTouched = false
 function sentence() {
-  const sym = launch?.symbol ?? 'this launch'
-  const amount = [form.amount || '…', quote()?.symbol].filter(Boolean).join(' ')
-  $('sentence').textContent = `Back ${sym}: ${amount} ${PERIODS[form.period]!.words}, for ${form.untilDays} days.`
   const q = quote()
+  // "5 SKR a day for 30 days · at most 150 SKR in total · nothing is deposited". The total is the
+  // grant's own lifetime cap: the amount times the periods that start before the expiry
+  // (server/src/allowance.ts newGrantLifetime), what Seed Vault shows for this permission.
+  const per = PERIODS[form.period]!
+  const periods = Math.ceil((form.untilDays * 86_400) / per.s)
+  const amt = Number(form.amount)
+  const unit = q?.symbol ?? ''
+  const total = Number.isFinite(amt) && amt > 0 ? num(amt * periods, 6) : '…'
+  const summary = document.createElement('b')
+  summary.textContent = `${form.amount || '…'} ${unit} a ${form.period} for ${form.untilDays} days`
+  $('sentence').replaceChildren(summary, ` · at most ${total} ${unit} in total · nothing is deposited`)
   const ok =
     !!q &&
     baseUnits(form.amount, q.decimals) !== null &&
@@ -344,7 +515,9 @@ function showWallets() {
       const img = document.createElement('img')
       img.src = w.icon
       img.alt = ''
-      b.append(img, w.name)
+      const name = document.createElement('span')
+      name.textContent = w.name
+      b.append(img, name)
       b.addEventListener('click', () => void connect(w))
       return b
     }),
@@ -582,6 +755,7 @@ async function back() {
       false,
       signature ? explorer(signature) : undefined,
     )
+    shareOffer(q.symbol)
     await loadLaunch()
   } catch (e) {
     status(errorWords(e), true)
@@ -589,6 +763,18 @@ async function back() {
     busy = false
     sentence()
   }
+}
+
+/** After a grant: the visitor may post it themselves. nuntius never posts for anyone. */
+function shareOffer(quoteSymbol: string) {
+  const text = `I back $${launch?.symbol ?? 'this launch'} with ${form.amount} ${quoteSymbol} a ${form.period}: a capped buy straight into my own wallet, nothing deposited, revoke any time.`
+  const a = document.createElement('a')
+  a.href = `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(location.href)}`
+  a.target = '_blank'
+  a.rel = 'noopener'
+  a.textContent = 'Share on X'
+  $('share').replaceChildren(a)
+  $('share').hidden = false
 }
 
 interface MineRow {
@@ -706,6 +892,19 @@ bindSegments('periods', 'period')
 bindSegments('durations', 'untilDays')
 sentence()
 $('approve').addEventListener('click', () => void back())
+// The token's mint, copied in one tap.
+$('copymint').addEventListener('click', () => {
+  if (launch) void navigator.clipboard?.writeText(launch.baseMint).then(() => ($('copymint').textContent = 'copied ✓'))
+})
+// On a phone the panel is a sheet that a fixed button opens; on a desktop it is always in view.
+const sheet = (open: boolean) => document.body.classList.toggle('sheet-open', open)
+$('openSheet').addEventListener('click', () => sheet(true))
+$('closeSheet').addEventListener('click', () => sheet(false))
+$('scrim').addEventListener('click', () => sheet(false))
+// The countdowns move on their own.
+setInterval(() => {
+  if (feed) showFeed()
+}, 20_000)
 // Back to the wallet list. The wallet forgets this site (MWA clears its cached authorization),
 // so the next connection can pick another account.
 $('switch').addEventListener('click', () => {

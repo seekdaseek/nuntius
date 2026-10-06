@@ -28,6 +28,9 @@ export interface TokenTrust {
   freezeAuthorityDisabled: boolean | null
   /** Update authority no one, or the metadata marked immutable. */
   metadataPermanent: boolean | null
+  /** The mint's supply in base units and its decimals, from the same read; null: not read. */
+  supply: string | null
+  decimals: number | null
 }
 
 /** An SPL mint's authorities: COption<Pubkey> at 0 (mint) and at 46 (freeze). */
@@ -81,6 +84,8 @@ export async function readTokenTrust(conn: MeteoraConnection, mint: string): Pro
     mintAuthorityDisabled: null,
     freezeAuthorityDisabled: null,
     metadataPermanent: null,
+    supply: null,
+    decimals: null,
   }
   let metadata: PublicKey
   try {
@@ -99,5 +104,7 @@ export async function readTokenTrust(conn: MeteoraConnection, mint: string): Pro
     mintAuthorityDisabled: auth ? auth.mintAuthority === null : null,
     freezeAuthorityDisabled: auth ? auth.freezeAuthority === null : null,
     metadataPermanent: meta ? meta.updateAuthority === NO_ONE || !meta.isMutable : null,
+    supply: auth ? Buffer.from(m!.data).readBigUInt64LE(36).toString() : null,
+    decimals: auth ? m!.data[44]! : null,
   }
 }
