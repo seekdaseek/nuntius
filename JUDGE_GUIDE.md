@@ -1,12 +1,13 @@
 # JUDGE_GUIDE — install and verify in five minutes
 
-**Demo video (1:45):** https://youtu.be/rXs5zppcYKs, the whole flow on a Seeker before you install anything.
+**Demo video (2:13):** https://youtu.be/dt1HyBfycd8 ("nuntius demo v1.0.2"), the whole flow on a Seeker before you install anything.
 
 Three things to check, in order of how little they ask of you:
 
 1. **The mainnet proof** — open links, no install (1 minute).
 2. **The app on a Seeker** — install the APK, grant, watch, revoke (3 minutes).
 3. **The tests against the real program** — one script on any Linux or macOS machine (1 minute of your time; first build takes longer).
+4. **Subscription launches on Meteora** — back nimus from its page in any Solana wallet, no install (section 4).
 
 ---
 
@@ -33,6 +34,8 @@ That run used **two** Seed Vault approvals (init, then create). This build cuts 
 **v1.0.2** (5 Oct: **Type it your way**, where you write the permission in your own words and tap Fill; and the **Back a Seeker builder** starter, 25 SKR a week; see README and SECURITY.md §4b) is the release below. It was installed over v1.0.1 on the Seeker on 5 Oct, and it passed the Fill, two grants with their first pulls, two revokes, sign-out and sign-in on mainnet (README, "v1.0.2"). It keeps everything in v1.0.1 (4 Oct, security hardening; SECURITY.md §7).
 
 **APK:** https://github.com/seekdaseek/nuntius/releases/tag/v1.0.2 (`nuntius-1.0.2.apk`, sha256 `fc54b8fc3badd3854e4af62bca45d04dfbc9c44901b50b06cac64da715c26faf`, signed with the release key). v1.0.1 stays at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.1 and v1.0.0 at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0.
+
+**v1.1.0** (pre-release, 6 Oct) adds subscription launches (section 4); the steps below are the same in it.
 
 1. **Install.** On the Seeker, open the release page, download `nuntius-1.0.2.apk`, allow the install. The app talks to mainnet through the nuntius backend.
 2. **Sign in** (about 20 s). Tap **Sign in with Solana** and approve in Seed Vault. The backend verifies the signature with a single-use nonce and checks the Seeker Genesis Token. A Seeker wallet shows **✓ Seeker verified**; any other wallet shows **Basic tier** and can hold one permission.
@@ -78,16 +81,31 @@ Things worth reading in the output:
 
 `npm test` without a validator passes 89 tests, Type it your way among them (a mocked model: valid sentences, an amount over the ceiling, an unknown token, a past date, an injection, an address in the answer, a timeout), and reports the 7 localnet suites as skipped. At the repo root, `npm run test:core` runs the app's 46 logic tests, and `npm run test:e2e` runs 12 tests on the web build (cold-start tap, fonts, layout, BACK, the builder starter with launches off, Fill when the server cannot read the text).
 
-## 4. Subscription launches (Meteora DBC)
+## 4. Subscription launches on Meteora (live on mainnet since 6 Oct)
 
-**Hidden in v1.0.1 and v1.0.2** unless the server runs with `MANDATE_LAUNCHES=1`; it stays off until the Meteora device run. The steps below are for a server with it on.
+Live on mainnet since 6 October 2026 in the **v1.1.0 pre-release**: https://github.com/seekdaseek/nuntius/releases/tag/v1.1.0 (`nuntius-1.1.0.apk`, sha256 `8f371bbab3c55c8975a76908863f4f66f8e65a4312e69ccf004953c760967975`, the same release key as v1.0.2, so it installs over it). v1.0.2, the Latest release, still says "Backing a launch is not available in this version."
 
-- **On the phone:** New permission → **Back a Seeker builder** (with launches on, it opens the launch flow) → paste a DBC pool → one Seed Vault approval. The first buy comes within about 10 minutes. Its receipt reads "Bought … for … USDC/SKR" and opens on Explorer, where the bought tokens are in the backer's own account.
-- **Launching:** **Launch your own token** (Seeker-verified wallets only) creates a DBC pool priced in SKR or USDC with one signature.
-- **Without a phone:**
-  - `GET https://<server>/api/launch/<pool>` returns the curve's progress, the route and the committed recurring demand.
-  - The buy composer and its tests are `server/src/meteora.ts` and `server/src/meteora.test.ts`.
-  - The executor tests are `server/src/executor-back.test.ts`: custody, skip, route switch, idempotency.
+**No install: back nimus from its page.** https://nuntius.ochinimus.app/l/BpYoKpXwvM4gvD1VxenZAZ9vzV9QWdqZWKXm8DW3dPPU is nimus, launched from a Seeker on 6 Oct on nuntius's DBC config. The page shows the committed weekly demand (and whose it is), the next scheduled buys, every buy with its Explorer link, and what the token's own mint and metadata accounts promise, read from the chain on each load.
+
+- Connect any Solana wallet: a browser extension, the phone's wallet app from Chrome on Android, or, on a phone with neither, **Open in Phantom / Solflare / Backpack**.
+- Choose an amount (from 1 SKR a day), every day or week, for 7, 30 or 90 days, and approve once. Nothing is deposited: each period's amount stays in your wallet until its buy. The page checks the transaction against what it shows before your wallet is asked.
+- Revoke from the same page.
+
+**When the first buy comes.** The first period starts at the grant. The executor sends each buy at a fixed moment inside its period, at most a tenth of the period and never more than 10 minutes after it starts (`buyJitterS` in `server/src/executor.ts`), and it checks every 10 seconds; so a daily or weekly backing's first buy lands within about 10 minutes of the grant. Measured on mainnet: 8 minutes for nimus's first grant (25 SKR a week, 06:37:18 → 06:45:16 UTC) and 6 minutes for the daily one (5 SKR a day, 07:17:21 → 07:23:44 UTC). Each buy is one transaction: the pull and the swap on the curve, straight into the backer's own token account; the executor's SKR reads 0 before and after.
+
+**In the app (v1.1.0):**
+
+- **Back a launch:** New permission → **Back a Seeker builder** opens **Back a launch** → paste a DBC pool (nimus's is above) → the amount, every day or week, for how many days → **Approve in Seed Vault**, once. The receipt reads "Bought … for … SKR" and opens on Explorer, where the bought tokens are in the backer's own account.
+- **Launch a token:** on Back a launch, **Launch your own token** opens **Launch a token** (Seeker-verified wallets only): a DBC pool priced in SKR or USDC on nuntius's fixed config, with one signature (**Launch in Seed Vault**).
+
+**Every signature** (the configs, nimus's launch, its grants and buys, the web-backed buy, and the proof pool's migration, revoke and refused pull) is in `docs/meteora/CONFIGS.md`.
+
+**Without a phone or a wallet:**
+
+- `GET https://nuntius.ochinimus.app/api/launch/BpYoKpXwvM4gvD1VxenZAZ9vzV9QWdqZWKXm8DW3dPPU` returns the curve's progress, the route and the committed recurring demand; `GET https://nuntius.ochinimus.app/api/launches` is the public feed, with the builder's own wallets counted apart.
+- The buy composer and its tests are `server/src/meteora.ts` and `server/src/meteora.test.ts`.
+- The executor tests are `server/src/executor-back.test.ts`: custody, skip, route switch, idempotency.
+- The whole lifecycle, launch to migration and the buy that follows it, runs on a local validator with DBC and DAMM v2 cloned from mainnet: `npm --prefix server run test:meteora`.
 
 ## Where to look in the code
 
