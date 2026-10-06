@@ -287,48 +287,52 @@ nuntius offers **SKR next to USDC**: recurring SKR payments, approved once in Se
 
 ## Subscription launches (Meteora)
 
-**In v1.0.1 and v1.0.2 these screens are hidden** unless the server is started with `MANDATE_LAUNCHES=1`; it stays off until the Meteora device run. Everything below describes the feature as built and tested.
+**Live on mainnet since 6 October 2026**, in [v1.1.0](https://github.com/seekdaseek/nuntius/releases/tag/v1.1.0) (a pre-release; v1.0.2 stays the Latest release) and on the web at `https://nuntius.ochinimus.app/l/<pool>`. v1.0.2 talks to the same server and still says "not available in this version" on these screens: the server shows launches only to an app that sends `x-nuntius-client: 1.1.0` or later. The full write-up is [METEORA.md](METEORA.md); every mainnet signature is in [docs/meteora/CONFIGS.md](docs/meteora/CONFIGS.md).
 
-A builder launches a token on a Meteora **Dynamic Bonding Curve** (DBC), priced in SKR or USDC. Backers grant a capped recurring permission in one Seed Vault approval: _"Back NATX: 5 USDC every week, for 90 days."_ Every period, one executor transaction:
+A builder launches a token on a Meteora **Dynamic Bonding Curve** (DBC), priced in SKR or USDC. Backers grant a capped recurring permission in one Seed Vault approval: _"Back NIMUS: 25 SKR every week, for 90 days."_ Every period, one executor transaction:
 
 1. pulls the backer's amount through the Subscriptions program, which enforces the cap, into nuntius's own quote account;
 2. buys the launch token with exactly that amount: a `swap2` exact-in with a 2% minimum-out;
 3. writes the bought tokens straight into the **backer's own token account**, which the backer created in the grant transaction.
 
-If the swap cannot meet its minimum-out, the whole transaction fails and nothing is pulled. The receipt then reads _"Skipped: the price moved more than 2%. Nothing was taken."_ and the buy is tried again later in the period. When backers fill the curve, the pool migrates to **DAMM v2** and the buy follows the token there. A permission waits rather than buying while the curve is migrating.
+If the swap cannot meet its minimum-out, the whole transaction fails and nothing is pulled. The receipt then reads _"Skipped: the price moved more than 2%. Nothing was taken."_ and the buy is tried again later in the period. When backers fill the curve, the pool migrates to **DAMM v2** and the buy follows the token to its canonical DAMM v2 pool. If no keeper migrates a filled curve, nuntius's executor does: on mainnet it migrated the proof pool ([`2gEqP5Af…`](https://explorer.solana.com/tx/2gEqP5AfyHjqy16NZYvfkCNDTrbYUU1x1mHUzD7KkGutQuXxzJA8UHutbJTJmdxxAhm2yHgNsEHiryymaK9D8XNx)). A buy that meets the curve completing under it (error 6013) is tried again in the same period on the DAMM v2 pool.
 
-**Custody invariant.** The executor's quote and base balances are the same after every buy as before it: the pull lands and the exact-in swap spends all of it in the same transaction, and the output goes to the backer. Exact-in either fills completely or fails; it never part-fills. Near the end of the curve the buy is cut to what the curve still takes, so the last buy does not fail forever. Asserted in `server/src/executor-back.test.ts`; on mainnet, in the 1 October simulations (below).
+**Custody invariant.** The executor's quote and base balances are the same after every buy as before it: the pull lands and the exact-in swap spends all of it in the same transaction, and the output goes to the backer. Exact-in either fills completely or fails; it never part-fills. Near the end of the curve the buy is cut to what the curve still takes, so the last buy does not fail forever. Asserted in `server/src/executor-back.test.ts`, and on mainnet in every buy so far: the executor's SKR reads 0 before and after.
 
 **What the cap still bounds, and what it does not.** The Subscriptions program bounds how much quote leaves the backer per period and over the permission's life (the finite allowance Seed Vault shows). It does not bound the price: the 2% minimum-out bounds slippage per buy, and a curve's price rises as it fills. A backer who wants out revokes with one approval; the tokens already bought are in their own wallet.
 
-**The launch preset** (`server/src/meteora.ts`, `launchPreset`) is made for many small, regular buys:
+**The launch preset** (`server/src/meteora.ts`, `launchPreset`; on mainnet as two fixed configs, read back field by field in [docs/meteora/CONFIGS.md](docs/meteora/CONFIGS.md)) is made for many small, regular buys:
 
-| Choice                                                       | Why                                                                                                                                      |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Flat 1% fee from the first buy                               | No launch fee scheduler, so a weekly backer pays what a day-one buyer pays, and there is no early window to front-run                    |
-| Fees collected in the quote token                            | The creator's 50% share accrues in SKR or USDC, not in the launched token                                                                |
-| 1 billion supply, 6 decimals, 20% kept for the migrated pool | A plain, readable supply                                                                                                                 |
-| Migration to DAMM v2 at a small threshold                    | 50,000 SKR or 1,000 USDC, so a launch backed by a few people's weekly buys reaches its regular pool                                      |
-| All LP permanently locked at migration                       | Liquidity cannot be pulled                                                                                                               |
-| Metadata immutable                                           | The metadata JSON is served at `/m/<mint>.json`. The URI is kept under 100 characters, so the launch transaction stays under 1,232 bytes |
+| Choice                                                       | Why                                                                                                                                                                                                                              |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Flat 1% fee from the first buy                               | No launch fee scheduler, so a weekly backer pays what a day-one buyer pays, and there is no early window to front-run                                                                                                            |
+| Fees collected in the quote token                            | Of the 1%, Meteora takes 0.2%; the creator and nuntius get 0.4% each, in SKR or USDC (measured on the nimus pool)                                                                                                                |
+| 1 billion supply, 6 decimals, 33% kept for the migrated pool | The last token on the curve costs about 4.1 times the first (`tools/curve-ratio.ts`), so a backer who starts late is not priced out                                                                                              |
+| Migration to DAMM v2 at 50,000 SKR or 750 USDC               | 750 USDC is in Meteora's keeper table. SKR is not, but it meets the keepers' general rule on 6 Oct (Jupiter Verified, Organic Score 73, 50,000 SKR ≈ $878 > $750). nuntius's own crank migrates any backed curve a keeper leaves |
+| All LP permanently locked at migration, half each            | Liquidity cannot be pulled; the creator and nuntius each earn half of the locked pool's fees                                                                                                                                     |
+| Metadata immutable                                           | Update authority none. The metadata JSON is served at `/m/<mint>.json`; the URI is kept under 100 characters, so the launch transaction fits                                                                                     |
 
-**In the app:**
+**In the app (v1.1.0):**
 
-- **Back a launch:** paste a pool. The "Back a Seeker builder" starter opens this flow.
+- **Back a launch:** paste a pool, or open a `nuntius://back` link. The "Back a Seeker builder" starter opens this flow.
 - **Launch a token:** verified Seekers only, one signature.
 - **The permission card:** what it buys, what it has bought, and the curve's progress.
-- **Receipts:** "Bought 1234 NATX for 5 USDC" with an Explorer link, and skip receipts.
+- **Receipts:** "Bought 673,006.7 NIMUS for 25 SKR" with an Explorer link; skips with their cause; and the move to DAMM v2.
 
-`GET /api/launch/:pool` is public and read-only. It serves curve progress, the route, and the launch's committed recurring demand: active backing caps, per week, and the number of backers.
+**On the web**, `https://nuntius.ochinimus.app/l/<pool>` backs a launch from any Wallet Standard wallet (Phantom, Solflare, Backpack) through the same server flow. Before the wallet sees a transaction, the page checks it with the app's own `core/tx-check.ts` against what the page shows. On every load it reads three promises from the token's own accounts and shows a badge for each that holds, linked to Solscan: mint authority disabled, freeze authority disabled, metadata permanent. A fact it could not read shows nothing.
 
-**Proven on mainnet by simulation, 1 October.** Read-only, from the Mac, with no signature: `tools/mac/09-spike-dbc.sh` on the ops branch.
+**Public read-outs:** `GET /api/launch/:pool` (route, raised against the threshold, committed recurring demand, the token's promises), and the committed-demand feed for terminals, `GET /api/launches` and the event stream `GET /api/launches/stream`. The feed keeps nuntius's own wallets out of its third-party figures.
 
-| Transaction             | Size                                    | Compute                             | Result                                                                                                                             |
-| ----------------------- | --------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Buy on a live DBC pool  | 858 B                                   | 38,869 CU (pull 8,661, swap 29,908) | Executor's quote account 0 before and after; tokens with the backer                                                                |
-| Buy on a DAMM v2 pool   | 825 B                                   | 25,611 CU                           | The same                                                                                                                           |
-| Grant + ATA instruction | 580 B                                   | 29,566 CU                           | Allowance finite (5,000,000 base units, not u64::MAX)                                                                              |
-| Launch                  | 1,093 B, built for one device signature | —                                   | **Not run on mainnet yet.** The simulation stopped on rent at instruction 3 (`Custom 1`): the creator account held 0.022817361 SOL |
+**On mainnet, 6 October 2026.** Each transaction read back from the chain; sizes and compute as landed:
+
+| Transaction                                          | Size    | Compute    | Result                                                                                       |
+| ---------------------------------------------------- | ------- | ---------- | -------------------------------------------------------------------------------------------- |
+| Launch of nimus, signed on the Seeker                | 797 B   | 99,721 CU  | 20,601,640 lamports, exactly as simulated; metadata `nimus` / `NIMUS`, update authority none |
+| Back permission (grant + the backer's token account) | 864 B   | 35,135 CU  | 25 SKR a week to the executor, finite allowance                                              |
+| Buy on the curve (nimus)                             | 860 B   | 35,780 CU  | 25 SKR into 673,006.7 NIMUS in the backer's wallet; the executor's SKR 0 → 0                 |
+| Buy on DAMM v2 (the migrated proof pool)             | 827 B   | 27,102 CU  | 50 SKR into PROOF in the backer's wallet; the executor's SKR 0 → 0                           |
+| Migration of the proof pool by the executor          | 1,153 B | 241,865 CU | 23,744,600 lamports, as simulated                                                            |
+| The pull after a revoke                              | 529 B   | 626 CU     | Refused by the Subscriptions program (`InvalidAccountOwner`); the backer's SKR unchanged     |
 
 ## Architecture
 

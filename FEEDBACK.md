@@ -20,9 +20,11 @@ So nuntius builds both swap instructions by hand (`server/src/meteora.ts`).
 
 ## 2. The keeper table's "matches" is ambiguous
 
-The DBC developer guide's keeper table lists USDC at "750 USDC" when the threshold "matches". We could not tell whether "matches" means equal to 750, at least 750, or the curve's quote in USD terms, so we set our USDC config to exactly 750 and still run our own crank. Our SKR config (50,000 SKR) is not in the table at all.
+The DBC developer guide says both keepers migrate when `pool_config.migration_quote_threshold` "matches" one of the listed quote mints (USDC: 750 USDC). We could not tell whether that means equal to 750 or at least 750, so our USDC config is exactly 750.
 
-What happened when no keeper came: our 100 SKR proof curve was filled by aggregator routing twelve minutes after creation and then sat completed until our executor migrated it ([`2gEqP5Af…`](https://explorer.solana.com/tx/2gEqP5AfyHjqy16NZYvfkCNDTrbYUU1x1mHUzD7KkGutQuXxzJA8UHutbJTJmdxxAhm2yHgNsEHiryymaK9D8XNx), 23,744,600 lamports, as simulated). One sentence in the guide would have told us to plan for that: "a completed curve no keeper picks up stays completed until anyone calls `migration_damm_v2`".
+SKR is not in the table. It is covered by the general rule instead (Jupiter Verified, Organic Score above 50, threshold notional above $750): on 6 Oct SKR was Verified with an Organic Score of 73 at $0.0176, so our 50,000 SKR threshold was worth about $878. That margin moves with SKR's price. Below about $0.015 the same config would fall out of eligibility, and the guide does not say whether eligibility is judged when the curve completes or each time a keeper looks. nuntius runs its own crank for any backed curve, so it does not depend on the answer, but other integrators will.
+
+What an ineligible curve looks like: our 100 SKR proof curve (about $1.76) was filled by aggregator routing twelve minutes after creation and then sat completed until our executor migrated it ([`2gEqP5Af…`](https://explorer.solana.com/tx/2gEqP5AfyHjqy16NZYvfkCNDTrbYUU1x1mHUzD7KkGutQuXxzJA8UHutbJTJmdxxAhm2yHgNsEHiryymaK9D8XNx), 23,744,600 lamports, as simulated).
 
 ## 3. DBC emits no event for the migration itself
 
