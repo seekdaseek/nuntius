@@ -261,6 +261,8 @@ function showFeed() {
   const all = f?.backers.all ?? launch?.committed.backers ?? 0
   $('backersNote').textContent =
     all === 0 ? 'nobody yet' : third === 0 ? "all the builder's own" : `${third} from other wallets`
+  // Only from the feed's own count of outside backers, and only while the page takes backing.
+  $('beFirst').hidden = !(f && f.backers.thirdParty === 0 && !$('back').hidden)
   const next = f?.nextBuys ?? []
   $('nextBuy').textContent = next[0] ? countdown(next[0].at) : '—'
   $('nextBuyNote').textContent = next[0]
@@ -505,6 +507,10 @@ function walletsThatFit(): Wallet[] {
         'standard:connect' in w.features,
     )
 }
+const PHONE_WALLET = 'Wallet app on this phone'
+/** How the page names a wallet in its own sentences. */
+const walletName = (w: Wallet, inSentence = false) =>
+  w.name !== SolanaMobileWalletAdapterWalletName ? w.name : inSentence ? 'your wallet app' : PHONE_WALLET
 function showWallets() {
   const list = $('wallets')
   const found = walletsThatFit()
@@ -516,7 +522,14 @@ function showWallets() {
       img.src = w.icon
       img.alt = ''
       const name = document.createElement('span')
-      name.textContent = w.name
+      if (w.name === SolanaMobileWalletAdapterWalletName) {
+        // MWA is how Chrome on Android reaches the phone's own wallet apps: name what it opens.
+        const app = document.createElement('b')
+        app.textContent = PHONE_WALLET
+        const which = document.createElement('small')
+        which.textContent = 'Seed Vault, Phantom, Solflare'
+        name.append(app, which)
+      } else name.textContent = w.name
       b.append(img, name)
       b.addEventListener('click', () => void connect(w))
       return b
@@ -568,7 +581,7 @@ async function connect(w: Wallet) {
     if (!accounts[0]) throw new Error('the wallet shared no account')
     wallet = w
     account = accounts[0]
-    $('connected').textContent = `${w.name} · ${short(account.address)}`
+    $('connected').textContent = `${walletName(w)} · ${short(account.address)}`
     $('step-wallet').hidden = true
     $('step-back').hidden = false
     if (store.get('nuntius-session-wallet') !== account.address) session = null
@@ -732,7 +745,7 @@ async function back() {
       mandateId = built.mandateId
       pending = { id: built.mandateId, key }
     }
-    status(`Approve in ${wallet!.name}…`)
+    status(`Approve in ${walletName(wallet!, true)}…`)
     let signature: string | null = null
     if (built && !landedEarlier)
       try {
@@ -829,7 +842,7 @@ async function refreshMine() {
 async function revoke(m: MineRow, allowance: string | null) {
   const q = config.mints.find((x) => x.mint === m.mint)
   try {
-    status(`Approve the revoke in ${wallet!.name}…`)
+    status(`Approve the revoke in ${walletName(wallet!, true)}…`)
     const s = await signIn()
     const r = await api<{ transactionBase64: string }>('/api/mandates/revoke', {
       session: s,
@@ -901,6 +914,10 @@ const sheet = (open: boolean) => document.body.classList.toggle('sheet-open', op
 $('openSheet').addEventListener('click', () => sheet(true))
 $('closeSheet').addEventListener('click', () => sheet(false))
 $('scrim').addEventListener('click', () => sheet(false))
+$('beFirst').addEventListener('click', () => {
+  if (matchMedia('(max-width: 960px)').matches) sheet(true)
+  else $('amount').focus()
+})
 // The countdowns move on their own.
 setInterval(() => {
   if (feed) showFeed()

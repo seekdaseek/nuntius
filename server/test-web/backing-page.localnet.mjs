@@ -440,6 +440,48 @@ test(
         assert.equal(await page.isHidden('#trust'), expected.length === 0)
         await page.unroute(`**/api/launch/${env.openPool}`)
       }
+
+      // "Be the first" follows the feed's own count of outside backers, and a feed that fails
+      // to load shows nothing.
+      const feedWith = (thirdParty) => ({
+        ok: true,
+        launches: [
+          {
+            pool: env.openPool,
+            committedPerWeek: { all: '5', thirdParty: thirdParty ? '5' : '0' },
+            backers: { all: 1, thirdParty },
+            buysExecuted: { all: 0, thirdParty: 0 },
+            volumeQuote: { all: '0', thirdParty: '0' },
+            lastBuys: [],
+            nextBuys: [],
+          },
+        ],
+      })
+      for (const [answer, shown] of [
+        [feedWith(0), true],
+        [feedWith(1), false],
+        [null, false],
+      ]) {
+        await page.route('**/api/launches', (route) =>
+          answer ? route.fulfill({ json: answer }) : route.fulfill({ status: 500, json: { ok: false } }),
+        )
+        await page.reload()
+        await page.waitForFunction(() =>
+          document.getElementById('route')?.textContent?.startsWith('On its bonding curve'),
+        )
+        await page.waitForTimeout(300)
+        assert.equal(
+          await page.isVisible('#beFirst'),
+          shown,
+          `thirdParty ${JSON.stringify(answer?.launches[0].backers)}`,
+        )
+        if (shown)
+          assert.equal(
+            (await page.textContent('#beFirst')).replace(/\s+/g, ' ').trim(),
+            'No outside backers yet. Be the first.',
+          )
+        await page.unroute('**/api/launches')
+      }
     } finally {
       await browser.close()
       env.server.close()
@@ -487,8 +529,11 @@ test(
       await page.waitForFunction(() =>
         document.getElementById('route')?.textContent?.startsWith('On its bonding curve'),
       )
-      const wallets = await page.$$eval('#wallets .wallet', (bs) => bs.map((b) => b.textContent))
-      assert.deepEqual(wallets, ['Mobile Wallet Adapter'])
+      // Named for what it opens: the phone's own wallet apps.
+      const wallets = await page.$$eval('#wallets .wallet', (bs) =>
+        bs.map((b) => [...b.querySelectorAll('span > *')].map((e) => e.textContent)),
+      )
+      assert.deepEqual(wallets, [['Wallet app on this phone', 'Seed Vault, Phantom, Solflare']])
       assert.equal(await page.isHidden('#nowallet'), true)
       assert.match(csp, /connect-src 'self' ws:\/\/localhost:\* http:\/\/localhost;/)
       await shot(page, '06-backing-android-mwa')
