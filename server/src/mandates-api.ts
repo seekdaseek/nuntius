@@ -306,38 +306,39 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
   })
 
   /**
-   * Why the payee cannot be paid. A Meteora pool pasted as the payee (6 Oct: the nimus pool,
-   * on New permission instead of Back a launch) gets its own sentence: paying a pool's address
-   * buys nothing.
+   * A Meteora pool is never a payee. Anyone can create the associated token account of a
+   * program-owned address, so a pool can pass the token-account check below, and every pull
+   * would then land where nobody can withdraw it. Checked first, on every create, from the
+   * payee account's owner program (6 Oct: the nimus pool was pasted into New permission).
+   * A failed read fails the request rather than skipping the check.
    */
-  const payeeRefusal = async (payee: string, symbol: string, launchesOn: boolean): Promise<HttpError> => {
+  const refusePoolPayee = async (payee: string, launchesOn: boolean): Promise<void> => {
     const info = await rpc
       .getAccountInfo(payee as Address, { encoding: 'base64', dataSlice: { offset: 0, length: 0 } })
       .send()
-      .catch(() => null)
-    const owner = info?.value?.owner
+    const owner = info.value?.owner
     if (owner === DBC_PROGRAM || owner === DAMM_V2_PROGRAM)
-      return new HttpError(
+      throw new HttpError(
         400,
         'payee_is_pool',
         launchesOn
           ? 'that address is a Meteora launch pool, not a wallet. To buy its token every period, use Back a launch and paste it there.'
           : 'that address is a Meteora pool, not a wallet, so it cannot be paid.',
       )
-    return new HttpError(400, 'payee_has_no_account', `the payee has no ${symbol} account yet`)
   }
 
   route('/api/mandates/create', async (body, req) => {
     const a = auth(body)
     gate(a)
     const t = parseTerms(body, a.address)
+    await refusePoolPayee(t.payee, launchesFor(launches, req.get(CLIENT_HEADER)))
     const [receiverAta, userAta] = await Promise.all([
       userAtaOf(t.payee as Address, t.mint.mint as Address),
       userAtaOf(a.address as Address, t.mint.mint as Address),
     ])
     const r = await readAta(rpc, receiverAta)
     if (!r.exists || r.owner !== t.payee || r.mint !== t.mint.mint) {
-      throw await payeeRefusal(t.payee, t.mint.symbol, launchesFor(launches, req.get(CLIENT_HEADER)))
+      throw new HttpError(400, 'payee_has_no_account', `the payee has no ${t.mint.symbol} account yet`)
     }
     // A fresh random seed for every grant, and never one whose address has an
     // account: a new permission must not land on an old PDA and inherit its

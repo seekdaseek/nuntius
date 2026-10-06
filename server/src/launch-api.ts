@@ -451,7 +451,8 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
     "style-src 'self'",
     "font-src 'self'",
     "img-src 'self' data: https:",
-    "connect-src 'self'",
+    // ws://localhost: the Mobile Wallet Adapter's local association with the phone's wallet.
+    "connect-src 'self' ws://localhost:*",
     "base-uri 'none'",
     "form-action 'none'",
     "frame-ancestors 'none'",

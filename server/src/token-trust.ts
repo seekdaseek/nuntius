@@ -1,7 +1,8 @@
 /**
  * What a launch token's own accounts promise, read from the chain on every request: no one can
- * mint more, no one can freeze a holder's account, and its name, symbol and image can never
- * change. The backing page shows a badge for each promise that holds.
+ * mint more, no one can freeze a holder's account, and its on-chain metadata (name, symbol and
+ * URI) can never change. The JSON at the URI is served off chain, so the image is not part of
+ * that promise. The backing page shows a badge for each promise that holds.
  *
  * A read that fails, or an account in a shape this does not know, gives null for that fact:
  * the page shows nothing rather than a guess.

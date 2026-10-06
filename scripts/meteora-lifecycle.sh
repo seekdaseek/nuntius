@@ -38,7 +38,7 @@ echo "validator up with DBC, DAMM v2 and Metaplex cloned from mainnet"
 cd "$REPO/server"
 npm run build >/dev/null
 LOCALNET_RPC="$RPC" LOCALNET_METEORA=1 METEORA_RESULTS="$OUT" \
-  node --test --test-concurrency=1 --test-reporter=spec dist/meteora-lifecycle.localnet.test.js dist/meteora-firstswap.localnet.test.js 2>&1 |
+  node --test --test-concurrency=1 --test-reporter=spec dist/meteora-lifecycle.localnet.test.js dist/meteora-firstswap.localnet.test.js dist/payee-pool.localnet.test.js 2>&1 |
   grep -v -E 'punycode|bigint: Failed to load|trace-deprecation'
 code="${PIPESTATUS[0]}"
 [ "$code" = 0 ] && echo "results: $OUT"

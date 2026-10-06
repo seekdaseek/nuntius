@@ -310,7 +310,7 @@ If the swap cannot meet its minimum-out, the whole transaction fails and nothing
 | 1 billion supply, 6 decimals, 33% kept for the migrated pool | The last token on the curve costs about 4.1 times the first (`tools/curve-ratio.ts`), so a backer who starts late is not priced out                                                                                              |
 | Migration to DAMM v2 at 50,000 SKR or 750 USDC               | 750 USDC is in Meteora's keeper table. SKR is not, but it meets the keepers' general rule on 6 Oct (Jupiter Verified, Organic Score 73, 50,000 SKR ≈ $878 > $750). nuntius's own crank migrates any backed curve a keeper leaves |
 | All LP permanently locked at migration, half each            | Liquidity cannot be pulled; the creator and nuntius each earn half of the locked pool's fees                                                                                                                                     |
-| Metadata immutable                                           | Update authority none. The metadata JSON is served at `/m/<mint>.json`; the URI is kept under 100 characters, so the launch transaction fits                                                                                     |
+| On-chain metadata immutable                                  | Update authority none: name, symbol and URI are fixed. The JSON at the URI is served by nuntius at `/m/<mint>.json`, so the image is not on chain; the URI is kept under 100 characters, so the launch transaction fits          |
 
 **In the app (v1.1.0):**
 
@@ -319,7 +319,7 @@ If the swap cannot meet its minimum-out, the whole transaction fails and nothing
 - **The permission card:** what it buys, what it has bought, and the curve's progress.
 - **Receipts:** "Bought 673,006.7 NIMUS for 25 SKR" with an Explorer link; skips with their cause; and the move to DAMM v2.
 
-**On the web**, `https://nuntius.ochinimus.app/l/<pool>` backs a launch from any Wallet Standard wallet (Phantom, Solflare, Backpack) through the same server flow. Before the wallet sees a transaction, the page checks it with the app's own `core/tx-check.ts` against what the page shows. On every load it reads three promises from the token's own accounts and shows a badge for each that holds, linked to Solscan: mint authority disabled, freeze authority disabled, metadata permanent. A fact it could not read shows nothing.
+**On the web**, `https://nuntius.ochinimus.app/l/<pool>` backs a launch from any Wallet Standard wallet (Phantom, Solflare, Backpack) through the same server flow. Before the wallet sees a transaction, the page checks it with the app's own `core/tx-check.ts` against what the page shows. On every load it reads three promises from the token's own accounts and shows a badge for each that holds, linked to Solscan: mint authority disabled, freeze authority disabled, on-chain metadata permanent. A fact it could not read shows nothing.
 
 **Public read-outs:** `GET /api/launch/:pool` (route, raised against the threshold, committed recurring demand, the token's promises), and the committed-demand feed for terminals, `GET /api/launches` and the event stream `GET /api/launches/stream`. The feed keeps nuntius's own wallets out of its third-party figures.
 
@@ -368,11 +368,11 @@ npm run test:e2e                            # 12 tests on the web build: cold-st
 npx tsc --noEmit && npx expo lint && npx prettier --check .
 
 cd server && npm ci
-npm test                                    # 131 unit tests (Type it your way with a mocked model); the 9 localnet tests report "skipped"
+npm test                                    # 131 unit tests (Type it your way with a mocked model); the 10 localnet tests report "skipped"
 ../scripts/localnet.sh &                    # validator + the program built from 364a419 (first run builds it)
-npm run test:localnet                       # 174: 172 against the real program; the 2 Meteora tests skip here
-npm run test:meteora                        # those 2, on DBC, DAMM v2 and Metaplex cloned from mainnet: launch to migration and the buy after it
-cd .. && bash scripts/backing-page-e2e.sh   # 3 tests: the web backing page in headless Chromium, on the same cloned programs
+npm run test:localnet                       # 175: 172 against the real program; the 3 Meteora tests skip here
+npm run test:meteora                        # those 3, on DBC, DAMM v2 and Metaplex cloned from mainnet: launch to migration, the buy after it, and a pool refused as a payee
+cd .. && bash scripts/backing-page-e2e.sh   # 4 tests: the web backing page in headless Chromium, on the same cloned programs, including Chrome on Android with the Mobile Wallet Adapter
 ```
 
 ### Backend

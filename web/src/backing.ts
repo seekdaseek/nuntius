@@ -13,6 +13,12 @@
 import { getWallets } from '@wallet-standard/app'
 import type { Wallet, WalletAccount } from '@wallet-standard/base'
 import { createSignInMessageText } from '@solana/wallet-standard-util'
+import {
+  createDefaultAuthorizationCache,
+  createDefaultChainSelector,
+  createDefaultWalletNotFoundHandler,
+  registerMwa,
+} from '@solana-mobile/wallet-standard-mobile'
 import { baseUnits, checkTransaction, TxMismatch, type GrantExpect } from '../../core/tx-check'
 
 // ---------------------------------------------------------------------------------------
@@ -222,7 +228,8 @@ function showTrust(t: Launch['trust'] | null) {
   const badges: [string, string][] = []
   if (t?.mintAuthorityDisabled === true) badges.push(['Mint authority disabled', accountUrl(t.mint, true)])
   if (t?.freezeAuthorityDisabled === true) badges.push(['Freeze authority disabled', accountUrl(t.mint, true)])
-  if (t?.metadataPermanent === true && t.metadata) badges.push(['Metadata permanent', accountUrl(t.metadata, false)])
+  if (t?.metadataPermanent === true && t.metadata)
+    badges.push(['On-chain metadata permanent', accountUrl(t.metadata, false)])
   list.replaceChildren(
     ...badges.map(([words, href]) => {
       const li = document.createElement('li')
@@ -590,6 +597,18 @@ bindSegments('periods', 'period')
 bindSegments('durations', 'untilDays')
 sentence()
 $('approve').addEventListener('click', () => void back())
+// Chrome on Android has no injected wallet: the Mobile Wallet Adapter registers the phone's own
+// wallet (Seed Vault on a Seeker) before the list is built. It registers only where local
+// association works (a secure, non-webview Android browser); elsewhere it does nothing. The
+// transaction check above still runs before every signature it is asked for.
+if (config.cluster === 'mainnet')
+  registerMwa({
+    appIdentity: { name: 'nuntius', uri: location.origin, icon: 'identity-icon-192.png' },
+    authorizationCache: createDefaultAuthorizationCache(),
+    chains: ['solana:mainnet'],
+    chainSelector: createDefaultChainSelector(),
+    onWalletNotFound: createDefaultWalletNotFoundHandler(),
+  })
 getWallets().on('register', showWallets)
 showWallets()
 void loadLaunch()

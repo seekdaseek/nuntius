@@ -299,7 +299,7 @@ test(
       const badges = await trustBadges(page)
       assert.deepEqual(
         badges.map((b) => b.words),
-        ['Mint authority disabled', 'Freeze authority disabled', 'Metadata permanent'],
+        ['Mint authority disabled', 'Freeze authority disabled', 'On-chain metadata permanent'],
       )
       assert.ok(badges[0].href.includes(env.baseMint) && badges[1].href.includes(env.baseMint))
       assert.ok(!badges[2].href.includes(env.baseMint), 'the metadata badge links the metadata account')
@@ -368,7 +368,7 @@ test(
 )
 
 test(
-  'a token whose metadata its creator can still change: no "Metadata permanent"; a mint authority or an unread fact shows nothing',
+  'a token whose metadata its creator can still change: no "On-chain metadata permanent"; a mint authority or an unread fact shows nothing',
   { skip, timeout: 300_000 },
   async () => {
     const env = await setup()
@@ -428,6 +428,49 @@ test(
         assert.equal(await page.isHidden('#trust'), expected.length === 0)
         await page.unroute(`**/api/launch/${env.openPool}`)
       }
+    } finally {
+      await browser.close()
+      env.server.close()
+    }
+  },
+)
+
+test(
+  'Chrome on Android: the Mobile Wallet Adapter is in the wallet list before anything is tapped, with no console or CSP error',
+  { skip, timeout: 300_000 },
+  async () => {
+    const env = await setup()
+    const browser = await chromium.launch(CHROME ? { executablePath: CHROME } : {})
+    try {
+      const page = await browser.newPage({
+        viewport: { width: 412, height: 900 },
+        userAgent:
+          'Mozilla/5.0 (Linux; Android 15; Seeker) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36',
+      })
+      const problems = []
+      page.on(
+        'console',
+        (m) => (m.type() === 'error' || /Content Security Policy/i.test(m.text())) && problems.push(m.text()),
+      )
+      page.on('pageerror', (e) => problems.push(String(e)))
+      // The page as mainnet serves it: MWA registers only for solana:mainnet.
+      let csp = ''
+      await page.route('**/l/' + env.pool, async (route) => {
+        const r = await route.fetch()
+        csp = r.headers()['content-security-policy'] ?? ''
+        const body = (await r.text()).replace('"cluster":"localnet"', '"cluster":"mainnet"')
+        await route.fulfill({ response: r, body })
+      })
+      await page.goto(`${env.base}/l/${env.pool}`)
+      await page.waitForFunction(() =>
+        document.getElementById('route')?.textContent?.startsWith('On its bonding curve'),
+      )
+      const wallets = await page.$$eval('#wallets .wallet', (bs) => bs.map((b) => b.textContent))
+      assert.deepEqual(wallets, ['Mobile Wallet Adapter'])
+      assert.equal(await page.isHidden('#nowallet'), true)
+      assert.match(csp, /connect-src 'self' ws:\/\/localhost:\*;/)
+      await shot(page, '06-backing-android-mwa')
+      assert.deepEqual(problems, [], 'no console errors, and no CSP violation')
     } finally {
       await browser.close()
       env.server.close()

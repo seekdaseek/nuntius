@@ -8,5 +8,8 @@
   },
   "devDependencies": {
     "esbuild": "0.25.10"
+  },
+  "dependencies": {
+    "@solana-mobile/wallet-standard-mobile": "0.6.0"
   }
 }

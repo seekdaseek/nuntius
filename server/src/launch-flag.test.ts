@@ -15,11 +15,19 @@ import { loadMandateConfig } from './mandate-config.js'
 import { RateLimiter } from './rate-limit.js'
 import type { Config } from './config.js'
 import { CLIENT_HEADER, clientAtLeast, launchesFor, parseVersion } from './client-version.js'
+import { userAtaOf } from './mandate-chain.js'
+import type { Address } from '@solana/kit'
+
+const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 
 const SESSION = 'S'.repeat(43)
 const WALLET = 'Backer11111111111111111111111111111111111111'
 
-async function serve(launches: boolean, owners: Record<string, string> = {}) {
+async function serve(
+  launches: boolean,
+  owners: Record<string, string> = {},
+  tokenAccounts: Record<string, object> = {},
+) {
   const db = openDb(':memory:')
   const store = new Store(db)
   store.createSession(SESSION, WALLET, Date.now())
@@ -29,7 +37,16 @@ async function serve(launches: boolean, owners: Record<string, string> = {}) {
   // `owners` gives some addresses an account owned by that program (a pool, for the payee check).
   const rpc = {
     getAccountInfo: (address: string) => ({
-      send: async () => ({ value: owners[address] ? { owner: owners[address] } : null }),
+      send: async () => ({
+        value: owners[address]
+          ? { owner: owners[address] }
+          : tokenAccounts[address]
+            ? {
+                owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+                data: { parsed: { info: tokenAccounts[address] } },
+              }
+            : null,
+      }),
     }),
   }
   const scans = { orLast: async () => ({ list: [], asOfMs: Date.now(), stale: false }) }
@@ -172,7 +189,13 @@ test('the web backing page: /l/<pool> with a strict CSP and this server’s conf
     const r = await fetch(`${s.base}/l/5qeAeoorEHpwecPkehAVedeYaWhMVpJaFMD52A8oAtHX`)
     assert.equal(r.status, 200)
     const csp = r.headers.get('content-security-policy') ?? ''
-    assert.match(csp, /connect-src 'self'/)
+    // The whole policy, so any widening is a decision: only connect-src gained the Mobile Wallet
+    // Adapter's local association socket.
+    assert.equal(
+      csp,
+      "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data: https:; " +
+        "connect-src 'self' ws://localhost:*; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    )
     assert.match(csp, /script-src 'self'/)
     assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval/)
     const html = await r.text()
@@ -204,10 +227,16 @@ test('the web backing page: /l/<pool> with a strict CSP and this server’s conf
   }
 })
 
-test('a Meteora pool pasted as a payee: the refusal says so, and names Back a launch only to an app that has it', async () => {
+test('a Meteora pool pasted as a payee, its token account created: refused first, and named for what it is', async () => {
   const POOL = 'BpYoKpXwvM4gvD1VxenZAZ9vzV9QWdqZWKXm8DW3dPPU'
   const PERSON = 'Ana1111111111111111111111111111111111111111'
-  const s = await serve(true, { [POOL]: 'dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN' })
+  // The pool's own USDC account exists (anyone can create it): the account check alone would pass.
+  const poolAta = await userAtaOf(POOL as Address, USDC as Address)
+  const s = await serve(
+    true,
+    { [POOL]: 'dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN' },
+    { [poolAta]: { owner: POOL, mint: USDC, tokenAmount: { amount: '0', decimals: 6 } } },
+  )
   const create = async (payee: string, client?: string) => {
     const r = await post(s.base, '/api/mandates/create', client, {
       session: SESSION,
@@ -226,7 +255,11 @@ test('a Meteora pool pasted as a payee: the refusal says so, and names Back a la
     assert.equal(onNew.error, 'payee_is_pool')
     assert.match(onNew.message, /Meteora launch pool, not a wallet\. To buy its token every period, use Back a launch/)
     const onOld = await create(POOL)
+    assert.equal(onOld.status, 400)
     assert.equal(onOld.error, 'payee_is_pool')
+    const onOld102 = await create(POOL, '1.0.2')
+    assert.equal(onOld102.error, 'payee_is_pool')
+    assert.equal(onOld102.message, onOld.message)
     assert.equal(onOld.message, 'that address is a Meteora pool, not a wallet, so it cannot be paid.')
     // A wallet without the token account: the answer it always had.
     const person = await create(PERSON, '1.1.0')
