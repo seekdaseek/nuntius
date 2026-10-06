@@ -17,6 +17,8 @@ import type express from 'express'
 
 export const ANDROID_PACKAGE = 'app.ochinimus.nuntius'
 export const ICON_PATH = '/identity-icon-192.png'
+/** A token asset under /t/: lowercase name, png or json, no path. */
+const TOKEN_FILE_RE = /^[a-z0-9][a-z0-9-]{0,40}\.(png|json)$/
 const FINGERPRINT_RE = /^[0-9A-F]{2}(:[0-9A-F]{2}){31}$/
 
 /** Validates and normalises a SHA-256 certificate fingerprint (32 colon-separated hex bytes). */
@@ -49,5 +51,15 @@ export function registerIdentityRoutes(app: express.Express, fingerprint: string
   app.get(ICON_PATH, (_req, res) => {
     res.setHeader('Cache-Control', 'public, max-age=86400')
     res.sendFile(path.join(staticDir, 'identity-icon-192.png'))
+  })
+  // Launch token assets that live in this repository (static/tokens): images, and the fixed
+  // metadata JSON of tokens nuntius creates itself (the proof pool). Plain names only.
+  app.get('/t/:file', (req, res) => {
+    const file = String(req.params.file)
+    if (!TOKEN_FILE_RE.test(file)) return void res.status(404).json({ ok: false, error: 'not_found' })
+    res.setHeader('Cache-Control', 'public, max-age=3600')
+    res.sendFile(path.join(staticDir, 'tokens', file), (err) => {
+      if (err && !res.headersSent) res.status(404).json({ ok: false, error: 'not_found' })
+    })
   })
 }

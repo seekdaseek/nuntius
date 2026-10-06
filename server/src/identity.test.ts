@@ -180,3 +180,19 @@ test('clientIp trusts CF-Connecting-IP only from the loopback tunnel', () => {
   assert.equal(retryMessage(61), 'Too many tries. Try again in 2 minutes.')
   assert.equal(retryMessage(3600), 'Too many tries. Try again in 60 minutes.')
 })
+
+test('token assets under /t/: files from static/tokens, plain names only', async () => {
+  const s = await serve({})
+  try {
+    const r = await fetch(`${s.base}/t/proof.json`)
+    assert.equal(r.status, 200)
+    assert.match(r.headers.get('content-type') ?? '', /^application\/json/)
+    const j = (await r.json()) as { name: string; symbol: string }
+    assert.equal(j.symbol, 'PROOF')
+    assert.match(j.name, /not for trading/)
+    for (const bad of ['missing.png', '..%2Fidentity-icon-192.png', 'Proof.json', 'proof.txt', '.json'])
+      assert.equal((await fetch(`${s.base}/t/${bad}`)).status, 404, bad)
+  } finally {
+    s.close()
+  }
+})

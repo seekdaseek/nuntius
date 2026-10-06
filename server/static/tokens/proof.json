@@ -1,0 +1,6 @@
+{
+  "name": "nuntius proof, not for trading",
+  "symbol": "PROOF",
+  "description": "A test token nuntius created to prove the subscription-launch lifecycle on mainnet: capped buys, the curve filling, the migration to DAMM v2 and the buy that follows it. It is not for trading and has no value.",
+  "image": "https://nuntius.ochinimus.app/identity-icon-192.png"
+}
