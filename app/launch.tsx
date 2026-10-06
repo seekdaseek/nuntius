@@ -10,7 +10,7 @@ import { isUserCancellation, useNuntiusAuth } from '@/features/account/use-nunti
 import { api, untilLanded, type LaunchInfo } from '@/features/mandates/mandates-api'
 import { signAndSend } from '@/features/wallet/sign-and-send'
 import { checkTransaction, LAUNCH_CONFIGS, MINTS } from '@/core/tx-check'
-import { checkLaunch, demandWords, FEES_LINE, launchesOn, routeWords } from '@/core/back-copy'
+import { checkLaunch, commitmentWords, FEES_LINE, LAUNCH_TERMS, launchesOn, routeWords } from '@/core/back-copy'
 import { useMandateList } from '@/features/mandates/use-mandates'
 
 /**
@@ -77,7 +77,7 @@ export default function LaunchScreen() {
         <Title style={{ marginTop: 6 }}>{l.symbol ?? 'Your token'} is live</Title>
         <Card>
           <KV k="Now" v={routeWords(l)} />
-          <KV k="Committed" v={demandWords(l.committed)} />
+          <KV k="Committed" v={commitmentWords(l)} />
           <KV k="Pool" v={`${l.pool.slice(0, 6)}…${l.pool.slice(-4)}`} />
         </Card>
         <Muted>Share the pool address. Anyone with nuntius can back it with a capped weekly buy.</Muted>
@@ -171,8 +171,7 @@ export default function LaunchScreen() {
       {!check.ok && (name || symbol) ? <Muted>{check.hint}</Muted> : null}
       {!config ? <Note tone="refused">This build cannot launch in {quote} yet.</Note> : null}
       <Note tone="foreign">
-        You pay the pool’s accounts and sign once. Name, symbol and image are permanent. {FEES_LINE} nuntius never holds
-        the token or its keys.
+        {LAUNCH_TERMS} {FEES_LINE} nuntius never holds the token or its keys.
       </Note>
       {launch.isError && !isUserCancellation(launch.error) ? <Note tone="refused">{launch.error.message}</Note> : null}
     </Screen>

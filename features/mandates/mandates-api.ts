@@ -76,6 +76,8 @@ export interface LaunchInfo {
   symbol: string | null
   progressPct: number
   committed: { backers: number; perWeek: string; symbol: string | null }
+  /** Whose money it is, in the server's one sentence (server 6 Oct); absent from older servers. */
+  commitment?: { card: string; line: string }
   /** Why a back permission cannot buy this pool, in one sentence (server 1.1.0); null or absent when it can. */
   refusal?: string | null
 }

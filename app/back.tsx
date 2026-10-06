@@ -13,7 +13,7 @@ import { PERIOD_OPTIONS, sanitizeAmount, UNTIL_OPTIONS, type PeriodKey } from '@
 import {
   backSentence,
   checkBack,
-  demandWords,
+  commitmentWords,
   launchesOn,
   quoteSymbolOf,
   routeWords,
@@ -163,7 +163,7 @@ export default function BackScreen() {
         <Card>
           <KV k="Token" v={token ?? launch.baseMint.slice(0, 8)} />
           <KV k="Now" v={routeWords(launch)} />
-          <KV k="Committed" v={demandWords(launch.committed)} />
+          <KV k="Committed" v={commitmentWords(launch)} />
           {launch.refusal ? <Note tone="refused">{launch.refusal}</Note> : null}
           {!quote ? (
             <Note tone="refused">This launch is priced in a token nuntius does not pull (only USDC or SKR).</Note>

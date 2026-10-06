@@ -1,6 +1,16 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { backSentence, buyLine, checkBack, checkLaunch, demandWords, routeWords, skipWords } from './back-copy.ts'
+import {
+  backSentence,
+  buyLine,
+  checkBack,
+  checkLaunch,
+  commitmentWords,
+  demandWords,
+  LAUNCH_TERMS,
+  routeWords,
+  skipWords,
+} from './back-copy.ts'
 
 const POOL = '4kC74bssQ1tg2MhdVSfHDyerY8sivUuZviPmmU4Sp6yq'
 
@@ -42,6 +52,18 @@ test('launch words: route, progress and committed demand', () => {
   assert.equal(demandWords({ backers: 0, perWeek: '0', symbol: null }), 'No backers yet')
   assert.equal(demandWords({ backers: 1, perWeek: '5', symbol: 'USDC' }), '1 backer commits 5 USDC a week')
   assert.equal(demandWords({ backers: 3, perWeek: '15', symbol: 'USDC' }), '3 backers commit 15 USDC a week')
+  // The server's sentence wins: the builder's own money is named as the builder's (nimus, 6 Oct).
+  const nimus = { backers: 2, perWeek: '42', symbol: 'SKR' }
+  assert.equal(
+    commitmentWords({ committed: nimus, commitment: { card: 'x', line: '42 SKR a week, all the builder’s own' } }),
+    '42 SKR a week, all the builder’s own',
+  )
+  // A server without it: the plain count, as before.
+  assert.equal(commitmentWords({ committed: nimus }), '2 backers commit 42 SKR a week')
+  assert.equal(
+    commitmentWords({ committed: nimus, commitment: { card: '', line: '' } }),
+    '2 backers commit 42 SKR a week',
+  )
   assert.equal(checkLaunch({ name: 'natXbuilder', symbol: 'natx' }).ok, true)
   assert.equal(checkLaunch({ name: '', symbol: 'NATX' }).ok, false)
   assert.equal(checkLaunch({ name: 'x', symbol: 'N' }).ok, false)
@@ -86,4 +108,9 @@ test('the launch screen discloses the same fee line the server sends', async () 
   const { FEES_LINE } = await import('./back-copy.ts')
   assert.ok(server.includes(`'${FEES_LINE}'`), 'server/src/launch-api.ts FEES_LINE is the same sentence')
   assert.match(FEES_LINE, /0\.4% of curve trades and half of the locked pool’s fees/)
+})
+
+test('the launch screen calls name and symbol permanent, never the image (it lives in /m/<mint>.json)', () => {
+  assert.equal(LAUNCH_TERMS, 'You pay the pool’s accounts and sign once. Name and symbol are permanent on chain.')
+  assert.doesNotMatch(LAUNCH_TERMS, /image/i)
 })

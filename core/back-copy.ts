@@ -86,6 +86,8 @@ export interface LaunchView {
   symbol: string | null
   progressPct: number
   committed: { backers: number; perWeek: string; symbol: string | null }
+  /** Whose money it is, in the server's one sentence (server 6 Oct): the page and the link card say the same. */
+  commitment?: { card: string; line: string }
 }
 
 /** Where the launch is: on its curve, migrating, or trading in its regular pool. */
@@ -95,7 +97,16 @@ export function routeWords(l: Pick<LaunchView, 'route' | 'progressPct'>): string
   return 'Trading in its regular pool (DAMM v2)'
 }
 
-/** "3 backers commit 15 USDC a week" — the launch's recurring demand, from live permissions. */
+/**
+ * The launch's committed demand as the server words it (commitmentSentence): the builder's own
+ * wallets named as the builder's, so "2 backers commit 42 SKR a week" no longer reads as outside
+ * money when both are the builder's. A server without the sentence gets the plain count.
+ */
+export function commitmentWords(l: Pick<LaunchView, 'committed' | 'commitment'>): string {
+  return l.commitment?.line || demandWords(l.committed)
+}
+
+/** "3 backers commit 15 USDC a week" — the plain count, for a server that does not send its sentence. */
 export function demandWords(c: LaunchView['committed']): string {
   if (c.backers === 0) return 'No backers yet'
   return `${c.backers} ${c.backers === 1 ? 'backer commits' : 'backers commit'} ${c.perWeek} ${c.symbol ?? ''} a week`.replace(
@@ -103,6 +114,13 @@ export function demandWords(c: LaunchView['committed']): string {
     ' a week',
   )
 }
+
+/**
+ * What the creator signs up to, on the launch screen. Name and symbol are written on chain with
+ * the metadata's update authority gone; the image is not on chain: it is a link in the JSON
+ * nuntius serves at /m/<mint>.json, so the line does not call it permanent.
+ */
+export const LAUNCH_TERMS = 'You pay the pool’s accounts and sign once. Name and symbol are permanent on chain.'
 
 /** What nuntius earns from a launch on its config; the launch screen says it before Seed Vault opens. */
 export const FEES_LINE = 'nuntius earns 0.4% of curve trades and half of the locked pool’s fees after graduation.'
