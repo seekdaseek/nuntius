@@ -10,6 +10,7 @@ import { createKeyPairSignerFromBytes, createSolanaRpc, type TransactionSigner }
 import { loadMandateConfig } from './mandate-config.js'
 import { MandateStore } from './mandate-store.js'
 import { fcmParts, Receipts, type PushPort } from './receipts.js'
+import { FeedBus, parseOwnWallets } from './launch-feed.js'
 import { Executor, rpcChain, startExecutor } from './executor.js'
 import { Guard, rpcGuardChain, startGuard } from './guard.js'
 import { runDigests } from './digest-scheduler.js'
@@ -74,7 +75,10 @@ if (mandateConfig) {
         },
       }
     : null
-  const receipts = new Receipts(mandates, push, log, mandateConfig.cluster)
+  // The public committed-demand feed (launch-feed.ts): its stream hears every new buy and migration.
+  const ownWallets = parseOwnWallets(process.env.OWN_WALLETS)
+  const feedBus = new FeedBus(mandates.database, ownWallets)
+  const receipts = new Receipts(mandates, push, log, mandateConfig.cluster, (a, e) => feedBus.fromReceipt(a, e))
   // The Meteora SDKs speak web3.js: one connection to the same RPC, for back permissions and launches.
   const conn = meteoraConnection(mandateConfig.rpcUrl)
   const executor = new Executor({ store: mandates, chain: rpcChain(rpc, delegatee, PULL_BUDGET, conn), receipts, log })
@@ -109,6 +113,7 @@ if (mandateConfig) {
     executor,
     conn,
     origin: `https://${config.domain}`,
+    feed: { bus: feedBus, own: ownWallets },
     scans,
     parsePermission: process.env.ANTHROPIC_API_KEY ? anthropicModelCall(process.env.ANTHROPIC_API_KEY) : null,
     log,

@@ -44,6 +44,7 @@ import type { Rpc } from './tx.js'
 import { limitByIp, type RateLimiter } from './rate-limit.js'
 import { safeError } from './log.js'
 import { CLIENT_HEADER, clientAtLeast } from './client-version.js'
+import { FeedBus, parseOwnWallets, registerFeedRoutes } from './launch-feed.js'
 
 const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
 const SYMBOL_RE = /^[A-Z0-9]{2,10}$/
@@ -89,6 +90,8 @@ export interface LaunchDeps {
   now: () => number
   /** nuntius's fixed partner config per quote symbol (mandate-config.ts launchConfigs). */
   launchConfigs: Record<string, string>
+  /** The public feed's bus and own wallets; without them the feed serves numbers and a quiet stream. */
+  feed?: { bus: FeedBus; own: Set<string> }
 }
 
 /** The launch token's decimals and symbol, from its mint and Metaplex metadata accounts. */
@@ -375,6 +378,25 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
           ? res.status(422).json({ ok: false, error: 'launch_unsupported', message: e.message })
           : res.status(404).json({ ok: false, error: 'no_launch', message: safeError(e) }),
       )
+  })
+
+  // The committed-demand feed for terminals: public and read-only (launch-feed.ts).
+  const own = d.feed?.own ?? parseOwnWallets(undefined)
+  registerFeedRoutes(app, {
+    db: d.mandates.database,
+    own,
+    bus: d.feed?.bus ?? new FeedBus(d.mandates.database, own),
+    chain: async (pool) => {
+      const L = await readLaunch(d.conn, pool)
+      return {
+        route: L.route,
+        dammPool: L.dammPool,
+        progressPct: L.progressBps / 100,
+        quoteRaised: L.quoteRaised,
+        threshold: L.threshold,
+      }
+    },
+    limiter: d.publicLimiter,
   })
 
   app.get('/m/:file', (req, res) => {

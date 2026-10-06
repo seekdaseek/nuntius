@@ -38,6 +38,7 @@ import {
 } from './mandate-chain.js'
 import { backerAccountInstruction, registerLaunchRoutes } from './launch-api.js'
 import { CLIENT_HEADER, launchesFor } from './client-version.js'
+import type { FeedBus } from './launch-feed.js'
 import { describeBacking } from './mandate-text.js'
 import { RateLimiter, retryMessage } from './rate-limit.js'
 import type { Logger } from './log.js'
@@ -77,6 +78,8 @@ export interface MandateApiDeps {
   /** Subscription launches (Meteora): a web3 connection for the SDKs, and the public origin for metadata. */
   conn?: MeteoraConnection
   origin?: string
+  /** The public committed-demand feed's bus and the operator's own wallets (launch-feed.ts). */
+  feed?: { bus: FeedBus; own: Set<string> }
   /** The last good delegation scan per wallet, shared with the guard. */
   scans?: DelegationScans
   /** "Type it your way": the model call, or null when no key is configured. */
@@ -241,6 +244,7 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
       publicLimiter: new RateLimiter(60, 60_000),
       now,
       launchConfigs: cfg.launchConfigs ?? {},
+      feed: deps.feed,
     })
   }
 

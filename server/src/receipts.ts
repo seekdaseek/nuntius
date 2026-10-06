@@ -144,6 +144,8 @@ export class Receipts {
     private readonly push: PushPort | null,
     private readonly log: Logger,
     private readonly cluster: ReceiptExtra['cluster'],
+    /** Told about every receipt recorded for the first time (the public feed's stream). */
+    private readonly onRecorded?: (address: string, e: LedgerEvent) => void,
   ) {}
 
   /** Records, and pushes only if this is the first time this receipt was recorded. */
@@ -155,6 +157,11 @@ export class Receipts {
       periodLengthS: x.periodLengthS,
     })
     if (id === null) return false
+    try {
+      this.onRecorded?.(address, e)
+    } catch {
+      /* the feed is a side channel: never let it stop a receipt */
+    }
     this.log.info('receipt', {
       kind: e.kind,
       pda: e.delegationPda,

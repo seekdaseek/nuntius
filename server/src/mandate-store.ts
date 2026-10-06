@@ -372,6 +372,11 @@ export class MandateStore {
     migrateMandates(db)
   }
 
+  /** The database, for read-only aggregate queries (launch-feed.ts). */
+  get database(): Database.Database {
+    return this.db
+  }
+
   // --- mandates ---
 
   insertMandate(m: Omit<Mandate, 'id' | 'status' | 'createdAt' | 'activatedAt' | 'endedAt'>, nowMs: number): Mandate {
