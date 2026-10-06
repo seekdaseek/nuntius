@@ -265,8 +265,8 @@ test(
       })
       await shot(page, '02-backing-live')
       // The chain: one delegation from the backer to the executor, with exactly these terms.
-      const pda = await page.evaluate(() => document.querySelector('#mine-list li') !== null)
-      assert.ok(pda, 'the permission is listed under "Your permissions on this launch"')
+      // The page says Live, then reads the list: wait for the permission under "Your permissions".
+      await page.waitForSelector('#mine-list li', { timeout: 30_000 })
       await page.waitForFunction(() =>
         /1 backer commits 5 TQ a week/.test(document.getElementById('committed')?.textContent ?? ''),
       )
@@ -278,13 +278,13 @@ test(
       await shot(page, '03-backing-revoked')
       assert.equal(await page.isHidden('#mine'), true)
       assert.deepEqual(problems, [], 'no console errors, and no CSP violation')
+      // The delegations the backer ever had on this program are gone.
+      const { listDelegations } = await import('../dist/mandate-chain.js')
+      assert.deepEqual(await listDelegations(env.rpc, env.backer.address), [])
     } finally {
       await browser.close()
+      env.server.close()
     }
-    // The delegations the backer ever had on this program are gone.
-    const { listDelegations } = await import('../dist/mandate-chain.js')
-    assert.deepEqual(await listDelegations(env.rpc, env.backer.address), [])
-    env.server.close()
   },
 )
 

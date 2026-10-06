@@ -12,6 +12,7 @@
  * Launching is for verified Seeker owners only (the SGT tier), so a launch is one device.
  */
 import type express from 'express'
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import {
@@ -459,7 +460,16 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
   app.get('/l/:pool', (req, res) => {
     const pool = String(req.params.pool)
     if (!ADDRESS_RE.test(pool)) return void res.status(404).json({ ok: false, error: 'not_found' })
-    template ??= readFileSync(path.join(pageDir, 'index.html'), 'utf8')
+    // The script and stylesheet are named with their content hash: Cloudflare stretches their
+    // browser cache to 4 hours, and a page from one deploy must never run another's script.
+    template ??= readFileSync(path.join(pageDir, 'index.html'), 'utf8').replace(
+      /\/l\/assets\/(backing\.(?:js|css))"/g,
+      (_m, file: string) =>
+        `/l/assets/${file}?v=${createHash('sha256')
+          .update(readFileSync(path.join(pageDir, file)))
+          .digest('hex')
+          .slice(0, 12)}"`,
+    )
     const config = JSON.stringify({
       executor: d.delegatee,
       cluster: d.page?.cluster ?? 'mainnet',

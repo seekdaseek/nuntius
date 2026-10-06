@@ -5,6 +5,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { AddressInfo } from 'node:net'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { createApp } from './app.js'
 import { openDb, Store } from './db.js'
 import { MandateStore } from './mandate-store.js'
@@ -178,6 +181,14 @@ test('the web backing page: /l/<pool> with a strict CSP and this server’s conf
       config.mints.map((m) => m.symbol),
       ['USDC'],
     )
+    // Script and stylesheet by content hash, so no browser runs a script from another deploy.
+    const js = /src="(\/l\/assets\/backing\.js\?v=[0-9a-f]{12})"/.exec(html)?.[1]
+    const css = /href="(\/l\/assets\/backing\.css\?v=[0-9a-f]{12})"/.exec(html)?.[1]
+    assert.ok(js && css, 'versioned asset URLs')
+    const bundle = readFileSync(path.join(import.meta.dirname, '..', 'static', 'l', 'backing.js'))
+    assert.equal(js.slice(-12), createHash('sha256').update(bundle).digest('hex').slice(0, 12))
+    assert.equal((await fetch(`${s.base}${js}`)).status, 200)
+    assert.equal((await fetch(`${s.base}${css}`)).status, 200)
     assert.equal((await fetch(`${s.base}/l/assets/backing.js`)).status, 200)
     assert.equal((await fetch(`${s.base}/l/not-a-pool`)).status, 404)
     assert.equal((await fetch(`${s.base}/l/assets/index.html`)).status, 404)

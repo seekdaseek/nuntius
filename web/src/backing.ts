@@ -402,12 +402,13 @@ async function back() {
     }
     status('Waiting for the chain…')
     await untilLanded(() => api('/api/mandates/confirm', { session: s, mandateId }), ['not_on_chain_yet'])
+    // The list first, then the word: "Live" never shows beside a list that lacks it.
+    await refreshMine()
     status(
       `Live. ${form.amount} ${q.symbol} ${PERIODS[form.period]!.words} buys ${launch.symbol ?? 'the token'} into your wallet. The first buy comes within about 10 minutes.`,
       false,
       signature ? explorer(signature) : undefined,
     )
-    await refreshMine()
     await loadLaunch()
   } catch (e) {
     status(errorWords(e), true)
@@ -489,8 +490,8 @@ async function revoke(m: MineRow, allowance: string | null) {
       () => api('/api/mandates/revoke-confirm', { session: s, delegationPda: m.delegationPda }),
       ['still_live'],
     )
-    status('Revoked. Nothing more will be taken.')
     await refreshMine()
+    status('Revoked. Nothing more will be taken.')
     await loadLaunch()
   } catch (e) {
     status(errorWords(e), true)
