@@ -380,7 +380,14 @@ async function signIn(): Promise<string> {
     // The same text the wallet's own sign-in would show; the server verifies it either way.
     const message = new TextEncoder().encode(createSignInMessageText({ ...payload, address: account!.address }))
     const [out] = await f['solana:signMessage'].signMessage({ account: account!, message })
-    signedMessage = out!.signedMessage
+    // MWA returns the signed payload, the message with the signature appended, as signedMessage
+    // (6 Oct, Seed Vault: signature_invalid). The message is what the server must verify.
+    const sm = out!.signedMessage
+    const appended =
+      sm.length === message.length + 64 &&
+      message.every((b, i) => sm[i] === b) &&
+      out!.signature.every((b, i) => sm[message.length + i] === b)
+    signedMessage = appended ? message : sm
     signature = out!.signature
     publicKey = new Uint8Array(account!.publicKey)
   } else throw new Error('This wallet cannot sign in with Solana.')
