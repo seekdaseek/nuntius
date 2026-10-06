@@ -1,0 +1,91 @@
+{
+  "date": "2026-10-06",
+  "cluster": "mainnet",
+  "token": {
+    "name": "nimus",
+    "symbol": "NIMUS",
+    "mint": "jYCJQbTyVKCCpuGyGP4uqoy1cF8bCtCarnWsU5xQ4B2",
+    "decimals": 6,
+    "supply": "1000000000",
+    "uri": "https://nuntius.ochinimus.app/m/jYCJQbTyVKCCpuGyGP4uqoy1cF8bCtCarnWsU5xQ4B2.json",
+    "image": "https://nuntius.ochinimus.app/t/nimus.png",
+    "updateAuthority": "11111111111111111111111111111111"
+  },
+  "pool": "BpYoKpXwvM4gvD1VxenZAZ9vzV9QWdqZWKXm8DW3dPPU",
+  "config": "DdiaEHahNnz41GHh2AHCsZqGuuoW1A1nnjDKFN8bYM3d",
+  "creator": "4a8o45skRPcyjAdyR8yES215Swvh8uTpZD6KLarhxCJ7",
+  "steps": [
+    {
+      "step": "launch",
+      "slot": 453822148,
+      "blockTime": 1791268479,
+      "signer": "cj7 (Seeker, Seed Vault) and the server's fresh mint key",
+      "signature": "36HcKcHpAtWxPRCMAjpdsuWPyBwyvHWVn3FpnjNKXwbWC3nUcjShiQb4XM8RvDekZSnQh5rb5wBAqLirVVnFUpn1",
+      "err": null,
+      "costLamports": 20601640,
+      "simulatedCostLamports": 20601640
+    },
+    {
+      "step": "backing grant",
+      "blockTime": 1791268638,
+      "signer": "cj7 (Seeker, Seed Vault)",
+      "signature": "ARNrFTDK9LJWZvh3jcpatJH5YjHqaXnzgibFG8KozJXEbERK8J8zEbcQ7QgkCLELjPpHKTkPXpeEdvVvcy2rbnP",
+      "err": null,
+      "delegation": "4aRwbjE9azxHjbYQwsQZLjN2RxrndKo9QJBAkrTr5ydC",
+      "terms": {
+        "amountPerPeriod": "25000000",
+        "symbol": "SKR",
+        "periodLengthS": 604800,
+        "expiryTs": 1799044628
+      },
+      "slot": 453822744
+    },
+    {
+      "step": "first buy, on the curve",
+      "slot": 453824524,
+      "blockTime": 1791269116,
+      "signer": "executor",
+      "signature": "383VkA2U1MGPb5rkGSv6AWdq1u9HoG6NDZDcdC5d3p5gEiq1MYb6doqWAicDrRyUpz1Y722mDTUD1Ddb8A5X5Fdf",
+      "err": null,
+      "programs": [
+        "ComputeBudget111111111111111111111111111111",
+        "De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44",
+        "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN"
+      ],
+      "computeUnits": 35780,
+      "feeLamports": 11000,
+      "balances": {
+        "cj7 SKR": ["80042324", "55042324"],
+        "cj7 NIMUS": ["0", "673006728572"],
+        "executor SKR": ["0", "0"]
+      }
+    }
+  ],
+  "outsideTrades": [
+    {
+      "signature": "2twYYvTv",
+      "blockTime": 1791268494,
+      "feePayer": "AN4ZCJ",
+      "vaultSkrDelta": "1343.79976"
+    },
+    {
+      "signature": "4ZXNBYKt",
+      "blockTime": 1791268512,
+      "feePayer": "AN4ZCJ",
+      "vaultSkrDelta": "0.671277"
+    },
+    {
+      "signature": "2MUuSSZe",
+      "blockTime": 1791268681,
+      "feePayer": "AN4ZCJ",
+      "vaultSkrDelta": "-1317.716061"
+    }
+  ],
+  "poolAfterFirstBuy": {
+    "quoteReserve": "24750001",
+    "partnerQuoteFee": "10801992",
+    "creatorQuoteFee": "10801990",
+    "protocolQuoteFee": "5400993",
+    "isMigrated": 0
+  }
+}

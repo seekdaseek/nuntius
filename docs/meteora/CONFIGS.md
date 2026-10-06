@@ -140,3 +140,15 @@ natX backed the migrated proof pool from the Seeker (v1.1.0, Seed Vault): 50 SKR
 | 06:29:44 the next pull, sent with preflight off | the executor  | [`GarcPW1D…`](https://explorer.solana.com/tx/GarcPW1DtMLRCcvC6CyevphBn21MXdRrqqbQ7QgRkC91e6yk6nnoVsn6U9jN4nSkydRQnhppNhxSj9GRQVq4v9G)  | failed: `InvalidAccountOwner` in the Subscriptions program; natX SKR stays 106             |
 
 The refused pull is built and sent by `tools/mac/dead-pull.mjs` in the private ops repository; the executor itself never sends it, because the server marks the permission revoked and stops.
+
+## nimus, the first launch on the SKR config
+
+On 6 Oct the treasury wallet (cj7) launched nimus from the Seeker with v1.1.0's Launch screen, then backed it at 25 SKR a week. Before the launch was signed, the server's record was read back: name `nimus`, symbol `NIMUS`, quote SKR on config `DdiaEHah…`, creator cj7, the image link and the description; the metadata URI served the same JSON. Every transaction below was read back from mainnet; the record is `evidence/nimus-launch.json`.
+
+| Step (UTC)                                              | Signed by    | Transaction                                                                                                                            | What the chain shows                                                                                                |
+| ------------------------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| 06:34:39 launch: pool `BpYoKpXw…dPPU`, token `jYCJ…4B2` | cj7 (Seeker) | [`36HcKcHp…`](https://explorer.solana.com/tx/36HcKcHpAtWxPRCMAjpdsuWPyBwyvHWVn3FpnjNKXwbWC3nUcjShiQb4XM8RvDekZSnQh5rb5wBAqLirVVnFUpn1) | cj7 paid 20,601,640 lamports, as simulated; metadata `nimus` / `NIMUS` / `…/m/jYCJ…4B2.json`, update authority none |
+| 06:37:18 backing grant: 25 SKR a week, 90 days          | cj7 (Seeker) | [`ARNrFTDK…`](https://explorer.solana.com/tx/ARNrFTDK9LJWZvh3jcpatJH5YjHqaXnzgibFG8KozJXEbERK8J8zEbcQ7QgkCLELjPpHKTkPXpeEdvVvcy2rbnP)  | delegation `4aRwbjE9azxHjbYQwsQZLjN2RxrndKo9QJBAkrTr5ydC` to the executor                                           |
+| 06:45:16 the first buy, on the curve                    | the executor | [`383VkA2U…`](https://explorer.solana.com/tx/383VkA2U1MGPb5rkGSv6AWdq1u9HoG6NDZDcdC5d3p5gEiq1MYb6doqWAicDrRyUpz1Y722mDTUD1Ddb8A5X5Fdf) | DBC swap in one transaction: cj7 SKR 80.04 → 55.04, NIMUS 0 → 673,006.728572; the executor's SKR 0 → 0; 35,780 CU   |
+
+A trading bot (fee payer `AN4ZCJ…`) spent 1,344.5 SKR buying NIMUS within 33 seconds of the launch and sold it all back at 06:38 for 1,317.7 SKR. The round trip paid the curve's 1% fee both ways: after the first buy the pool held 10.80 SKR for the partner (nuntius), 10.80 SKR for the creator and 5.40 SKR for Meteora. These are outside trades, not backing; the backing figures in the feed count only buys nuntius executed.
