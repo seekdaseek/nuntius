@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-06",
+  "cluster": "mainnet",
+  "pool": "5qeAeoorEHpwecPkehAVedeYaWhMVpJaFMD52A8oAtHX",
+  "dammPool": "CUgjnSTFC2CoCHesWm8hYAb6sE7mUAdoUhYFuH3w6vCh",
+  "backer": "ASCQRp616JVQKMpynYfcPVdKPext719WUf7CuFcnnatX",
+  "executor": "23fstLLk5nv17NUpbsyWgEkkwHM3uKpxtvXhrLhd3SHP",
+  "delegation": "GFkN9JnnTJvXKedzUAZng5D7wRNJqHnjc8uVkXD1PZdZ",
+  "terms": { "amountPerPeriod": "50000000", "symbol": "SKR", "periodLengthS": 3600, "untilDays": 7 },
+  "steps": [
+    {
+      "step": "grant",
+      "slot": 453819448,
+      "blockTime": 1791267755,
+      "signer": "natX (Seeker, Seed Vault)",
+      "signature": "RZb3AT53P7i6GKvQNR4BDN3eeSYPUCpGTnRDU9PRoK3zmeBipg2uXUS5Xsu6a5GyEwnAXBVzudD3jscWcs5T5tN",
+      "err": null
+    },
+    {
+      "step": "buy",
+      "slot": 453820594,
+      "blockTime": 1791268062,
+      "signer": "executor",
+      "signature": "AiFrumeV4r81DmnsjRRrAsMy3cJKGkc15pYmMRvgAc3ibDQcS1wvY5FidL3y6LP66RyD1Ao2ugN3TXx1npzHsUk",
+      "err": null,
+      "programs": [
+        "ComputeBudget111111111111111111111111111111",
+        "De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44",
+        "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+      ],
+      "computeUnits": 27102,
+      "feeLamports": 11000,
+      "balances": {
+        "natX SKR": ["156000000", "106000000"],
+        "natX PROOF": ["0", "109191776503476"],
+        "executor SKR": ["0", "0"]
+      }
+    },
+    {
+      "step": "revoke",
+      "slot": 453820913,
+      "blockTime": 1791268147,
+      "signer": "natX (Seeker, Seed Vault)",
+      "signature": "2VxWUMjd5Q6oiky6roRK8X6a5X8oVT3papuWEhycficLNBKaovmE6kAmhLUByDfooGq7tqFGWaFKMcmr9Lp6Bz5b",
+      "err": null,
+      "after": "delegation account closed (getAccountInfo: null)"
+    },
+    {
+      "step": "next pull, preflight off",
+      "slot": 453821052,
+      "blockTime": 1791268184,
+      "signer": "executor",
+      "signature": "GarcPW1DtMLRCcvC6CyevphBn21MXdRrqqbQ7QgRkC91e6yk6nnoVsn6U9jN4nSkydRQnhppNhxSj9GRQVq4v9G",
+      "err": { "InstructionError": [2, "InvalidAccountOwner"] },
+      "feeLamports": 7000,
+      "balances": { "natX SKR": ["106000000", "106000000"] }
+    }
+  ]
+}

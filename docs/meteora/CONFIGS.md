@@ -127,3 +127,16 @@ Twelve minutes after the proof pool was created, trading bots routed through its
 | Migration to DAMM v2, paid by the executor (23,744,600 lamports, as simulated) | canonical pool `CUgjnSTFC2CoCHesWm8hYAb6sE7mUAdoUhYFuH3w6vCh` | [`2gEqP5Af…`](https://explorer.solana.com/tx/2gEqP5AfyHjqy16NZYvfkCNDTrbYUU1x1mHUzD7KkGutQuXxzJA8UHutbJTJmdxxAhm2yHgNsEHiryymaK9D8XNx) |
 
 The mainnet proof therefore backs the migrated pool: natX's permission buys on DAMM v2. Buys on a curve, the curve completing and the backing following the token through migration are proven on Meteora's deployed programs on localnet (`npm run test:meteora`); on mainnet they come from real launches.
+
+### The proof run on mainnet, 6 Oct
+
+natX backed the migrated proof pool from the Seeker (v1.1.0, Seed Vault): 50 SKR every hour for 7 days. One buy landed on DAMM v2, natX revoked on the Seeker, and the next pull was sent anyway: the Subscriptions program refused it, because the delegation no longer exists. Every transaction below was read back from mainnet; the record is `evidence/proof-run.json`.
+
+| Step (UTC)                                      | Signed by     | Transaction                                                                                                                            | What the chain shows                                                                       |
+| ----------------------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| 06:22:35 grant: 50 SKR an hour, 7 days          | natX (Seeker) | [`RZb3AT53…`](https://explorer.solana.com/tx/RZb3AT53P7i6GKvQNR4BDN3eeSYPUCpGTnRDU9PRoK3zmeBipg2uXUS5Xsu6a5GyEwnAXBVzudD3jscWcs5T5tN)  | delegation `GFkN9JnnTJvXKedzUAZng5D7wRNJqHnjc8uVkXD1PZdZ` to the executor                  |
+| 06:27:42 the buy, one transaction               | the executor  | [`AiFrumeV…`](https://explorer.solana.com/tx/AiFrumeV4r81DmnsjRRrAsMy3cJKGkc15pYmMRvgAc3ibDQcS1wvY5FidL3y6LP66RyD1Ao2ugN3TXx1npzHsUk)  | natX SKR 156 → 106; natX PROOF 0 → 109,191,776.503476; the executor's SKR 0 → 0; 27,102 CU |
+| 06:29:07 revoke                                 | natX (Seeker) | [`2VxWUMjd…`](https://explorer.solana.com/tx/2VxWUMjd5Q6oiky6roRK8X6a5X8oVT3papuWEhycficLNBKaovmE6kAmhLUByDfooGq7tqFGWaFKMcmr9Lp6Bz5b) | the delegation account is closed                                                           |
+| 06:29:44 the next pull, sent with preflight off | the executor  | [`GarcPW1D…`](https://explorer.solana.com/tx/GarcPW1DtMLRCcvC6CyevphBn21MXdRrqqbQ7QgRkC91e6yk6nnoVsn6U9jN4nSkydRQnhppNhxSj9GRQVq4v9G)  | failed: `InvalidAccountOwner` in the Subscriptions program; natX SKR stays 106             |
+
+The refused pull is built and sent by `tools/mac/dead-pull.mjs` in the private ops repository; the executor itself never sends it, because the server marks the permission revoked and stops.
