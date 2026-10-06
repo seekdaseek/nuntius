@@ -132,6 +132,8 @@ interface Launch {
   threshold?: string
   refusal?: string | null
   committed: { backers: number; perWeek: string; symbol: string | null }
+  /** Whose money it is, in the server's one sentence (the link card says the same). */
+  commitment?: { card: string; line: string }
   /** Price in the quote token, the quote token's USD price, market cap in the quote token; null: not read. */
   market?: { priceQuote: number | null; quoteUsd: number | null; marketCapQuote: number | null }
   /** The curve's price path: last token over first, and where the price is now on that scale. */
@@ -142,6 +144,7 @@ interface FeedPool {
   committedPerWeek: { all: string; thirdParty: string }
   backers: { all: number; thirdParty: number }
   buysExecuted: { all: number; thirdParty: number }
+  commitment?: { card: string; line: string }
   lastBuys: { at: number; signature: string; quoteIn: string; baseOut: string | null; own: boolean; backer?: string }[]
   nextBuys?: { at: number; quoteIn: string; own: boolean; backer: string }[]
 }
@@ -195,9 +198,11 @@ async function loadLaunch() {
   routePill.textContent =
     launch.route === 'dbc' ? 'On its bonding curve' : launch.route === 'migrating' ? 'Graduating' : 'On DAMM v2'
   routePill.hidden = false
-  // 25 a period to start with, or this token's ceiling when that is lower.
-  if (!amountTouched && q && Number(form.amount) > Number(q.maxPerPeriodUi)) {
-    form.amount = q.maxPerPeriodUi
+  // A day's amount to start with, as the link card says: 1 USDC or 5 of anything else, or this
+  // token's ceiling when that is lower.
+  if (!amountTouched && q) {
+    form.amount = q.symbol === 'USDC' ? '1' : '5'
+    if (Number(form.amount) > Number(q.maxPerPeriodUi)) form.amount = q.maxPerPeriodUi
     $<HTMLInputElement>('amount').value = form.amount
   }
   $('quote').textContent =
@@ -227,10 +232,7 @@ async function loadLaunch() {
     $('mcapUsd').textContent =
       m.marketCapQuote === null ? '' : usd(m.quoteUsd === null ? null : m.marketCapQuote * m.quoteUsd)
   }
-  $('committed').textContent =
-    launch.committed.backers === 0
-      ? 'No backers yet. Be the first.'
-      : `${launch.committed.backers} ${launch.committed.backers === 1 ? 'backer commits' : 'backers commit'} ${launch.committed.perWeek} ${launch.committed.symbol ?? ''} a week`
+  $('committed').textContent = launch.commitment?.line ?? ''
   $('committedWeek').textContent = `${launch.committed.perWeek} ${launch.committed.symbol ?? q?.symbol ?? ''}`
   $('backers').textContent = String(launch.committed.backers)
   if (launch.refusal || !q || launch.route === 'migrating') {
@@ -257,6 +259,8 @@ function showFeed() {
   const q = quote()
   const sym = launch?.symbol ?? ''
   const f = feed
+  // The feed refreshes it; without the feed the launch's own sentence stands.
+  if (f?.commitment) $('committed').textContent = f.commitment.line
   const third = f?.backers.thirdParty ?? 0
   const all = f?.backers.all ?? launch?.committed.backers ?? 0
   $('backersNote').textContent =
@@ -431,7 +435,7 @@ const PERIODS: Record<string, { s: number; words: string }> = {
   day: { s: 86_400, words: 'every day' },
   week: { s: 604_800, words: 'every week' },
 }
-const form = { amount: '25', period: 'week', untilDays: 90 }
+const form = { amount: '5', period: 'day', untilDays: 30 }
 let amountTouched = false
 function sentence() {
   const q = quote()

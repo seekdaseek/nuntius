@@ -60,16 +60,45 @@ export interface FeedPool {
   /** Launched through nuntius on one of its configs, rather than an outside pool being backed. */
   launchedOnNuntius: boolean
   chain: PoolChain | null
-  committedPerWeek: { all: string; thirdParty: string }
+  /** builder: the operator's own wallets (OWN_WALLETS), all minus thirdParty. */
+  committedPerWeek: { all: string; thirdParty: string; builder: string }
   backers: { all: number; thirdParty: number }
   buysExecuted: { all: number; thirdParty: number }
   volumeQuote: { all: string; thirdParty: string }
+  /** Who commits what each week, the builder named as such: commitmentSentence. */
+  commitment: { card: string; line: string }
   lastBuys: FeedBuy[]
   /** The next scheduled buys, soonest first: each live backing's next period, at the executor's jitter. */
   nextBuys: FeedNextBuy[]
 }
 
 type Row = Record<string, unknown>
+
+/**
+ * Who commits what each week, in one sentence, with the builder's own wallets named as the
+ * builder's: on X the link card stands alone, and "2 backers commit 42 SKR a week" read as
+ * outside demand when both were the builder's (6 Oct). `card` is the link card's first
+ * sentence, `line` the page's line under the weekly number.
+ */
+export function commitmentSentence(p: {
+  symbol: string
+  quoteSymbol: string
+  committedPerWeek: { thirdParty: string; builder: string }
+  backers: { all: number; thirdParty: number }
+}): { card: string; line: string } {
+  const q = p.quoteSymbol
+  const outside = p.backers.thirdParty
+  const builder = p.backers.all > outside ? p.committedPerWeek.builder : null
+  if (outside === 0 && builder === null) return { card: 'No backers yet.', line: 'No backers yet.' }
+  if (outside === 0)
+    return {
+      card: `The builder backs ${p.symbol} with ${builder} ${q} a week. No outside backers yet.`,
+      line: `${builder} ${q} a week, all the builder’s own`,
+    }
+  const head = `${outside} ${outside === 1 ? 'backer commits' : 'backers commit'} ${p.committedPerWeek.thirdParty} ${q} a week`
+  const plus = builder === null ? '' : `, plus ${builder} ${q} a week from the builder`
+  return { card: `${head} to ${p.symbol}${plus}.`, line: `${head}${plus}` }
+}
 
 /** The feed's numbers, from the store alone (chain state is joined in by the route). */
 export function feedFromDb(
@@ -116,10 +145,11 @@ export function feedFromDb(
         quoteMint: base.quoteMint ?? '',
         quoteSymbol: base.quoteSymbol ?? '',
         launchedOnNuntius: false,
-        committedPerWeek: { all: '0', thirdParty: '0' },
+        committedPerWeek: { all: '0', thirdParty: '0', builder: '0' },
         backers: { all: 0, thirdParty: 0 },
         buysExecuted: { all: 0, thirdParty: 0 },
         volumeQuote: { all: '0', thirdParty: '0' },
+        commitment: { card: '', line: '' },
         lastBuys: [],
         nextBuys: [],
         _decimals: decimals,
@@ -216,12 +246,19 @@ export function feedFromDb(
     p.nextBuys.sort((a, b) => a.at - b.at)
     p.nextBuys.splice(5)
   }
-  return [...pools.values()].map(({ _decimals, _perWeek, _perWeek3, _vol, _vol3, _backers, ...p }) => ({
-    ...p,
-    committedPerWeek: { all: formatUnits(_perWeek, _decimals), thirdParty: formatUnits(_perWeek3, _decimals) },
-    backers: { all: _backers.size, thirdParty: [..._backers].filter((a) => !own.has(a)).length },
-    volumeQuote: { all: formatUnits(_vol, _decimals), thirdParty: formatUnits(_vol3, _decimals) },
-  }))
+  return [...pools.values()].map(({ _decimals, _perWeek, _perWeek3, _vol, _vol3, _backers, ...p }) => {
+    const f = {
+      ...p,
+      committedPerWeek: {
+        all: formatUnits(_perWeek, _decimals),
+        thirdParty: formatUnits(_perWeek3, _decimals),
+        builder: formatUnits(_perWeek - _perWeek3, _decimals),
+      },
+      backers: { all: _backers.size, thirdParty: [..._backers].filter((a) => !own.has(a)).length },
+      volumeQuote: { all: formatUnits(_vol, _decimals), thirdParty: formatUnits(_vol3, _decimals) },
+    }
+    return { ...f, commitment: commitmentSentence(f) }
+  })
 }
 
 /** One feed event: a buy or a migration, as it lands. */

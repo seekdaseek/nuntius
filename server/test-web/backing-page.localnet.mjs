@@ -287,14 +287,25 @@ test(
       await page.waitForFunction(() =>
         document.getElementById('route')?.textContent?.startsWith('On its bonding curve'),
       )
-      assert.equal(await page.textContent('#committed'), 'No backers yet. Be the first.')
+      // The line comes from the feed, which arrives after the launch: wait for it, never a guess.
+      await page.waitForFunction(() => document.getElementById('committed')?.textContent === 'No backers yet.')
+      // The link card says the same, and names whose money it is once someone backs.
+      const ogDescription = async () =>
+        /<meta property="og:description" content="([^"]*)"/.exec(
+          await (await fetch(`${env.base}/l/${env.pool}`)).text(),
+        )?.[1]
+      assert.equal(
+        await ogDescription(),
+        'No backers yet. Capped recurring buys on Meteora: nothing deposited, revoke any time.',
+      )
       // Raised against the threshold, not a percentage that reads as nothing at the start.
       assert.equal(await page.textContent('#route'), 'On its bonding curve: 0 of 1,000 TQ raised')
       // The sentence is whole on first load, and the token's own image sits beside its name.
-      assert.equal(await page.inputValue('#amount'), '25')
+      // It opens on what the link card says: every day.
+      assert.equal(await page.inputValue('#amount'), '5')
       assert.equal(
         await page.textContent('#sentence'),
-        '25 TQ a week for 90 days · at most 325 TQ in total · nothing is deposited',
+        '5 TQ a day for 30 days · at most 150 TQ in total · nothing is deposited',
       )
       await page.waitForSelector('#logo:not([hidden])')
       const logo = await page.$eval('#logo', (i) => ({ src: i.getAttribute('src'), w: i.naturalWidth }))
@@ -309,7 +320,7 @@ test(
       assert.ok(!badges[2].href.includes(env.baseMint), 'the metadata badge links the metadata account')
       await shot(page, '01-backing-page')
       await page.fill('#amount', '5')
-      await page.click('#durations button[data-v="30"]')
+      await page.click('#periods button[data-v="week"]')
       assert.equal(
         await page.textContent('#sentence'),
         '5 TQ a week for 30 days · at most 25 TQ in total · nothing is deposited',
@@ -331,6 +342,10 @@ test(
       await page.waitForSelector('#mine-list li', { timeout: 30_000 })
       await page.waitForFunction(() =>
         /1 backer commits 5 TQ a week/.test(document.getElementById('committed')?.textContent ?? ''),
+      )
+      assert.equal(
+        await ogDescription(),
+        '1 backer commits 5 TQ a week to WEBT. Capped recurring buys on Meteora: nothing deposited, revoke any time.',
       )
       // Revoke from the page.
       await page.click('#mine-list .revoke')

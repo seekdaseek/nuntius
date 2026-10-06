@@ -6,7 +6,7 @@ import type { AddressInfo } from 'node:net'
 import express from 'express'
 import Database from 'better-sqlite3'
 import { MandateStore } from './mandate-store.js'
-import { FeedBus, feedFromDb, registerFeedRoutes, type FeedEvent } from './launch-feed.js'
+import { commitmentSentence, FeedBus, feedFromDb, registerFeedRoutes, type FeedEvent } from './launch-feed.js'
 import { buyJitterS } from './executor.js'
 import { RateLimiter } from './rate-limit.js'
 
@@ -88,6 +88,36 @@ test('the feed: committed per week, backers, buys and volume, with own wallets k
   assert.equal(p.lastBuys.length, 4)
   assert.equal(p.lastBuys.filter((b) => b.own).length, 1)
   assert.equal(p.launchedOnNuntius, false)
+  // The builder's share is the rest, exact in base units, and the sentence names it.
+  assert.equal(p.committedPerWeek.builder, '8400')
+  assert.deepEqual(p.commitment, {
+    card: '2 backers commit 95 SKR a week to PROOF, plus 8400 SKR a week from the builder.',
+    line: '2 backers commit 95 SKR a week, plus 8400 SKR a week from the builder',
+  })
+})
+
+test('the commitment sentence says whose money it is: only the builder, mixed, outside only, none', () => {
+  const s = (all: number, thirdParty: number, outside: string, builder: string) =>
+    commitmentSentence({
+      symbol: 'NIMUS',
+      quoteSymbol: 'SKR',
+      committedPerWeek: { thirdParty: outside, builder },
+      backers: { all, thirdParty },
+    })
+  // nimus on 6 Oct: cj7 at 5 SKR a day and natX at 1 SKR a day, both the builder's own wallets.
+  assert.deepEqual(s(2, 0, '0', '42'), {
+    card: 'The builder backs NIMUS with 42 SKR a week. No outside backers yet.',
+    line: '42 SKR a week, all the builder’s own',
+  })
+  assert.deepEqual(s(5, 3, '60', '42'), {
+    card: '3 backers commit 60 SKR a week to NIMUS, plus 42 SKR a week from the builder.',
+    line: '3 backers commit 60 SKR a week, plus 42 SKR a week from the builder',
+  })
+  assert.deepEqual(s(1, 1, '7', '0'), {
+    card: '1 backer commits 7 SKR a week to NIMUS.',
+    line: '1 backer commits 7 SKR a week',
+  })
+  assert.deepEqual(s(0, 0, '0', '0'), { card: 'No backers yet.', line: 'No backers yet.' })
 })
 
 test('a revoked backer leaves the committed demand but keeps its buys', () => {

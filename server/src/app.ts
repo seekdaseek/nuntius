@@ -214,6 +214,13 @@ export function createApp(
   // mandatum: one-signature grant/revoke, guard, receipts, digest, widget.
   if (mandates) registerMandateRoutes(app, { ...mandates, store, limits, staticDir: options.staticDir })
 
+  // The bare domain: someone who trims a backing page's link lands on the project, not on a
+  // JSON error. Every other unknown path stays a 404.
+  app.get('/', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache')
+    res.redirect(302, 'https://github.com/seekdaseek/nuntius')
+  })
+
   app.use((_req, res) => {
     res.setHeader('Cache-Control', 'no-store')
     res.status(404).json({ ok: false, error: 'not_found' })

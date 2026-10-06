@@ -363,13 +363,32 @@ test('link previews: every og: and twitter: tag filled for the launch, the card 
     const meta = (k: string) => new RegExp(`<meta (?:property|name)="${k}" content="([^"]*)"`).exec(html)?.[1]
     assert.equal(meta('twitter:card'), 'summary_large_image')
     assert.equal(meta('og:title'), 'Back a launch on nuntius')
-    assert.match(meta('og:description')!, /nothing deposited, revoke any time/)
+    assert.equal(
+      meta('og:description'),
+      'No backers yet. Capped recurring buys on Meteora: nothing deposited, revoke any time.',
+    )
+    assert.equal(meta('twitter:description'), meta('og:description'))
     assert.match(meta('og:url')!, /\/l\/5qeAeoorEHpwecPkehAVedeYaWhMVpJaFMD52A8oAtHX$/)
-    assert.match(meta('og:image')!, /\/l\/assets\/og-card\.png$/)
+    // The card by content hash, like the script and stylesheet: a changed card is a new URL.
+    const hashed = /\/l\/assets\/og-card\.([0-9a-f]{12})\.png$/.exec(meta('og:image')!)
+    assert.ok(hashed, `og:image ${meta('og:image')}`)
+    assert.equal(meta('twitter:image'), meta('og:image'))
     assert.equal(meta('og:image:width'), '1200')
-    const card = await fetch(`${s.base}/l/assets/og-card.png`)
+    const bytes = readFileSync(path.join(import.meta.dirname, '..', 'static', 'l', 'og-card.png'))
+    assert.equal(hashed[1], createHash('sha256').update(bytes).digest('hex').slice(0, 12))
+    const card = await fetch(`${s.base}/l/assets/og-card.${hashed[1]}.png`)
     assert.equal(card.status, 200)
     assert.equal(card.headers.get('content-type'), 'image/png')
+    assert.equal(card.headers.get('cache-control'), 'public, max-age=31536000, immutable')
+    assert.ok(Buffer.from(await card.arrayBuffer()).equals(bytes))
+    // The plain name keeps answering the same bytes for links already shared.
+    const plain = await fetch(`${s.base}/l/assets/og-card.png`)
+    assert.equal(plain.status, 200)
+    assert.ok(Buffer.from(await plain.arrayBuffer()).equals(bytes))
+    const stale = await fetch(`${s.base}/l/assets/og-card.000000000000.png`)
+    assert.deepEqual([stale.status, stale.headers.get('cache-control')], [404, 'no-store'])
+    const mixed = await fetch(`${s.base}/l/assets/og-card.${hashed[1]}.js`)
+    assert.equal(mixed.status, 404, 'a hash names one file, with its own extension')
   } finally {
     s.close()
   }

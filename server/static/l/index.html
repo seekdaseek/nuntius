@@ -164,7 +164,7 @@
           <div class="box amount-box">
             <label class="k" for="amount">Amount each period</label>
             <div class="amount">
-              <input id="amount" inputmode="decimal" autocomplete="off" value="25" />
+              <input id="amount" inputmode="decimal" autocomplete="off" value="5" />
               <span class="chip" data-quote></span>
             </div>
             <p id="hint" class="hint"></p>
@@ -174,21 +174,20 @@
             <div class="box">
               <span class="k">Every</span>
               <div id="periods" class="seg">
-                <button data-v="day" aria-pressed="false">day</button
-                ><button data-v="week" aria-pressed="true">week</button>
+                <button data-v="day" aria-pressed="true">day</button
+                ><button data-v="week" aria-pressed="false">week</button>
               </div>
             </div>
             <div class="box">
               <span class="k">For</span>
               <div id="durations" class="seg">
-                <button data-v="7" aria-pressed="false">7 d</button
-                ><button data-v="30" aria-pressed="false">30 d</button
-                ><button data-v="90" aria-pressed="true">90 d</button>
+                <button data-v="7" aria-pressed="false">7 d</button><button data-v="30" aria-pressed="true">30 d</button
+                ><button data-v="90" aria-pressed="false">90 d</button>
               </div>
             </div>
           </div>
 
-          <p id="sentence" class="summary">25 a week for 90 days · nothing is deposited</p>
+          <p id="sentence" class="summary">5 a day for 30 days · nothing is deposited</p>
 
           <div id="step-wallet">
             <span class="k">Connect a wallet</span>

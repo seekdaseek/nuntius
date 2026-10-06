@@ -92,6 +92,37 @@ test('assetlinks.json: 404 until configured, then the android_app statement as a
   on.close()
 })
 
+test('the bare domain redirects to the repository; any other unknown path stays a JSON 404', async () => {
+  const on = await serve({ androidCertSha256: FP }, true)
+  try {
+    for (const method of ['GET', 'HEAD']) {
+      const r = await fetch(`${on.base}/`, { method, redirect: 'manual' })
+      assert.deepEqual(
+        [r.status, r.headers.get('location'), r.headers.get('cache-control')],
+        [302, 'https://github.com/seekdaseek/nuntius', 'no-cache'],
+        method,
+      )
+    }
+    const other = await fetch(`${on.base}/nope`, { redirect: 'manual' })
+    assert.deepEqual(
+      [other.status, other.headers.get('cache-control'), await other.json()],
+      [404, 'no-store', { ok: false, error: 'not_found' }],
+    )
+    const post = await fetch(`${on.base}/`, { method: 'POST', redirect: 'manual' })
+    assert.equal(post.status, 404, 'only GET and HEAD move')
+    // The App Links statement is untouched.
+    const links = await fetch(`${on.base}/.well-known/assetlinks.json`, { redirect: 'manual' })
+    assert.equal(links.status, 200)
+    assert.equal(
+      ((await links.json()) as { target: { sha256_cert_fingerprints: string[] } }[])[0]!.target
+        .sha256_cert_fingerprints[0],
+      FP,
+    )
+  } finally {
+    on.close()
+  }
+})
+
 test('rate limits: /api/rpc, /api/siws-payload and /api/siws-verify answer 429 with JSON past the limit', async () => {
   const s = await serve({})
   for (const [method, p] of [

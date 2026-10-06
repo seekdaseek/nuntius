@@ -51,7 +51,7 @@ import type { Rpc } from './tx.js'
 import { limitByIp, type RateLimiter } from './rate-limit.js'
 import { safeError } from './log.js'
 import { CLIENT_HEADER, clientAtLeast } from './client-version.js'
-import { FeedBus, feedFromDb, parseOwnWallets, registerFeedRoutes } from './launch-feed.js'
+import { commitmentSentence, FeedBus, feedFromDb, parseOwnWallets, registerFeedRoutes } from './launch-feed.js'
 import { readMetadataUri, TokenImages } from './token-image.js'
 import { readTokenTrust, type TokenTrust } from './token-trust.js'
 import { priceInQuote, UsdPrices } from './launch-market.js'
@@ -380,6 +380,17 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
   })
 
   /** Committed recurring demand: every active backing's cap, per week. */
+  // Whose money backs a pool, in the one sentence the page and its link card both use
+  // (commitmentSentence); a pool the feed does not list has no backers.
+  const own = d.feed?.own ?? parseOwnWallets(undefined)
+  const commitmentOf = (pool: string) =>
+    feedFromDb(d.mandates.database, own).find((x) => x.pool === pool)?.commitment ??
+    commitmentSentence({
+      symbol: '',
+      quoteSymbol: '',
+      committedPerWeek: { thirdParty: '0', builder: '0' },
+      backers: { all: 0, thirdParty: 0 },
+    })
   const demand = (pool: string) => {
     const rows = d.mandates.backingsOfPool(pool)
     let perWeek = 0n
@@ -410,6 +421,7 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
     threshold: L.threshold,
     refusal: L.refusal,
     committed: demand(L.pool),
+    commitment: commitmentOf(L.pool),
   })
 
   app.get('/api/launch/:pool', limitByIp(d.publicLimiter), (req, res) => {
@@ -454,7 +466,6 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
   })
 
   // The committed-demand feed for terminals: public and read-only (launch-feed.ts).
-  const own = d.feed?.own ?? parseOwnWallets(undefined)
   registerFeedRoutes(app, {
     db: d.mandates.database,
     own,
@@ -508,7 +519,7 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
   // has is a 404. Other assets carry a cache header only when the file was sent, and every
   // failure is a 404 nobody caches (app.ts).
   const built = new Map<string, { mtimeMs: number; size: number; bytes: Buffer; hash: string }>()
-  const builtAsset = (file: 'backing.js' | 'backing.css') => {
+  const builtAsset = (file: 'backing.js' | 'backing.css' | 'og-card.png') => {
     const st = statSync(path.join(pageDir, file))
     const c = built.get(file)
     if (c && c.mtimeMs === st.mtimeMs && c.size === st.size) return c
@@ -525,18 +536,23 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
   const assetNotFound = (res: express.Response) => res.status(404).json({ ok: false, error: 'not_found' })
   app.get('/l/assets/:file', (req, res) => {
     const file = String(req.params.file)
-    const hashed = /^backing\.([0-9a-f]{12})\.(js|css)$/.exec(file)
+    // The link card too: X keeps a card for days, so a changed card must be a new URL. The plain
+    // og-card.png stays for links already shared.
+    const hashed = /^(backing\.([0-9a-f]{12})\.(js|css)|og-card\.([0-9a-f]{12})\.png)$/.exec(file)
     if (hashed) {
+      const name = hashed[2] ? (`backing.${hashed[3]}` as 'backing.js' | 'backing.css') : 'og-card.png'
       let a: ReturnType<typeof builtAsset> | null = null
       try {
-        a = builtAsset(`backing.${hashed[2] as 'js' | 'css'}`)
+        a = builtAsset(name)
       } catch {
         a = null
       }
-      if (!a || a.hash !== hashed[1]) return void assetNotFound(res)
+      if (!a || a.hash !== (hashed[2] ?? hashed[4])) return void assetNotFound(res)
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
       res.setHeader('X-Content-Type-Options', 'nosniff')
-      return void res.type(hashed[2] === 'js' ? 'application/javascript' : 'text/css').send(a.bytes)
+      const ext = (hashed[3] ?? 'png') as 'js' | 'css' | 'png'
+      const type = { js: 'application/javascript', css: 'text/css', png: 'image/png' }[ext]
+      return void res.type(type).send(a.bytes)
     }
     if (!PAGE_ASSETS.has(file)) return void assetNotFound(res)
     res.sendFile(path.join(pageDir, file), { maxAge: 300_000 }, (err) => {
@@ -601,10 +617,8 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
     const f = feedFromDb(d.mandates.database, own).find((x) => x.pool === pool)
     const sym = f?.symbol || d.mandates.launchByPool(pool)?.symbol || 'a launch'
     const ogTitle = `Back ${sym} on nuntius`
-    const ogDesc =
-      f && f.backers.all > 0
-        ? `${f.backers.all} ${f.backers.all === 1 ? 'backer commits' : 'backers commit'} ${f.committedPerWeek.all} ${f.quoteSymbol} a week to ${sym}. Capped recurring buys on Meteora: nothing deposited, revoke any time.`
-        : `Back ${sym} with a capped recurring buy on Meteora: nothing deposited, revoke any time.`
+    // Whose money it is, as the page says it (commitmentSentence); the second sentence is fixed.
+    const ogDesc = `${(f?.commitment ?? commitmentOf(pool)).card} Capped recurring buys on Meteora: nothing deposited, revoke any time.`
     const esc = (t: string) =>
       t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
     res.type('html').send(
@@ -613,7 +627,7 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
         .replaceAll('__OG_TITLE__', esc(ogTitle))
         .replaceAll('__OG_DESC__', esc(ogDesc))
         .replaceAll('__OG_URL__', esc(`${d.origin}/l/${pool}`))
-        .replaceAll('__OG_IMAGE__', esc(`${d.origin}/l/assets/og-card.png`)),
+        .replaceAll('__OG_IMAGE__', esc(`${d.origin}/l/assets/og-card.${builtAsset('og-card.png').hash}.png`)),
     )
   })
 
