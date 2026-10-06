@@ -105,6 +105,8 @@ interface Launch {
   baseMint: string
   quoteMint: string
   symbol: string | null
+  /** The token's image from its metadata: a path on this origin or an https URL. */
+  image?: string | null
   progressPct: number
   refusal?: string | null
   committed: { backers: number; perWeek: string; symbol: string | null }
@@ -130,6 +132,12 @@ async function loadLaunch() {
   }
   const q = quote()
   $('symbol').textContent = launch.symbol ?? short(launch.baseMint)
+  showLogo(launch.image ?? null)
+  // 25 a period to start with, or this token's ceiling when that is lower.
+  if (!amountTouched && q && Number(form.amount) > Number(q.maxPerPeriodUi)) {
+    form.amount = q.maxPerPeriodUi
+    $<HTMLInputElement>('amount').value = form.amount
+  }
   $('quote').textContent = q?.symbol ?? '?'
   for (const el of document.querySelectorAll<HTMLElement>('[data-quote]')) el.textContent = q?.symbol ?? ''
   const pct = Math.max(0, Math.min(100, launch.progressPct))
@@ -178,6 +186,17 @@ async function loadLaunch() {
   }
 }
 
+/** The token's own image beside its name; shown once it has loaded, never a broken icon. */
+function showLogo(src: string | null) {
+  const img = $<HTMLImageElement>('logo')
+  if (!src || !(src.startsWith('/') || src.startsWith('https://'))) return void (img.hidden = true)
+  if (img.getAttribute('src') === src) return
+  img.onload = () => (img.hidden = false)
+  img.onerror = () => (img.hidden = true)
+  img.referrerPolicy = 'no-referrer'
+  img.src = src
+}
+
 // ---------------------------------------------------------------------------------------
 // The form.
 
@@ -185,11 +204,12 @@ const PERIODS: Record<string, { s: number; words: string }> = {
   day: { s: 86_400, words: 'every day' },
   week: { s: 604_800, words: 'every week' },
 }
-const form = { amount: '', period: 'week', untilDays: 90 }
+const form = { amount: '25', period: 'week', untilDays: 90 }
+let amountTouched = false
 function sentence() {
   const sym = launch?.symbol ?? 'this launch'
-  $('sentence').textContent =
-    `Back ${sym}: ${form.amount || '…'} ${quote()?.symbol ?? ''} ${PERIODS[form.period]!.words}, for ${form.untilDays} days.`
+  const amount = [form.amount || '…', quote()?.symbol].filter(Boolean).join(' ')
+  $('sentence').textContent = `Back ${sym}: ${amount} ${PERIODS[form.period]!.words}, for ${form.untilDays} days.`
   const q = quote()
   const ok =
     !!q &&
@@ -501,13 +521,16 @@ function status(text: string, bad = false, link?: string) {
 
 $<HTMLAnchorElement>('apk').href = config.apk
 $('pool').textContent = short(pool)
+$<HTMLInputElement>('amount').value = form.amount
 $<HTMLInputElement>('amount').addEventListener('input', (e) => {
+  amountTouched = true
   form.amount = (e.target as HTMLInputElement).value.replace(',', '.').replace(/[^0-9.]/g, '')
   ;(e.target as HTMLInputElement).value = form.amount
   sentence()
 })
 bindSegments('periods', 'period')
 bindSegments('durations', 'untilDays')
+sentence()
 $('approve').addEventListener('click', () => void back())
 getWallets().on('register', showWallets)
 showWallets()

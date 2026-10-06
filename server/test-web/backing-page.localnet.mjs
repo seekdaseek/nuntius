@@ -91,7 +91,7 @@ async function setup() {
       config: configKp.publicKey.toBase58(),
       name: 'web test',
       symbol: 'WEBT',
-      uri: 'https://nuntius.ochinimus.app/t/proof.json',
+      uri: `https://nuntius.test/m/${baseKp.publicKey.toBase58()}.json`,
       baseMint: baseKp.publicKey.toBase58(),
     }),
     [baseKp],
@@ -102,6 +102,21 @@ async function setup() {
   const executor = await createKeyPairSignerFromBytes(executorKp.secretKey)
   const db = openDb(':memory:')
   const mandates = new MandateStore(new Database(':memory:'))
+  // The launch as nuntius records it: its metadata JSON (the URI above) names the nimus logo.
+  mandates.addLaunch(
+    {
+      baseMint: baseKp.publicKey.toBase58(),
+      pool,
+      config: configKp.publicKey.toBase58(),
+      creator: creatorKp.publicKey.toBase58(),
+      name: 'web test',
+      symbol: 'WEBT',
+      image: 'https://nuntius.test/t/nimus.png',
+      quoteMint: quoteMint.toBase58(),
+      description: null,
+    },
+    Date.now(),
+  )
   const log = createLogger(() => {})
   const receipts = new Receipts(mandates, null, log, 'localnet')
   const ex = new Executor({ store: mandates, chain: rpcChain(rpc, executor, PULL_BUDGET, conn), receipts, log })
@@ -232,6 +247,12 @@ test(
         document.getElementById('route')?.textContent?.startsWith('On its bonding curve'),
       )
       assert.equal(await page.textContent('#committed'), 'No backers yet. Be the first.')
+      // The sentence is whole on first load, and the token's own image sits beside its name.
+      assert.equal(await page.inputValue('#amount'), '25')
+      assert.equal(await page.textContent('#sentence'), 'Back WEBT: 25 TQ every week, for 90 days.')
+      await page.waitForSelector('#logo:not([hidden])')
+      const logo = await page.$eval('#logo', (i) => ({ src: i.getAttribute('src'), w: i.naturalWidth }))
+      assert.deepEqual(logo, { src: '/t/nimus.png', w: 512 })
       await shot(page, '01-backing-page')
       await page.fill('#amount', '5')
       await page.click('#durations button[data-v="30"]')

@@ -47,6 +47,7 @@ import { limitByIp, type RateLimiter } from './rate-limit.js'
 import { safeError } from './log.js'
 import { CLIENT_HEADER, clientAtLeast } from './client-version.js'
 import { FeedBus, parseOwnWallets, registerFeedRoutes } from './launch-feed.js'
+import { readMetadataUri, TokenImages } from './token-image.js'
 
 const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
 /** The web backing page's files (static/l), served by name only. */
@@ -108,6 +109,8 @@ export interface LaunchDeps {
   page?: { cluster: string; mints: { symbol: string; mint: string; decimals: number; maxPerPeriodUi: string }[] }
   /** Where static/l lives (tests point it at the repository's own). */
   staticDir?: string
+  /** Token images for the backing page's header (token-image.ts); built from conn and origin when absent. */
+  images?: TokenImages
 }
 
 /** The launch token's decimals and symbol, from its mint and Metaplex metadata accounts. */
@@ -137,6 +140,15 @@ export async function backerAccountInstruction(
 }
 
 export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void {
+  const staticDir = d.staticDir ?? path.join(import.meta.dirname, '..', 'static')
+  const images =
+    d.images ??
+    new TokenImages({
+      origin: d.origin,
+      launchImage: (mint) => d.mandates.launchByMint(mint)?.image ?? null,
+      tokensDir: path.join(staticDir, 'tokens'),
+      readUri: (mint) => readMetadataUri(d.conn, mint),
+    })
   // An app older than 1.1.0 (no x-nuntius-client header, as v1.0.2 sends) falls through to
   // the 404 it gets when launches are off: the same answer, byte for byte.
   const route = (path: string, handler: (body: Record<string, unknown>) => Promise<object>) => {
@@ -364,13 +376,18 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
       symbol: rows[0]?.symbol ?? null,
     }
   }
-  const launchView = (L: Awaited<ReturnType<typeof readLaunch>>, symbol: string | null) => ({
+  const launchView = (
+    L: Awaited<ReturnType<typeof readLaunch>>,
+    symbol: string | null,
+    image: string | null = null,
+  ) => ({
     pool: L.pool,
     route: L.route,
     dammPool: L.dammPool,
     baseMint: L.baseMint,
     quoteMint: L.quoteMint,
     symbol,
+    image,
     progressPct: L.progressBps / 100,
     quoteRaised: L.quoteRaised,
     threshold: L.threshold,
@@ -383,11 +400,14 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
     if (!ADDRESS_RE.test(pool)) return void res.status(400).json({ ok: false, error: 'bad_pool' })
     readLaunch(d.conn, pool)
       .then(async (L) => {
-        const symbol =
+        const [symbol, image] = await Promise.all([
           d.mandates.launchByPool(pool)?.symbol ??
-          (await tokenInfo(d.conn, L.baseMint).catch(() => null))?.symbol ??
-          null
-        res.json({ ok: true, launch: launchView(L, symbol) })
+            tokenInfo(d.conn, L.baseMint)
+              .then((t) => t.symbol)
+              .catch(() => null),
+          images.imageOf(L.baseMint),
+        ])
+        res.json({ ok: true, launch: launchView(L, symbol, image) })
       })
       .catch((e: unknown) =>
         e instanceof UnsupportedLaunch
@@ -417,7 +437,7 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
 
   // The web backing page: /l/<pool>, for any Wallet Standard wallet. The page is static; the
   // server writes in its own executor and tokens, which the page's transaction check uses.
-  const pageDir = path.join(d.staticDir ?? path.join(import.meta.dirname, '..', 'static'), 'l')
+  const pageDir = path.join(staticDir, 'l')
   let template: string | null = null
   const PAGE_CSP = [
     "default-src 'none'",
