@@ -367,11 +367,13 @@ async function signIn(): Promise<string> {
     signIn?: (...i: object[]) => Promise<{ account: WalletAccount; signedMessage: Uint8Array; signature: Uint8Array }[]>
     signMessage?: (...i: object[]) => Promise<{ signedMessage: Uint8Array; signature: Uint8Array }[]>
   }>
-  // MWA answers solana:signIn from the authorization it cached at connect, which carries no
-  // sign-in result (6 Oct, Seed Vault from Chrome: "no sign in result returned by wallet"), so
-  // with MWA the same sign-in text is signed as a message; the server verifies it either way.
-  const mwa = wallet!.name === SolanaMobileWalletAdapterWalletName
-  if (!mwa && f['solana:signIn']?.signIn) {
+  if (f['solana:signIn']?.signIn) {
+    // MWA answers solana:signIn from the authorization it cached at connect, which has no
+    // sign-in result (6 Oct, Seed Vault from Chrome). Forgetting that authorization first
+    // (local, no trip to the wallet) makes it authorize afresh with the sign-in payload: the
+    // way the app signs in with Seed Vault. Signing the text as a message did not verify.
+    if (wallet!.name === SolanaMobileWalletAdapterWalletName)
+      await (wallet!.features as Feature<{ disconnect?: () => Promise<void> }>)['standard:disconnect']?.disconnect?.()
     const [out] = await f['solana:signIn'].signIn({ ...payload, address: account!.address })
     signedMessage = out!.signedMessage
     signature = out!.signature
@@ -380,8 +382,8 @@ async function signIn(): Promise<string> {
     // The same text the wallet's own sign-in would show; the server verifies it either way.
     const message = new TextEncoder().encode(createSignInMessageText({ ...payload, address: account!.address }))
     const [out] = await f['solana:signMessage'].signMessage({ account: account!, message })
-    // MWA returns the signed payload, the message with the signature appended, as signedMessage
-    // (6 Oct, Seed Vault: signature_invalid). The message is what the server must verify.
+    // A wallet may return the signed payload, the message with its signature appended, as
+    // signedMessage; the message is what the server must verify.
     const sm = out!.signedMessage
     const appended =
       sm.length === message.length + 64 &&
