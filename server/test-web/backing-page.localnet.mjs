@@ -247,6 +247,8 @@ test(
         document.getElementById('route')?.textContent?.startsWith('On its bonding curve'),
       )
       assert.equal(await page.textContent('#committed'), 'No backers yet. Be the first.')
+      // Raised against the threshold, not a percentage that reads as nothing at the start.
+      assert.equal(await page.textContent('#route'), 'On its bonding curve: 0 of 1,000 TQ raised')
       // The sentence is whole on first load, and the token's own image sits beside its name.
       assert.equal(await page.inputValue('#amount'), '25')
       assert.equal(await page.textContent('#sentence'), 'Back WEBT: 25 TQ every week, for 90 days.')

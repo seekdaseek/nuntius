@@ -108,6 +108,9 @@ interface Launch {
   /** The token's image from its metadata: a path on this origin or an https URL. */
   image?: string | null
   progressPct: number
+  /** Quote raised on the curve and the threshold that completes it, in base units. */
+  quoteRaised?: string
+  threshold?: string
   refusal?: string | null
   committed: { backers: number; perWeek: string; symbol: string | null }
 }
@@ -139,12 +142,12 @@ async function loadLaunch() {
     $<HTMLInputElement>('amount').value = form.amount
   }
   $('quote').textContent = q?.symbol ?? '?'
-  for (const el of document.querySelectorAll<HTMLElement>('[data-quote]')) el.textContent = q?.symbol ?? ''
+  document.querySelectorAll<HTMLElement>('[data-quote]').forEach((el) => (el.textContent = q?.symbol ?? ''))
   const pct = Math.max(0, Math.min(100, launch.progressPct))
   $('bar').style.width = `${pct}%`
   $('route').textContent =
     launch.route === 'dbc'
-      ? `On its bonding curve, ${Math.floor(pct)}% filled`
+      ? curveWords(launch, q)
       : launch.route === 'migrating'
         ? 'Curve filled: moving to its regular pool'
         : 'Trading in its regular pool (Meteora DAMM v2)'
@@ -186,6 +189,15 @@ async function loadLaunch() {
   }
 }
 
+/** "On its bonding curve: 24.75 of 50,000 SKR raised": a percentage reads as nothing at the start. */
+function curveWords(l: Launch, q: PageConfig['mints'][number] | null): string {
+  if (!q || l.quoteRaised === undefined || l.threshold === undefined)
+    return `On its bonding curve, ${Math.floor(l.progressPct)}% filled`
+  const ui = (base: string) =>
+    (Number(BigInt(base)) / 10 ** q.decimals).toLocaleString('en-US', { maximumFractionDigits: 2 })
+  return `On its bonding curve: ${ui(l.quoteRaised)} of ${ui(l.threshold)} ${q.symbol} raised`
+}
+
 /** The token's own image beside its name; shown once it has loaded, never a broken icon. */
 function showLogo(src: string | null) {
   const img = $<HTMLImageElement>('logo')
@@ -223,13 +235,18 @@ function sentence() {
   $<HTMLButtonElement>('approve').disabled = !ok || busy
 }
 function bindSegments(id: string, key: 'period' | 'untilDays') {
-  for (const b of $(id).querySelectorAll<HTMLButtonElement>('button')) {
-    b.addEventListener('click', () => {
-      ;(form as Record<string, unknown>)[key] = key === 'untilDays' ? Number(b.dataset.v) : b.dataset.v
-      for (const x of $(id).querySelectorAll('button')) x.setAttribute('aria-pressed', String(x === b))
-      sentence()
+  // NodeList.forEach, not for...of: the repository's TypeScript lib has no DOM iterators.
+  $(id)
+    .querySelectorAll<HTMLButtonElement>('button')
+    .forEach((b) => {
+      b.addEventListener('click', () => {
+        ;(form as Record<string, unknown>)[key] = key === 'untilDays' ? Number(b.dataset.v) : b.dataset.v
+        $(id)
+          .querySelectorAll('button')
+          .forEach((x) => x.setAttribute('aria-pressed', String(x === b)))
+        sentence()
+      })
     })
-  }
 }
 
 // ---------------------------------------------------------------------------------------

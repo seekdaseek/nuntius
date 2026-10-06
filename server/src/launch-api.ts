@@ -474,7 +474,8 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
       executor: d.delegatee,
       cluster: d.page?.cluster ?? 'mainnet',
       mints: d.page?.mints ?? [],
-      apk: 'https://github.com/seekdaseek/nuntius/releases',
+      // v1.0.2, the Latest release, cannot back a launch: send Seeker owners to 1.1.0.
+      apk: 'https://github.com/seekdaseek/nuntius/releases/tag/v1.1.0',
     }).replace(/</g, '\\u003c')
     res.setHeader('Content-Security-Policy', PAGE_CSP)
     res.setHeader('X-Content-Type-Options', 'nosniff')
