@@ -247,6 +247,27 @@ test('every send is simulated first; a transaction the program would refuse is n
   assert.deepEqual(await ex.tick(), { [m.id]: 'period_done' }, 'not retried in the period')
 })
 
+test('a simulation the RPC refuses for itself (BlockhashNotFound) is transport: backed off, replaced, the period kept', async () => {
+  const { chain, store, pushes, clock, m, mk } = setup()
+  const ex = mk()
+  chain.simRefusals.push({ err: '"BlockhashNotFound"', customCode: null })
+  const first = await ex.tick()
+  assert.notEqual(first[m.id], 'refused', 'not recorded as the chain saying no')
+  assert.equal(chain.sends.length, 0, 'nothing was sent')
+  const row = store.pullsFor(PDA)[0]!
+  assert.equal(row.state, 'signed', 'the period stays claimed and in flight')
+  assert.ok(ex.backoffOf(m.id), 'the mandate backs off as for any transport error')
+  assert.equal(pushes.length, 0, 'no refusal receipt')
+  // Once that blockhash is dead, the replacement is built and lands in the same period.
+  chain.height += 151n
+  clock.advance(1)
+  assert.deepEqual(await mk().tick(), { [m.id]: 'landed' })
+  const rows = store.pullsFor(PDA)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0]!.state, 'landed')
+  assert.equal(chain.sent.length, 1, 'exactly one transfer')
+})
+
 test('receipt for a grant made outside nuntius tells the user to check it', () => {
   const msg = receiptMessage(
     {

@@ -834,6 +834,11 @@ export class Executor {
       await this.o.chain.send(wire)
       return null
     }
+    // Only a program's answer (an InstructionError) is the chain saying no. Anything else, such
+    // as BlockhashNotFound from an RPC node behind the one that gave the blockhash, is
+    // transport: throw, so the mandate backs off and the unsent row is replaced once its
+    // blockhash is dead (6 Oct: natX's first buy was recorded refused and its period lost).
+    if (failedInstruction(sim.err) === null) throw new Error(`simulation: ${sim.err}`)
     const back = this.o.store.backingOf(m.id)
     this.o.log.warn('executor_simulation_refused', { mandate: m.id, sig: row.signature, err: sim.err })
     if (back && failedInstruction(sim.err) === SWAP_INDEX) return this.skipBuy(m, back, row, sim.customCode)
