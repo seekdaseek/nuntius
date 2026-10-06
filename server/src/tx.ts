@@ -139,7 +139,15 @@ export interface Landed {
  */
 export async function simulateWire(rpc: Rpc, wire: string): Promise<{ err: string | null; customCode: number | null }> {
   const { value } = await rpc
-    .simulateTransaction(wire as never, { encoding: 'base64', sigVerify: false, commitment: 'confirmed' })
+    // replaceRecentBlockhash: this check is for the program's answer, not the blockhash, so a
+    // node behind the one that issued it cannot fail it (6 Oct: BlockhashNotFound; a3fdaf3
+    // stays as the backstop). sigVerify is off, which replacing the blockhash requires.
+    .simulateTransaction(wire as never, {
+      encoding: 'base64',
+      sigVerify: false,
+      replaceRecentBlockhash: true,
+      commitment: 'confirmed',
+    })
     .send()
   const err = value.err ? JSON.stringify(value.err, (_k, v: unknown) => (typeof v === 'bigint' ? Number(v) : v)) : null
   return { err, customCode: customCodeOf(value.err) }

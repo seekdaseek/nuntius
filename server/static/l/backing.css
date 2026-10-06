@@ -369,3 +369,29 @@ label {
   text-decoration: underline;
   cursor: pointer;
 }
+.openin {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.openin a {
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+.needquote {
+  margin: 12px 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--refused50);
+  color: var(--ink);
+}
+.needquote a {
+  color: var(--signal);
+  font-weight: 600;
+}

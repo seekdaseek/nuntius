@@ -30,6 +30,8 @@ interface PageConfig {
   cluster: 'mainnet' | 'localnet'
   mints: { symbol: string; mint: string; decimals: number; maxPerPeriodUi: string }[]
   apk: string
+  /** What a first back grant costs its signer in rent and base fee, lamports; null: unknown. */
+  setupLamports?: string | null
 }
 const config = JSON.parse(document.getElementById('config')!.textContent!) as PageConfig
 const CLIENT = '1.1.0'
@@ -281,6 +283,23 @@ function sentence() {
       ? `At most ${q.maxPerPeriodUi} ${q.symbol} each period for now.`
       : ''
   $<HTMLButtonElement>('approve').disabled = !ok || busy
+  // No SKR, no backing: say so before anyone signs, with where to get it.
+  const need = q && ok && quoteBalance !== null && quoteBalance < baseUnits(form.amount, q.decimals)!
+  const note = $('needquote')
+  note.hidden = !need
+  if (need && q) {
+    const a = document.createElement('a')
+    a.href = `https://jup.ag/swap?sell=So11111111111111111111111111111111111111112&buy=${q.mint}`
+    a.target = '_blank'
+    a.rel = 'noopener'
+    a.textContent = `Get ${q.symbol} on Jupiter`
+    note.replaceChildren(`You need ${q.symbol} to back ${launch?.symbol ?? 'this launch'}. `, a)
+  }
+  const setup = config.setupLamports ? Number(config.setupLamports) / 1e9 : null
+  $('setup').hidden = setup === null
+  if (setup !== null)
+    $('setup').textContent =
+      `The first approval also pays up to about ${setup.toFixed(4)} SOL for setup: rent for the permission's accounts and your ${launch?.symbol ?? 'token'} account, plus your wallet's network fee.`
 }
 function bindSegments(id: string, key: 'period' | 'untilDays') {
   // NodeList.forEach, not for...of: the repository's TypeScript lib has no DOM iterators.
@@ -331,6 +350,39 @@ function showWallets() {
     }),
   )
   $('nowallet').hidden = found.length > 0
+  // Phones inject no wallet into their browser (and iOS has no Mobile Wallet Adapter): open
+  // this same page inside a wallet's own browser instead. Shown only when none registered.
+  if (found.length === 0) {
+    const url = encodeURIComponent(location.href)
+    const ref = encodeURIComponent('https://nuntius.ochinimus.app')
+    $('openin').replaceChildren(
+      ...[
+        ['Open in Phantom', `https://phantom.com/ul/browse/${url}?ref=${ref}`],
+        ['Open in Solflare', `https://solflare.com/ul/v1/browse/${url}?ref=${ref}`],
+        ['Open in Backpack', `https://backpack.app/ul/v1/browse/${url}?ref=${ref}`],
+      ].map(([words, href]) => {
+        const a = document.createElement('a')
+        a.href = href!
+        a.rel = 'noopener'
+        a.textContent = words!
+        return a
+      }),
+    )
+  }
+}
+
+/** The connected wallet's balance of the launch's quote token, base units; null until read. */
+let quoteBalance: bigint | null = null
+async function refreshBalance() {
+  const q = quote()
+  if (!account || !q) return
+  try {
+    const r = await api<{ amount: string }>(`/api/balance/${account.address}/${q.mint}`)
+    quoteBalance = BigInt(r.amount)
+  } catch {
+    quoteBalance = null
+  }
+  sentence()
 }
 
 type Feature<T> = Record<string, T>
@@ -349,6 +401,7 @@ async function connect(w: Wallet) {
     if (store.get('nuntius-session-wallet') !== account.address) session = null
     approveLabel()
     status('')
+    void refreshBalance()
     await refreshMine()
   } catch (e) {
     status(errorWords(e), true)
@@ -666,6 +719,8 @@ $('switch').addEventListener('click', () => {
   $('step-wallet').hidden = false
   $('mine').hidden = true
   pending = null
+  quoteBalance = null
+  sentence()
   status('')
   const disconnect = (w?.features as Feature<{ disconnect: () => Promise<void> }> | undefined)?.['standard:disconnect']
   void disconnect?.disconnect().catch(() => {})

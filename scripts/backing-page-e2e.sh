@@ -33,5 +33,5 @@ done
 (cd "$REPO/server" && npm run build >/dev/null)
 cd "$REPO/server"
 LOCALNET_RPC="$RPC" LOCALNET_METEORA=1 node --test --test-concurrency=1 --test-reporter=spec test-web/backing-page.localnet.mjs 2>&1 |
-  grep -v -E 'punycode|bigint: Failed to load|trace-deprecation'
+  grep --line-buffered -v -E 'punycode|bigint: Failed to load|trace-deprecation'
 exit "${PIPESTATUS[0]}"

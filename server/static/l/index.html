@@ -88,16 +88,19 @@
         <div id="step-wallet">
           <h3>Connect a wallet</h3>
           <div id="wallets" class="wallets"></div>
-          <p id="nowallet" class="small" hidden>
-            No Solana wallet found in this browser. Install Phantom, Solflare or Backpack, or use the app.
-          </p>
+          <div id="nowallet" hidden>
+            <p class="small">No Solana wallet found in this browser. Open this page in a wallet's own browser:</p>
+            <div id="openin" class="openin"></div>
+          </div>
         </div>
         <div id="step-back" hidden>
           <p class="small">
             Connected: <strong id="connected"></strong>
             <button id="switch" class="linkish" type="button">Use another wallet</button>
           </p>
+          <p id="needquote" class="needquote" hidden></p>
           <button id="approve" class="primary" disabled>Sign in and approve</button>
+          <p id="setup" class="small" hidden></p>
         </div>
         <p id="status" class="status" role="status" aria-live="polite"></p>
       </section>

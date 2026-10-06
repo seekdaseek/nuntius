@@ -37,6 +37,8 @@ async function serve(
   // Just enough chain for the list: no delegations, and no token account for the one mint.
   // `owners` gives some addresses an account owned by that program (a pool, for the payee check).
   const rpc = {
+    // Mainnet's rent: (bytes + 128) x 5,080 lamports.
+    getMinimumBalanceForRentExemption: (n: bigint) => ({ send: async () => (n + 128n) * 5_080n }),
     getAccountInfo: (address: string) => ({
       send: async () => ({
         value: owners[address]
@@ -319,5 +321,36 @@ test('a deploy in progress: a stylesheet missing on disk is a 404 nobody caches,
   } finally {
     s.close()
     rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("the page knows a first grant's setup cost, and a wallet's balance of a quote token this server pulls", async () => {
+  const OWNER = 'ASCQRp616JVQKMpynYfcPVdKPext719WUf7CuFcnnatX'
+  const ata = await userAtaOf(OWNER as Address, USDC as Address)
+  const s = await serve(
+    true,
+    {},
+    { [ata]: { owner: OWNER, mint: USDC, tokenAmount: { amount: '2500000', decimals: 6 } } },
+  )
+  try {
+    const html = await (await fetch(`${s.base}/l/5qeAeoorEHpwecPkehAVedeYaWhMVpJaFMD52A8oAtHX`)).text()
+    const config = JSON.parse(
+      /<script type="application\/json" id="config">\s*([\s\S]*?)\s*<\/script>/.exec(html)![1]!,
+    ) as { setupLamports: string | null }
+    // Rent for a 211-byte delegation, a 106-byte authority and a 165-byte token account, plus
+    // the 5,000-lamport base fee: natX paid this plus Seed Vault's own 86,000 priority fee.
+    assert.equal(config.setupLamports, String(4_490_280 - 86_000))
+    const ok = (await (await fetch(`${s.base}/api/balance/${OWNER}/${USDC}`)).json()) as { amount: string }
+    assert.equal(ok.amount, '2500000')
+    const none = (await (
+      await fetch(`${s.base}/api/balance/Ana1111111111111111111111111111111111111111/${USDC}`)
+    ).json()) as {
+      amount: string
+    }
+    assert.equal(none.amount, '0', 'no account, no balance')
+    const other = await fetch(`${s.base}/api/balance/${OWNER}/So11111111111111111111111111111111111111112`)
+    assert.deepEqual([other.status, other.headers.get('cache-control')], [400, 'no-store'], 'only the mints it pulls')
+  } finally {
+    s.close()
   }
 })

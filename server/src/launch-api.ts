@@ -50,6 +50,11 @@ import { CLIENT_HEADER, clientAtLeast } from './client-version.js'
 import { FeedBus, parseOwnWallets, registerFeedRoutes } from './launch-feed.js'
 import { readMetadataUri, TokenImages } from './token-image.js'
 import { readTokenTrust, type TokenTrust } from './token-trust.js'
+import { getRecurringDelegationCodec, getSubscriptionAuthorityCodec } from '@solana/subscriptions'
+import { getTokenSize } from '@solana-program/token'
+
+/** The base fee per signature; a back grant has one, the backer's. */
+const LAMPORTS_PER_SIGNATURE = 5_000n
 
 const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
 /** The web backing page's files (static/l), served by name only. */
@@ -512,7 +517,40 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
       if (err && !res.headersSent) assetNotFound(res)
     })
   })
-  app.get('/l/:pool', (req, res) => {
+  // What a first back grant costs its signer: rent for the delegation, the subscription authority
+  // and the backer's launch-token account (sizes from the programs' own layouts, rent read
+  // from the chain), and the base fee. The wallet may add a priority fee on top. Read once; a
+  // failed read leaves the page without the line rather than with a guess.
+  let setupLamports: Promise<string | null> | null = null
+  const setupCost = () =>
+    (setupLamports ??= Promise.resolve()
+      .then(() =>
+        Promise.all(
+          [getRecurringDelegationCodec().fixedSize, getSubscriptionAuthorityCodec().fixedSize, getTokenSize()].map(
+            (n) => d.rpc.getMinimumBalanceForRentExemption(BigInt(n)).send(),
+          ),
+        ),
+      )
+      .then((rents) => (rents.reduce((a, b) => a + BigInt(b), 0n) + LAMPORTS_PER_SIGNATURE).toString())
+      .catch(() => {
+        setupLamports = null
+        return null
+      }))
+
+  // A wallet's balance of one of this server's quote tokens, so the page can say "you need
+  // SKR" before anyone signs. Public and read-only, like the chain it reads; mints are limited
+  // to the ones this server pulls.
+  app.get('/api/balance/:owner/:mint', limitByIp(d.publicLimiter), (req, res) => {
+    const owner = String(req.params.owner)
+    const mint = d.page?.mints.find((m) => m.mint === String(req.params.mint))
+    if (!ADDRESS_RE.test(owner) || !mint) return void res.status(400).json({ ok: false, error: 'bad_request' })
+    ataOf(owner, mint.mint)
+      .then((ata) => readAta(d.rpc, ata as Address))
+      .then((a) => res.json({ ok: true, amount: a.exists ? (a.amount ?? '0') : '0', decimals: mint.decimals }))
+      .catch(() => res.status(502).json({ ok: false, error: 'chain_error' }))
+  })
+
+  app.get('/l/:pool', async (req, res) => {
     const pool = String(req.params.pool)
     if (!ADDRESS_RE.test(pool)) return void res.status(404).json({ ok: false, error: 'not_found' })
     // The script and stylesheet by their content hash, from the files in place when the
@@ -522,6 +560,7 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
       (_m, ext: 'js' | 'css') => `/l/assets/backing.${builtAsset(`backing.${ext}`).hash}.${ext}"`,
     )
     const config = JSON.stringify({
+      setupLamports: await setupCost(),
       executor: d.delegatee,
       cluster: d.page?.cluster ?? 'mainnet',
       mints: d.page?.mints ?? [],

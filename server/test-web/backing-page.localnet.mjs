@@ -309,6 +309,11 @@ test(
       assert.equal(await page.textContent('#sentence'), 'Back WEBT: 5 TQ every week, for 30 days.')
       await page.click('text=nuntius test wallet')
       await page.waitForSelector('#step-back:not([hidden])')
+      // The backer holds TQ, so no "you need" note; the setup line comes from the server's numbers.
+      await page.waitForFunction(() =>
+        /up to about 0\.\d{4} SOL for setup/.test(document.getElementById('setup')?.textContent ?? ''),
+      )
+      assert.equal(await page.isHidden('#needquote'), true)
       await page.click('#approve')
       await page.waitForFunction(() => /^Live\./.test(document.getElementById('status')?.textContent ?? ''), null, {
         timeout: 120_000,
@@ -503,6 +508,51 @@ test(
         `CSP refused something the dialog needs: ${csps.join(' | ')}`,
       )
     } finally {
+      await browser.close()
+      env.server.close()
+    }
+  },
+)
+
+test(
+  'no wallet in the browser: open this page in Phantom, Solflare or Backpack; an empty wallet is told where to get the token',
+  { skip, timeout: 300_000 },
+  async () => {
+    const env = await setup()
+    const browser = await chromium.launch(CHROME ? { executablePath: CHROME } : {})
+    let walletBrowser = null
+    try {
+      // No wallet injected.
+      const bare = await browser.newPage({ viewport: { width: 390, height: 844 } })
+      await bare.goto(`${env.base}/l/${env.pool}`)
+      await bare.waitForSelector('#nowallet:not([hidden])')
+      const here = encodeURIComponent(`${env.base}/l/${env.pool}`)
+      const ref = encodeURIComponent('https://nuntius.ochinimus.app')
+      assert.deepEqual(await bare.$$eval('#openin a', (as) => as.map((a) => [a.textContent, a.getAttribute('href')])), [
+        ['Open in Phantom', `https://phantom.com/ul/browse/${here}?ref=${ref}`],
+        ['Open in Solflare', `https://solflare.com/ul/v1/browse/${here}?ref=${ref}`],
+        ['Open in Backpack', `https://backpack.app/ul/v1/browse/${here}?ref=${ref}`],
+      ])
+      await shot(bare, '08-backing-no-wallet')
+      // A wallet that holds none of the quote token.
+      const opened = await openPage(env, false)
+      walletBrowser = opened.browser
+      const page = opened.page
+      await page.route('**/api/balance/**', (route) => route.fulfill({ json: { ok: true, amount: '0', decimals: 6 } }))
+      await page.waitForFunction(() =>
+        document.getElementById('route')?.textContent?.startsWith('On its bonding curve'),
+      )
+      await page.click('text=nuntius test wallet')
+      await page.waitForSelector('#needquote:not([hidden])')
+      assert.match(await page.textContent('#needquote'), /^You need TQ to back WEBT\. Get TQ on Jupiter$/)
+      const buy = await page.$eval('#needquote a', (a) => a.getAttribute('href'))
+      assert.match(
+        buy,
+        /^https:\/\/jup\.ag\/swap\?sell=So11111111111111111111111111111111111111112&buy=[1-9A-HJ-NP-Za-km-z]{32,44}$/,
+      )
+      await shot(page, '09-backing-needs-quote')
+    } finally {
+      await walletBrowser?.close()
       await browser.close()
       env.server.close()
     }
