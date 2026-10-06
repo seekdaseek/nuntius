@@ -326,7 +326,11 @@ function checkLaunch(signers: string[], ixs: Ix[], e: LaunchExpect) {
  * nuntius's partner config per quote token on mainnet, created once (tools/launch-config.ts).
  * A launch is a pool on one of these, or nothing: a build without them refuses launches.
  */
-export const LAUNCH_CONFIGS: Record<string, string | null> = { SKR: null, USDC: null }
+export const LAUNCH_CONFIGS: Record<string, string | null> = {
+  // Created 6 Oct 2026 with Meteora Invent and read back field by field (docs/meteora/CONFIGS.md).
+  SKR: 'DdiaEHahNnz41GHh2AHCsZqGuuoW1A1nnjDKFN8bYM3d',
+  USDC: 'HyT5SubGeApBbRce3KQdkaPJv8K4yFHSg7bLrtu15eSk',
+}
 
 /** The pinned mainnet tokens the app offers: symbol -> mint and decimals. */
 export const MINTS: Record<string, { mint: string; decimals: number }> = {

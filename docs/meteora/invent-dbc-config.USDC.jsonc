@@ -1,0 +1,54 @@
+{
+  // nuntius's partner config for USDC: Meteora Invent's dbc-create-config, buildCurve mode 0.
+  // The same parameters as launchPreset in nuntius server/src/meteora.ts.
+  "rpcUrl": "https://api.mainnet-beta.solana.com",
+  "dryRun": true, // false for the run that created it
+  "keypairFilePath": "./executor-keypair.json",
+  "computeUnitPriceMicroLamports": 50000,
+  "quoteMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "dbcConfig": {
+    "buildCurveMode": 0,
+    "percentageSupplyOnMigration": 33,
+    "migrationQuoteThreshold": 750,
+    "token": {
+      "totalTokenSupply": 1000000000,
+      "tokenBaseDecimal": 6,
+      "tokenQuoteDecimal": 6,
+      "tokenType": 0,
+      "tokenAuthorityOption": 1,
+      "leftover": 0,
+    },
+    "fee": {
+      "baseFeeParams": {
+        "baseFeeMode": 0,
+        "feeSchedulerParam": { "startingFeeBps": 100, "endingFeeBps": 100, "numberOfPeriod": 0, "totalDuration": 0 },
+      },
+      "dynamicFeeEnabled": false,
+      "collectFeeMode": 0,
+      "creatorTradingFeePercentage": 50,
+      "poolCreationFee": 0,
+      "enableFirstSwapWithMinFee": false,
+    },
+    "migration": {
+      "migrationOption": 1,
+      "migrationFeeOption": 2,
+      "migrationFee": { "feePercentage": 0, "creatorFeePercentage": 0 },
+    },
+    "liquidityDistribution": {
+      "partnerLiquidityPercentage": 0,
+      "creatorLiquidityPercentage": 0,
+      "partnerPermanentLockedLiquidityPercentage": 50,
+      "creatorPermanentLockedLiquidityPercentage": 50,
+    },
+    "lockedVesting": {
+      "totalLockedVestingAmount": 0,
+      "numberOfVestingPeriod": 0,
+      "cliffUnlockAmount": 0,
+      "totalVestingDuration": 0,
+      "cliffDurationFromMigrationTime": 0,
+    },
+    "activationType": 1,
+    "leftoverReceiver": "4a8o45skRPcyjAdyR8yES215Swvh8uTpZD6KLarhxCJ7",
+    "feeClaimer": "4a8o45skRPcyjAdyR8yES215Swvh8uTpZD6KLarhxCJ7",
+  },
+}
