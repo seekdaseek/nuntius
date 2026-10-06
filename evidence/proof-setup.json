@@ -1,0 +1,52 @@
+{
+  "at": "2026-10-06T04:13:47.650Z",
+  "config": "5eEdfg9bWcTCwz5oHcnSydJWqWSn1FhkU7vHM5c1nCiQ",
+  "pool": "5qeAeoorEHpwecPkehAVedeYaWhMVpJaFMD52A8oAtHX",
+  "baseMint": "GJKKCX3vYaYrfYVBbi1Thu3ofo31ussxLjiJPFZ76j5L",
+  "thresholdSkr": 100,
+  "name": "nuntius proof, not for trading",
+  "symbol": "PROOF",
+  "uri": "https://nuntius.ochinimus.app/t/proof.json",
+  "steps": [
+    {
+      "step": "executor USDC account 4siQKuMjEYiBHfzvyCWwe5E2PYDYS28qMK3tR1eS17mN",
+      "bytes": 306,
+      "simulation": {
+        "err": null,
+        "unitsConsumed": 14917,
+        "costLamports": "1493440"
+      },
+      "signature": "cF1Kx6bC2vsVGZtr7eUQ1xJBmVCFG1mYUEFMgV74BqHGLuUhSwFBCJjpUce7NTFH6s21mq1So5eRkzAXxMPauNk"
+    },
+    {
+      "step": "executor SKR account HmnL3xhbLDUvS5mA1HqTNghgFvKuYvzRgWaoW3Bjn2p6",
+      "bytes": 306,
+      "simulation": {
+        "err": null,
+        "unitsConsumed": 14917,
+        "costLamports": "1493440"
+      },
+      "signature": "38hXArLbEAgpekofRwXNYKdYTqB4YgJHY5EFqu79Bw37BUuFzgLyS7oUYjWE6cU4nJqxvwc1S5EYWh5Tso96KYgz"
+    },
+    {
+      "step": "proof config 5eEdfg9bWcTCwz5oHcnSydJWqWSn1FhkU7vHM5c1nCiQ",
+      "bytes": 663,
+      "simulation": {
+        "err": null,
+        "unitsConsumed": 36822,
+        "costLamports": "5984080"
+      },
+      "signature": "5zwt8ujfV9ErSN8vpEaecH4PVdn6E5SFAFJMCSbjBGUp9hRfY7yvuQ3nhA1yCeicLrPaYSYjXETmQF8rvSMVuqd3"
+    },
+    {
+      "step": "proof pool 5qeAeoorEHpwecPkehAVedeYaWhMVpJaFMD52A8oAtHX (token GJKKCX3vYaYrfYVBbi1Thu3ofo31ussxLjiJPFZ76j5L)",
+      "bytes": 784,
+      "simulation": {
+        "err": null,
+        "unitsConsumed": 105720,
+        "costLamports": "20601640"
+      },
+      "signature": "4sa7jfqEEGXmm6PQsbC4ghQ53RKQ42MoFEbHh28wo7zgBzD4J8gCKaAsXVQB8qo4EUQZgV1aft5btb2Fr5KAY1yj"
+    }
+  ]
+}

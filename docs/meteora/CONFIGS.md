@@ -104,3 +104,16 @@ ok       tx signers: ["23fstLLk5nv17NUpbsyWgEkkwHM3uKpxtvXhrLhd3SHP","HyT5SubGeA
          executor paid 5994230 lamports (rent and fee)
 all fields match
 ```
+
+## The proof config and pool (not for trading)
+
+For the mainnet lifecycle proof, the executor created on 6 Oct, with `server/src/tools/proof-setup.ts` (record: `evidence/proof-setup.json`):
+
+| What                                                                     | Address                                        | Transaction                                                                                                                            |
+| ------------------------------------------------------------------------ | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Executor USDC account                                                    | `4siQKuMjEYiBHfzvyCWwe5E2PYDYS28qMK3tR1eS17mN` | [`cF1Kx6bC…`](https://explorer.solana.com/tx/cF1Kx6bC2vsVGZtr7eUQ1xJBmVCFG1mYUEFMgV74BqHGLuUhSwFBCJjpUce7NTFH6s21mq1So5eRkzAXxMPauNk)  |
+| Executor SKR account                                                     | `HmnL3xhbLDUvS5mA1HqTNghgFvKuYvzRgWaoW3Bjn2p6` | [`38hXArLb…`](https://explorer.solana.com/tx/38hXArLbEAgpekofRwXNYKdYTqB4YgJHY5EFqu79Bw37BUuFzgLyS7oUYjWE6cU4nJqxvwc1S5EYWh5Tso96KYgz) |
+| Proof config, 100 SKR threshold                                          | `5eEdfg9bWcTCwz5oHcnSydJWqWSn1FhkU7vHM5c1nCiQ` | [`5zwt8ujf…`](https://explorer.solana.com/tx/5zwt8ujfV9ErSN8vpEaecH4PVdn6E5SFAFJMCSbjBGUp9hRfY7yvuQ3nhA1yCeicLrPaYSYjXETmQF8rvSMVuqd3) |
+| Proof pool (token `GJKKCX3vYaYrfYVBbi1Thu3ofo31ussxLjiJPFZ76j5L`, PROOF) | `5qeAeoorEHpwecPkehAVedeYaWhMVpJaFMD52A8oAtHX` | [`4sa7jfqE…`](https://explorer.solana.com/tx/4sa7jfqEEGXmm6PQsbC4ghQ53RKQ42MoFEbHh28wo7zgBzD4J8gCKaAsXVQB8qo4EUQZgV1aft5btb2Fr5KAY1yj) |
+
+The proof config is the same preset at a 100 SKR threshold: `THRESHOLD=100 node dist/tools/verify-config.js 5eEdfg9b… SKR` reports every field matching. A proof is not traction: its graduation will be "uncontested" by any measure, and it is never counted in the headline.

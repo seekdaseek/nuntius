@@ -2,7 +2,7 @@
  * Reads a nuntius partner config back from the chain and checks every field the program
  * stored against what launchPreset says it should be, plus the transaction that created it.
  *
- *   cd server && npm run build && RPC=<mainnet rpc> node dist/tools/verify-config.js <config> SKR|USDC [signature]
+ *   cd server && npm run build && RPC=<mainnet rpc> [THRESHOLD=<ui>] node dist/tools/verify-config.js <config> SKR|USDC [signature]
  *
  * Prints one line per field (ok or MISMATCH) and exits non-zero on any mismatch.
  */
@@ -41,7 +41,9 @@ const acc = await conn.getAccountInfo(new PublicKey(config))
 check('owner program', acc?.owner, DBC.DYNAMIC_BONDING_CURVE_PROGRAM_ID)
 const c = await new DBC.DynamicBondingCurveClient(conn, 'confirmed').state.getPoolConfig(config)
 if (!c) throw new Error(`no DBC config at ${config}`)
-const p = launchPreset(q.threshold)
+// THRESHOLD=<ui amount> checks a config built at another threshold (the proof config: 100 SKR).
+const threshold = Number(process.env.THRESHOLD ?? q.threshold)
+const p = launchPreset(threshold)
 check('quoteMint', c.quoteMint, new PublicKey(q.mint))
 check('feeClaimer', c.feeClaimer, new PublicKey(TREASURY))
 check('leftoverReceiver', c.leftoverReceiver, new PublicKey(TREASURY))
