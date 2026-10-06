@@ -117,3 +117,13 @@ For the mainnet lifecycle proof, the executor created on 6 Oct, with `server/src
 | Proof pool (token `GJKKCX3vYaYrfYVBbi1Thu3ofo31ussxLjiJPFZ76j5L`, PROOF) | `5qeAeoorEHpwecPkehAVedeYaWhMVpJaFMD52A8oAtHX` | [`4sa7jfqE…`](https://explorer.solana.com/tx/4sa7jfqEEGXmm6PQsbC4ghQ53RKQ42MoFEbHh28wo7zgBzD4J8gCKaAsXVQB8qo4EUQZgV1aft5btb2Fr5KAY1yj) |
 
 The proof config is the same preset at a 100 SKR threshold: `THRESHOLD=100 node dist/tools/verify-config.js 5eEdfg9b… SKR` reports every field matching. A proof is not traction: its graduation will be "uncontested" by any measure, and it is never counted in the headline.
+
+### What happened to the proof curve, and the migration
+
+Twelve minutes after the proof pool was created, trading bots routed through its curve (signer `FB1tpBTz…`, through the FLASHX router and Jupiter, in v1 transactions) and filled all 100 SKR by 04:29 UTC on 6 Oct: aggregators index new DBC pools at once, so a tiny curve is swept before any backer arrives. Meteora's keepers do not migrate a curve that small, and nuntius's crank runs only for backed pools, so the executor migrated it with the crank's own code (`server/src/tools/crank.ts`, which calls `Executor.crank`):
+
+| What                                                                           | Address                                                       | Transaction                                                                                                                            |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Migration to DAMM v2, paid by the executor (23,744,600 lamports, as simulated) | canonical pool `CUgjnSTFC2CoCHesWm8hYAb6sE7mUAdoUhYFuH3w6vCh` | [`2gEqP5Af…`](https://explorer.solana.com/tx/2gEqP5AfyHjqy16NZYvfkCNDTrbYUU1x1mHUzD7KkGutQuXxzJA8UHutbJTJmdxxAhm2yHgNsEHiryymaK9D8XNx) |
+
+The mainnet proof therefore backs the migrated pool: natX's permission buys on DAMM v2. Buys on a curve, the curve completing and the backing following the token through migration are proven on Meteora's deployed programs on localnet (`npm run test:meteora`); on mainnet they come from real launches.
