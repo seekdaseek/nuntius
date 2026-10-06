@@ -38,7 +38,10 @@ import {
   ataOf,
   dbcPoolAddress,
   DEFAULT_SLIPPAGE_BPS,
+  LAUNCH_BUDGET,
+  launchAccountSizes,
   launchInstructions,
+  METAPLEX_CREATE_FEE_LAMPORTS,
   readLaunch,
   tokenInfo as readTokenInfo,
   UnsupportedLaunch,
@@ -56,6 +59,22 @@ import { readMetadataUri, TokenImages } from './token-image.js'
 import { readTokenTrust, type TokenTrust } from './token-trust.js'
 import { priceInQuote, UsdPrices } from './launch-market.js'
 import { getRecurringDelegationCodec, getSubscriptionAuthorityCodec } from '@solana/subscriptions'
+
+/** SOL with four decimals, as the refusal says it. */
+const sol = (lamports: bigint) => (Number(lamports) / 1e9).toFixed(4)
+
+/**
+ * What a launch costs its creator in lamports: rent for every account its transaction creates,
+ * Metaplex's metadata fee, two signatures (the creator's and the new mint's) and the priority fee
+ * the transaction sets. With mainnet's rent this is 20,601,640, what nimus's launch cost on chain.
+ */
+export async function launchCostLamports(rentOf: (bytes: bigint) => Promise<bigint>): Promise<bigint> {
+  const rents = await Promise.all(launchAccountSizes().map((n) => rentOf(BigInt(n))))
+  const priority = BigInt(Math.ceil((LAUNCH_BUDGET.unitLimit * LAUNCH_BUDGET.microLamportsPerUnit) / 1_000_000))
+  return (
+    rents.reduce((x, y) => x + BigInt(y), 0n) + METAPLEX_CREATE_FEE_LAMPORTS + 2n * LAMPORTS_PER_SIGNATURE + priority
+  )
+}
 
 /** The base fee per signature; a back grant has one, the backer's. */
 const LAMPORTS_PER_SIGNATURE = 5_000n
@@ -288,6 +307,16 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
     }
   })
 
+  // What a launch costs its creator, from the programs' own sizes and the chain's rent: what the
+  // transaction creates, Metaplex's fee, two signatures and the priority fee. Read once; a
+  // failed read skips the check below rather than refusing on a guess.
+  let launchLamports: Promise<bigint | null> | null = null
+  const launchCost = () =>
+    (launchLamports ??= launchCostLamports((n) => d.rpc.getMinimumBalanceForRentExemption(n).send()).catch(() => {
+      launchLamports = null
+      return null
+    }))
+
   route('/api/launch/create', async (body) => {
     const a = d.auth(body)
     if (a.tier !== 'seeker')
@@ -316,6 +345,20 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
         'launch_not_ready',
         `Launches priced in ${quote.symbol} open once nuntius has its config.`,
       )
+    // The creator pays for everything the launch creates. Say so here, before anything is built,
+    // rather than leave it to a wallet that "couldn't simulate" the transaction (6 Oct: cj7 held
+    // 10,218,598 lamports against a 20,601,640-lamport launch).
+    const cost = await launchCost()
+    const have =
+      cost === null
+        ? null
+        : await d.rpc
+            .getBalance(a.address as Address)
+            .send()
+            .then((r) => BigInt(r.value))
+            .catch(() => null)
+    if (cost !== null && have !== null && have < cost)
+      throw new HttpError(402, 'needs_sol', `Launching costs about ${sol(cost)} SOL; this wallet has ${sol(have)} SOL.`)
     const baseMint = await generateKeyPairSigner()
     const pool = dbcPoolAddress(quote.mint, baseMint.address, config)
     const uri = `${d.origin}/m/${baseMint.address}.json`

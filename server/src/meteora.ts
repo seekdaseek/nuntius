@@ -25,7 +25,7 @@ import BN from 'bn.js'
 import * as DBC from '@meteora-ag/dynamic-bonding-curve-sdk'
 import * as CPAMM from '@meteora-ag/cp-amm-sdk'
 import { AccountRole, type Address, type Instruction } from '@solana/kit'
-import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from '@solana-program/token'
+import { findAssociatedTokenPda, getMintSize, getTokenSize, TOKEN_PROGRAM_ADDRESS } from '@solana-program/token'
 import { isHelius, programAccountsV2, type Fetch } from './program-accounts.js'
 
 export const DBC_PROGRAM = 'dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN'
@@ -635,6 +635,28 @@ export async function configInstructions(
  * The server signs with the fresh base-mint key and hands the rest to the device, which
  * signs once as creator and fee payer.
  */
+/** The launch transaction's compute budget; its priority fee is part of what a launch costs. */
+export const LAUNCH_BUDGET = { unitLimit: 200_000, microLamportsPerUnit: 50_000 }
+/**
+ * The Metaplex metadata account a launch creates. Token Metadata pads name, symbol and URI to
+ * fixed lengths, so with no creators it is the same size for every launch: 607 bytes, read back
+ * from nimus (36HcKcHp…) and from the proof pool, both 20,601,640 lamports in all.
+ */
+export const METADATA_ACCOUNT_SIZE = 607
+/** Token Metadata's flat fee on every metadata account it creates: 0.01 SOL, kept in the account. */
+export const METAPLEX_CREATE_FEE_LAMPORTS = 10_000_000n
+/**
+ * What a launch's transaction creates, in bytes, from the programs' own layouts: the base mint,
+ * the pool's two token vaults, the DBC pool (VirtualPool, its size from the SDK's IDL) and the
+ * metadata account.
+ */
+export function launchAccountSizes(): number[] {
+  const dbc = new DBC.DynamicBondingCurveClient(new Connection('http://127.0.0.1:1'), 'confirmed')
+  const pool = (dbc as unknown as { state: { program: { account: { virtualPool: { size: number } } } } }).state.program
+    .account.virtualPool.size
+  return [getMintSize(), getTokenSize(), getTokenSize(), pool, METADATA_ACCOUNT_SIZE]
+}
+
 export async function launchInstructions(
   conn: Connection,
   p: { creator: string; config: string; name: string; symbol: string; uri: string; baseMint: string },
@@ -650,7 +672,7 @@ export async function launchInstructions(
     payer: pk(p.creator),
     poolCreator: pk(p.creator),
   })
-  return [...budgetInstructions({ unitLimit: 200_000, microLamportsPerUnit: 50_000 }), ...tx.instructions.map(toKit)]
+  return [...budgetInstructions(LAUNCH_BUDGET), ...tx.instructions.map(toKit)]
 }
 
 /** The quote mint and fee claimer a config account names (for the launch route's checks). */

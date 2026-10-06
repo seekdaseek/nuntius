@@ -16,6 +16,7 @@ import { RateLimiter } from './rate-limit.js'
 import type { Config } from './config.js'
 import { CLIENT_HEADER, clientAtLeast, launchesFor, parseVersion } from './client-version.js'
 import { userAtaOf } from './mandate-chain.js'
+import { launchCostLamports } from './launch-api.js'
 import type { Address } from '@solana/kit'
 
 const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
@@ -28,10 +29,12 @@ async function serve(
   owners: Record<string, string> = {},
   tokenAccounts: Record<string, object> = {},
   staticDir?: string,
+  opts: { balance?: bigint; seeker?: boolean; delegatee?: string; launchConfigs?: Record<string, string> } = {},
 ) {
   const db = openDb(':memory:')
   const store = new Store(db)
   store.createSession(SESSION, WALLET, Date.now())
+  if (opts.seeker) store.claimSgtMint(SESSION, 'Sgt1111111111111111111111111111111111111111')
   const config = { port: 0, domain: 'x.app', heliusRpc: null, fcmServiceAccount: null, fcmProjectId: null }
   const lim = () => new RateLimiter(100, 60_000)
   // Just enough chain for the list: no delegations, and no token account for the one mint.
@@ -39,6 +42,7 @@ async function serve(
   const rpc = {
     // Mainnet's rent: (bytes + 128) x 5,080 lamports.
     getMinimumBalanceForRentExemption: (n: bigint) => ({ send: async () => (n + 128n) * 5_080n }),
+    getBalance: () => ({ send: async () => ({ value: opts.balance ?? 0n }) }),
     getAccountInfo: (address: string) => ({
       send: async () => ({
         value: owners[address]
@@ -65,10 +69,11 @@ async function serve(
         maxPerPeriodUi: '100',
         demoEndpoints: false,
         launches,
+        launchConfigs: opts.launchConfigs ?? {},
       },
       rpc,
       scans,
-      delegatee: 'D',
+      delegatee: opts.delegatee ?? 'D',
       receipts: null,
       executor: null,
       conn: {},
@@ -391,5 +396,44 @@ test('link previews: every og: and twitter: tag filled for the launch, the card 
     assert.equal(mixed.status, 404, 'a hash names one file, with its own extension')
   } finally {
     s.close()
+  }
+})
+
+test("a launch costs what nimus cost on chain, from the programs' own sizes and the rent", async () => {
+  // Mainnet's rent: (bytes + 128) x 5,080. nimus's launch (36HcKcHp…) took 20,601,640 lamports from cj7.
+  assert.equal(await launchCostLamports(async (n) => (n + 128n) * 5_080n), 20_601_640n)
+})
+
+test('a creator who cannot pay for the launch is told the cost before anything is built', async () => {
+  const launch = (balance: bigint) =>
+    serve(true, {}, {}, undefined, {
+      balance,
+      seeker: true,
+      delegatee: '23fstLLk5nv17NUpbsyWgEkkwHM3uKpxtvXhrLhd3SHP',
+      launchConfigs: { USDC: 'HyT5SubGeApBbRce3KQdkaPJv8K4yFHSg7bLrtu15eSk' },
+    })
+  const body = { session: SESSION, name: 'nimus', symbol: 'NIMUS', quote: 'USDC' }
+  // cj7 on 6 Oct: 10,218,598 lamports, against 20,601,640.
+  const poor = await launch(10_218_598n)
+  try {
+    const r = await post(poor.base, '/api/launch/create', '1.1.0', body)
+    assert.equal(r.status, 402)
+    assert.deepEqual(await r.json(), {
+      ok: false,
+      error: 'needs_sol',
+      message: 'Launching costs about 0.0206 SOL; this wallet has 0.0102 SOL.',
+    })
+    const feed = (await (await fetch(`${poor.base}/api/launches`)).json()) as { launches: unknown[] }
+    assert.deepEqual(feed.launches, [], 'nothing was recorded')
+  } finally {
+    poor.close()
+  }
+  // A wallet that can pay is not stopped by the check (it goes on to build, which this fake chain cannot).
+  const rich = await launch(1_000_000_000n)
+  try {
+    const r = await post(rich.base, '/api/launch/create', '1.1.0', body)
+    assert.notEqual(((await r.json()) as { error?: string }).error, 'needs_sol')
+  } finally {
+    rich.close()
   }
 })
