@@ -4,7 +4,7 @@
  * build's version decides what it can reach. It must equal app.json's `expo.version`:
  * core/client-version.test.ts fails otherwise.
  */
-export const CLIENT_VERSION = '1.0.2'
+export const CLIENT_VERSION = '1.1.0'
 export const CLIENT_HEADER = 'x-nuntius-client'
 
 /** The header every API call carries. */
