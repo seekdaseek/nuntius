@@ -347,6 +347,7 @@ async function connect(w: Wallet) {
     $('step-wallet').hidden = true
     $('step-back').hidden = false
     if (store.get('nuntius-session-wallet') !== account.address) session = null
+    approveLabel()
     status('')
     await refreshMine()
   } catch (e) {
@@ -432,6 +433,19 @@ async function untilLanded<T>(call: () => Promise<T>, waitOn: string[], tries = 
 // ---------------------------------------------------------------------------------------
 // Back, and revoke.
 
+/** A permission built but not yet approved: the same terms rebuild it instead of making another. */
+let pending: { id: string; key: string } | null = null
+const isMwa = () => wallet?.name === SolanaMobileWalletAdapterWalletName
+
+/**
+ * With MWA every trip to the wallet must start from a tap: Chrome opens the wallet only within
+ * a tap's activation, and a sign-in trip followed by a build in the same tap left none for the
+ * approval (6 Oct, the Seeker: "no installed wallet"). So with MWA, signing in is its own tap.
+ */
+function approveLabel() {
+  $('approve').textContent = session ? 'Approve in your wallet' : isMwa() ? 'Sign in' : 'Sign in and approve'
+}
+
 async function back() {
   const q = quote()
   if (!q || !launch || !account) return
@@ -439,6 +453,13 @@ async function back() {
   sentence()
   let mandateId: string | null = null
   try {
+    if (!session && isMwa()) {
+      status('Sign in with your wallet…')
+      await signIn()
+      approveLabel()
+      status('Signed in. Tap “Approve in your wallet” to approve the permission.')
+      return
+    }
     status('Sign in with your wallet…')
     const s = await signIn()
     // What the transaction must say, from this page alone, before the server is asked.
@@ -456,30 +477,51 @@ async function back() {
       baseMint: launch.baseMint,
     }
     status('Building the permission…')
-    const built = await api<{ mandateId: string; transactionBase64: string }>('/api/mandates/back', {
-      session: s,
-      pool,
-      symbol: q.symbol,
-      amount: form.amount,
-      period: form.period,
-      untilDays: form.untilDays,
-      label: `Back ${launch.symbol ?? 'launch'}`.slice(0, 40),
-    })
-    mandateId = built.mandateId
+    const key = [account.address, pool, form.amount, form.period, form.untilDays].join('|')
+    let built: { mandateId: string; transactionBase64: string } | null = null
+    let landedEarlier = false
+    if (pending?.key === key) {
+      try {
+        built = {
+          mandateId: pending.id,
+          ...(await api<{ transactionBase64: string }>('/api/mandates/rebuild', { session: s, mandateId: pending.id })),
+        }
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'already_on_chain') landedEarlier = true
+        else if (!(e instanceof ApiError && (e.code === 'no_mandate' || e.code === 'not_pending'))) throw e
+        if (!landedEarlier) pending = null
+      }
+    }
+    if (landedEarlier) mandateId = pending!.id
+    else {
+      built ??= await api<{ mandateId: string; transactionBase64: string }>('/api/mandates/back', {
+        session: s,
+        pool,
+        symbol: q.symbol,
+        amount: form.amount,
+        period: form.period,
+        untilDays: form.untilDays,
+        label: `Back ${launch.symbol ?? 'launch'}`.slice(0, 40),
+      })
+      mandateId = built.mandateId
+      pending = { id: built.mandateId, key }
+    }
     status(`Approve in ${wallet!.name}…`)
     let signature: string | null = null
-    try {
-      signature = await signAndSend(built.transactionBase64, (b) => checkTransaction(b, expect))
-    } catch (e) {
-      if (e instanceof TxMismatch) throw e
-      // A wallet can report an error after sending: ask the chain, through the server, before saying no.
-      const landed = await api<{ mandate: unknown }>('/api/mandates/confirm', { session: s, mandateId }).catch(
-        () => null,
-      )
-      if (!landed) throw e
-    }
+    if (built && !landedEarlier)
+      try {
+        signature = await signAndSend(built.transactionBase64, (b) => checkTransaction(b, expect))
+      } catch (e) {
+        if (e instanceof TxMismatch) throw e
+        // A wallet can report an error after sending: ask the chain, through the server, before saying no.
+        const landed = await api<{ mandate: unknown }>('/api/mandates/confirm', { session: s, mandateId }).catch(
+          () => null,
+        )
+        if (!landed) throw e
+      }
     status('Waiting for the chain…')
     await untilLanded(() => api('/api/mandates/confirm', { session: s, mandateId }), ['not_on_chain_yet'])
+    pending = null
     // The list first, then the word: "Live" never shows beside a list that lacks it.
     await refreshMine()
     status(
@@ -623,6 +665,7 @@ $('switch').addEventListener('click', () => {
   $('step-back').hidden = true
   $('step-wallet').hidden = false
   $('mine').hidden = true
+  pending = null
   status('')
   const disconnect = (w?.features as Feature<{ disconnect: () => Promise<void> }> | undefined)?.['standard:disconnect']
   void disconnect?.disconnect().catch(() => {})
