@@ -1,8 +1,8 @@
 # nuntius on Meteora: subscription launches
 
-**Backers commit in advance to buy a token every week, capped and revocable, and the buys run on Meteora's Dynamic Bonding Curve, then DAMM v2.** Each buy is one transaction: a capped pull through the Solana Subscriptions program and a DBC swap that writes the tokens straight into the backer's own account. The backer approves once in Seed Vault; after that, nobody signs but nuntius's executor, and the chain caps what it can take.
+**Backers commit in advance to buy a token every day or week, capped and revocable, and the buys run on Meteora's Dynamic Bonding Curve, then DAMM v2.** Each buy is one transaction: a capped pull through the Solana Subscriptions program and a DBC swap that writes the tokens straight into the backer's own account. The backer approves once in Seed Vault; after that, nobody signs but nuntius's executor, and the chain caps what it can take.
 
-_Status, 6 Oct 2026._ nuntius's two partner configs are on mainnet, created with Meteora's Invent CLI (below). A proof pool is live and waiting for its first backer. Traction numbers will be added here dated, from the live feed, once real backers exist; nothing simulated, self-paid or from the proof pool will ever be counted in them.
+_Status, 6 Oct 2026, 14:18 UTC, read from mainnet and the live feed._ Both partner configs are on mainnet, owned by the DBC program and created with Meteora's Invent CLI (below). The proof pool was swept by trading bots twelve minutes after it was created, and nuntius's executor migrated it to DAMM v2 ([`2gEqP5Af…`](https://explorer.solana.com/tx/2gEqP5AfyHjqy16NZYvfkCNDTrbYUU1x1mHUzD7KkGutQuXxzJA8UHutbJTJmdxxAhm2yHgNsEHiryymaK9D8XNx)); the proof run followed on it: a grant, one buy on DAMM v2, a revoke and a pull the chain refused. nimus launched from a Seeker on 6 Oct, and its backers' buys land on its curve. natX backed it from Chrome on the Seeker through the Mobile Wallet Adapter ([`4wX2SLR8…`](https://explorer.solana.com/tx/4wX2SLR8jDAcgbxjwfHc389BzpZSYsw9yeXXzL4mu9xLAm8GaZJxRdeGjXPscbePMsBf53mZwMaQeR4brfpmvo1c), its buy) and revoked from the same page, on camera ([`2HFzeBQc…`](https://explorer.solana.com/tx/2HFzeBQc9kdxKEKkRcT1JZdUUACc2ExFtLshC7SwYzg5pu5y7UxVJNXE3ksDmCdDPqCa4d8sUdu7SBGevViknjFN)). Traction, from `GET https://nuntius.ochinimus.app/api/launches` (`asOf` 2026-10-06T14:17:58Z): nimus has 35 SKR a week committed by 1 backer, 0 of them outside the builder's own wallets, and 3 buys executed. The builder's own wallets are always counted apart, and nothing simulated or from the proof pool counts as outside demand.
 
 ## Why DBC
 
@@ -18,7 +18,7 @@ DBC's swap writes to any token account, so the backer's capped pull and the buy 
 | Proof run: grant, one DAMM v2 buy, revoke, the next pull refused        | natX → the executor                                                                                      | [four transactions, 6 Oct](docs/meteora/CONFIGS.md#the-proof-run-on-mainnet-6-oct)                                                                                                                                         |
 | nimus (NIMUS), the first launch on the SKR config, signed on the Seeker | pool `BpYoKpXwvM4gvD1VxenZAZ9vzV9QWdqZWKXm8DW3dPPU`, token `jYCJQbTyVKCCpuGyGP4uqoy1cF8bCtCarnWsU5xQ4B2` | [launch, backing and the first curve buy](docs/meteora/CONFIGS.md#nimus-the-first-launch-on-the-skr-config)                                                                                                                |
 
-Read any launch, live: `curl -s https://nuntius.ochinimus.app/api/launch/5qeAeoorEHpwecPkehAVedeYaWhMVpJaFMD52A8oAtHX`
+Read any launch, live. nimus: the page https://nuntius.ochinimus.app/l/BpYoKpXwvM4gvD1VxenZAZ9vzV9QWdqZWKXm8DW3dPPU and `curl -s https://nuntius.ochinimus.app/api/launch/BpYoKpXwvM4gvD1VxenZAZ9vzV9QWdqZWKXm8DW3dPPU`
 
 ## The subscription curve
 
