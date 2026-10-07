@@ -14,8 +14,8 @@ Built for the Solana Seeker. Android only: Mobile Wallet Adapter and Seed Vault 
 | v1.0.2 (5 Oct): Type it your way   | Write the permission in your own words and Fill; the SKR builder starter is back: [below](#v102-5-october-2026-type-it-your-way-and-the-skr-builder-starter) and [SECURITY.md §4b](SECURITY.md)                                                                                                            |
 | v1.0.1 (4 Oct): security hardening | What changed and how it is proven: [below](#v101-4-october-2026-security-hardening) and [SECURITY.md §7](SECURITY.md)                                                                                                                                                                                      |
 | The APK                            | https://github.com/seekdaseek/nuntius/releases/tag/v1.0.2 (`nuntius-1.0.2.apk`), sha256 `fc54b8fc3badd3854e4af62bca45d04dfbc9c44901b50b06cac64da715c26faf`; v1.0.1 stays at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.1, v1.0.0 at https://github.com/seekdaseek/nuntius/releases/tag/v1.0.0 |
-| Demo video (1:45)                  | https://youtu.be/rXs5zppcYKs                                                                                                                                                                                                                                                                               |
-| Pitch video (1:33)                 | https://youtu.be/Zq1veG63Snw                                                                                                                                                                                                                                                                               |
+| Demo video (2:13)                  | https://youtu.be/dt1HyBfycd8                                                                                                                                                                                                                                                                               |
+| Pitch video (1:34)                 | https://youtu.be/eTtMaMPmLUw                                                                                                                                                                                                                                                                               |
 | Threat model                       | [SECURITY.md](SECURITY.md): what the cap bounds and what it does not                                                                                                                                                                                                                                       |
 | Why this, not something else       | [RESEARCH.md](RESEARCH.md)                                                                                                                                                                                                                                                                                 |
 
@@ -266,9 +266,12 @@ These tests cover:
 - **Guard**: sends receipts for a foreign delegatee.
 - **HTTP API**: the whole surface, driven exactly as the app drives it.
 
+**Proven on mainnet, from the server log**
+
+- **The daily digest.** The server sent cj7's digest at **2026-10-06T21:00:25Z** (`digest_sent`, logged once the push service accepted it): 2 pulls, 0 refused. The 2 are two transactions, the backing buys `383VkA2U…` (06:45 UTC) and `4A7QwcTD…` (07:23 UTC), each counted once; since `3466ce3` (7 Oct) the receipts list and the digest count one receipt per transaction, so a buy the guard also saw as a debit is never counted or pushed twice. What the phone does with the push (BACK from Clock in) was not rechecked on this build.
+
 **Not yet proven**
 
-- **The digest on the release build.** The round-3 build sent its digest at the chosen hour; on `57eb4e1` the next one is due at 21:00 UTC on 1 October, with the title "since your last digest" and BACK from Clock in opened by its push. **PENDING.**
 - **The widget on builds after round 2.** It rendered on the Seeker on 30 Sep (round 2); rounds 3 and 4 did not recheck it.
 - **The mainnet program binary.** The local tests build the program at `364a419`; whether that is byte-identical to the mainnet deployment is not measured.
 - **Executor limits.** The executor runs as a single process, and the delegatee key is a file, not a KMS (SECURITY.md §4).
