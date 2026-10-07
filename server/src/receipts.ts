@@ -148,8 +148,29 @@ export class Receipts {
     private readonly onRecorded?: (address: string, e: LedgerEvent) => void,
   ) {}
 
-  /** Records, and pushes only if this is the first time this receipt was recorded. */
+  /**
+   * Records, and pushes only if this is the first time this transaction was recorded. One
+   * transaction, one receipt, one push: a backing's buy is seen by the executor (the buy it sent)
+   * and by the guard (a debit on the delegation), and the buy's words win (7 Oct: 4Ycn6Yfp… got a
+   * buy receipt and push, then a pull receipt and push).
+   */
   async emit(address: string, e: LedgerEvent, x: Omit<ReceiptExtra, 'cluster'> = {}): Promise<boolean> {
+    if ((e.kind === 'pull' || e.kind === 'buy') && e.signature) {
+      const had = this.store.moneyKindsOf(e.signature)
+      if (e.kind === 'pull' && had.includes('buy')) return false
+      if (e.kind === 'buy' && had.includes('pull') && !had.includes('buy')) {
+        // The pull was recorded (and pushed) first: it becomes the buy, with no second push.
+        if (this.store.upgradeToBuy(e.signature, e)) {
+          this.log.info('receipt_upgraded', { pda: e.delegationPda, sig: e.signature })
+          try {
+            this.onRecorded?.(address, e)
+          } catch {
+            /* the feed is a side channel */
+          }
+        }
+        return false
+      }
+    }
     const id = this.store.addEvent(address, e, {
       remainingBaseUnits: x.remainingBaseUnits?.toString(),
       capBaseUnits: x.capBaseUnits?.toString(),

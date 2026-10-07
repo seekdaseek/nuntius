@@ -6,6 +6,7 @@ import Database from 'better-sqlite3'
 import { buyJitterS, Executor } from './executor.js'
 import { MandateStore } from './mandate-store.js'
 import { Receipts, type PushPort } from './receipts.js'
+import { buildDigest, oneReceiptPerTransaction, type LedgerEvent } from './digest.js'
 import { createLogger } from './log.js'
 import { FakeChain } from './test/fake-chain.js'
 
@@ -90,7 +91,7 @@ function setup() {
       backoffBaseMs: 1_000,
     })
   const jitter = buyJitterS(m.id, Number(chain.nowS), 604_800)
-  return { chain, store, pushes, lines, clock, m, mk, jitter }
+  return { chain, store, pushes, lines, clock, m, mk, jitter, receipts }
 }
 
 test('a buy waits for its jittered moment, then pulls and buys in one transaction; the executor keeps nothing', async () => {
@@ -315,4 +316,86 @@ test('on DAMM v2, 6023 is "no room" and 6002 is slippage; 6013 there is just an 
   assert.deepEqual(await ex.tick(), { [m.id]: 'skipped' })
   assert.equal(store.pullsFor(PDA)[0]!.error, 'swap_no_room')
   assert.deepEqual(await ex.tick(), { [m.id]: 'landed' })
+})
+
+test("one transaction, one receipt, one push, in the buy's words, whichever side records it first", async () => {
+  const { store, pushes, lines, receipts, clock } = setup()
+  const base = {
+    at: clock.now(),
+    delegationPda: PDA,
+    delegatee: DELEGATEE,
+    label: 'Back NATX',
+    amountBaseUnits: '1000000',
+    decimals: 6,
+    symbol: 'USDC',
+    actor: 'nuntius' as const,
+  }
+  const buy = (signature: string): LedgerEvent => ({
+    ...base,
+    kind: 'buy',
+    signature,
+    outBaseUnits: '26716209842',
+    outDecimals: 6,
+    outSymbol: 'NATX',
+  })
+  const pull = (signature: string): LedgerEvent => ({ ...base, kind: 'pull', signature })
+  const rows = (sig: string) => store.events(OWNER).filter((e) => e.signature === sig)
+  // The usual order (7 Oct, 4Ycn6Yfp…): the executor's buy, then the guard's view of the same debit.
+  assert.equal(await receipts.emit(OWNER, buy('SigA')), true)
+  assert.equal(await receipts.emit(OWNER, pull('SigA')), false)
+  assert.deepEqual(
+    rows('SigA').map((e) => e.kind),
+    ['buy'],
+  )
+  assert.equal(pushes.length, 1)
+  // The other order: the pull was recorded and pushed first; the buy takes its row, with no second push.
+  assert.equal(await receipts.emit(OWNER, pull('SigB')), true)
+  assert.equal(await receipts.emit(OWNER, buy('SigB')), false)
+  assert.deepEqual(
+    rows('SigB').map((e) => [e.kind, e.outSymbol]),
+    [['buy', 'NATX']],
+  )
+  assert.equal(pushes.length, 2)
+  assert.match(lines.join('\n'), /"event":"receipt_upgraded"/)
+  // Another transaction is another receipt.
+  assert.equal(await receipts.emit(OWNER, pull('SigC')), true)
+  assert.equal(pushes.length, 3)
+  // Rows written before the fix hold both: the receipts list and the digest count the buy once.
+  store.addEvent(OWNER, pull('SigOld'))
+  store.addEvent(OWNER, buy('SigOld'))
+  const listed = oneReceiptPerTransaction(store.events(OWNER)).filter((e) => e.signature === 'SigOld')
+  assert.deepEqual(
+    listed.map((e) => e.kind),
+    ['buy'],
+  )
+})
+
+test('the digest counts transactions: a buy and its old pull row are one, and a buy is money moved', () => {
+  const at = 10_000
+  const ev = (kind: 'pull' | 'buy', signature: string, amount: string, symbol: string, label: string): LedgerEvent => ({
+    kind,
+    at,
+    delegationPda: PDA,
+    delegatee: DELEGATEE,
+    label,
+    amountBaseUnits: amount,
+    decimals: 6,
+    symbol,
+    signature,
+    actor: 'nuntius',
+    ...(kind === 'buy' ? { outBaseUnits: '133597335115', outDecimals: 6, outSymbol: 'NIMUS' } : {}),
+  })
+  const d = buildDigest(
+    [
+      ev('buy', 'Sig1', '5000000', 'SKR', 'Back NIMUS'),
+      ev('pull', 'Sig1', '5000000', 'SKR', 'Back NIMUS'),
+      ev('pull', 'Sig2', '50000', 'USDC', 'Ana'),
+    ],
+    [],
+    at + 1,
+  )
+  assert.equal(d.totals.pulls, 2)
+  assert.deepEqual(d.totals.moved, { SKR: '5', USDC: '0.05' })
+  assert.deepEqual(d.lines, ['Back NIMUS: 5 SKR bought NIMUS.', 'Ana received 0.05 USDC.'])
+  assert.equal(d.title, '2 pulls in the last 24 hours: 5 SKR and 0.05 USDC moved')
 })

@@ -50,6 +50,17 @@ export interface Digest {
 const who = (e: { label: string | null; delegatee: string }) => e.label ?? shortAddress(e.delegatee)
 
 /**
+ * One receipt per on-chain transaction. A backing's buy moves money once, but it used to be
+ * recorded twice: by the executor as the buy it sent and by the guard as a debit on the
+ * delegation (rows before 7 Oct hold both). Where a signature has a buy, the buy stands for the
+ * transaction. The receipts list and the digest both count with this rule.
+ */
+export function oneReceiptPerTransaction<T extends Pick<LedgerEvent, 'kind' | 'signature'>>(events: T[]): T[] {
+  const bought = new Set(events.filter((e) => e.kind === 'buy' && e.signature).map((e) => e.signature))
+  return events.filter((e) => !(e.kind === 'pull' && e.signature && bought.has(e.signature)))
+}
+
+/**
  * Summarises what happened since `sinceMs`: the previous digest when there was
  * one, else the last 24 hours. The title is the one line a lock screen shows,
  * so it leads with anything that needs attention, and it names its window
@@ -64,8 +75,11 @@ export function buildDigest(
 ): Digest {
   const since = sinceMs ?? nowMs - 24 * 3600 * 1000
   const window = sinceMs === null ? 'in the last 24 hours' : 'since your last digest'
-  const recent = events.filter((e) => e.at >= since && e.at <= nowMs).sort((a, b) => a.at - b.at)
-  const pulls = recent.filter((e) => e.kind === 'pull')
+  const recent = oneReceiptPerTransaction(events)
+    .filter((e) => e.at >= since && e.at <= nowMs)
+    .sort((a, b) => a.at - b.at)
+  // Every transaction that moved money: a payment's pull, or a backing's buy (a pull and a swap).
+  const pulls = recent.filter((e) => e.kind === 'pull' || e.kind === 'buy')
   const refused = recent.filter((e) => e.kind === 'refused')
   const granted = recent.filter((e) => e.kind === 'granted')
   const revoked = recent.filter((e) => e.kind === 'revoked' || e.kind === 'expired')
@@ -91,7 +105,10 @@ export function buildDigest(
     )
   }
   for (const p of pulls) {
-    lines.push(`${who(p)} received ${formatUnits(BigInt(p.amountBaseUnits ?? '0'), p.decimals)} ${p.symbol}.`)
+    const amount = `${formatUnits(BigInt(p.amountBaseUnits ?? '0'), p.decimals)} ${p.symbol}`
+    lines.push(
+      p.kind === 'buy' ? `${who(p)}: ${amount} bought ${p.outSymbol ?? 'the token'}.` : `${who(p)} received ${amount}.`,
+    )
   }
   for (const r of revoked) lines.push(`${r.kind === 'expired' ? 'Expired' : 'Revoked'}: ${who(r)}.`)
   for (const m of live) {

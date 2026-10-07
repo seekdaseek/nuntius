@@ -16,7 +16,7 @@ const OWNER = 'Owner11111111111111111111111111111111111111'
 const DELEGATEE = 'DeLegatee1111111111111111111111111111111111'
 const PDA = 'PdaDeLegation1111111111111111111111111111111'
 
-function setup() {
+function setup(opts: { backed?: boolean; debit?: { sig: string; delta: bigint } } = {}) {
   const store = new MandateStore(new Database(':memory:'))
   const pushes: { title: string; body: string }[] = []
   const push: PushPort = {
@@ -49,12 +49,25 @@ function setup() {
     },
     1_000,
   )
+  if (opts.backed)
+    store.setBacking({
+      mandateId: m.id,
+      pool: 'DbcPool',
+      route: 'dbc',
+      dammPool: null,
+      baseMint: 'NimusMint',
+      baseSymbol: 'NIMUS',
+      baseDecimals: 6,
+      backerBaseAta: 'BackerNimusAta',
+      slippageBps: 200,
+    })
   let live: DelegationView[] = []
   const chain: GuardChain = {
     list: async () => live,
-    signatures: async () => [],
-    effect: async () => {
-      throw new Error('no activity in these tests')
+    signatures: async (_pda, until) => (opts.debit && until !== opts.debit.sig ? [opts.debit.sig] : []),
+    effect: async (signature) => {
+      if (!opts.debit) throw new Error('no activity in these tests')
+      return { signature, delta: opts.debit.delta, customCode: null, failed: false, blockTimeMs: 1_500, opened: false }
     },
   }
   let kicks = 0
@@ -144,4 +157,22 @@ test('termsMatch: the confirm route and the guard use one exact match', () => {
   assert.ok(!termsMatch(s.m, { ...chain, amountPerPeriod: null }), 'not a recurring delegation')
   assert.ok(!termsMatch(s.m, { ...chain, amountPerPeriod: 50_000n, delegator: DELEGATEE }), 'another wallet')
   assert.ok(!termsMatch(s.m, {}), 'no delegation at all')
+})
+
+test("guard: a backing's debit is the executor's buy, so the guard writes no second receipt for it", async () => {
+  // 7 Oct: buy 4Ycn6Yfp… got the executor's buy receipt and push, then the guard's pull receipt and push.
+  const debit = {
+    sig: 'SigBuy1111111111111111111111111111111111111111111111111111111111111111111111111111111',
+    delta: -50_000n,
+  }
+  const kinds = async (backed: boolean) => {
+    const s = setup({ backed, debit })
+    await s.guard.scan(OWNER)
+    s.setLive([s.view()])
+    await s.guard.scan(OWNER)
+    return s.store.events(OWNER).map((e) => e.kind)
+  }
+  assert.deepEqual(await kinds(true), ['granted'], 'a backing: the debit gets no pull receipt from the guard')
+  // A plain payment's debit is still the guard's to report.
+  assert.deepEqual((await kinds(false)).sort(), ['granted', 'pull'])
 })

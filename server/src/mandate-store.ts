@@ -536,6 +536,33 @@ export class MandateStore {
     return r.changes === 1 ? Number(r.lastInsertRowid) : null
   }
 
+  /** The money-moving receipts already recorded for this transaction: pull, buy, both or neither. */
+  moneyKindsOf(signature: string): EventKind[] {
+    return (
+      this.db.prepare("SELECT kind FROM events WHERE signature = ? AND kind IN ('pull', 'buy')").all(signature) as {
+        kind: string
+      }[]
+    ).map((r) => r.kind as EventKind)
+  }
+
+  /** The guard's pull receipt for this transaction becomes the executor's buy: the same row, in the buy's words. */
+  upgradeToBuy(signature: string, e: LedgerEvent): boolean {
+    const r = this.db
+      .prepare(
+        `UPDATE events SET kind = 'buy', label = COALESCE(@label, label), out_amount = @outBaseUnits,
+                out_decimals = @outDecimals, out_symbol = @outSymbol
+          WHERE signature = @signature AND kind = 'pull'`,
+      )
+      .run({
+        signature,
+        label: e.label,
+        outBaseUnits: e.outBaseUnits ?? null,
+        outDecimals: e.outDecimals ?? null,
+        outSymbol: e.outSymbol ?? null,
+      })
+    return r.changes === 1
+  }
+
   events(
     address: string,
     sinceMs = 0,

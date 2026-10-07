@@ -53,7 +53,7 @@ import {
 } from './parse-permission.js'
 import { cleanLabel, describeMandate, formatUnits, parseUnits, PERIODS, type PeriodKey } from './mandate-text.js'
 import { canCreateMandate, LIMITS, tierOf } from './tier.js'
-import { buildDigest, computeStreak, localDay, type LiveMandate } from './digest.js'
+import { buildDigest, computeStreak, localDay, oneReceiptPerTransaction, type LiveMandate } from './digest.js'
 import { safeError } from './log.js'
 import { allowanceFor, newGrantLifetime } from './allowance.js'
 import { receiptFeed } from './receipt-feed.js'
@@ -738,7 +738,7 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
           : null,
     })
     const feed = receiptFeed(
-      mandates.events(a.address, 0, 500),
+      oneReceiptPerTransaction(mandates.events(a.address, 0, 500)),
       mandates.listMandates(a.address),
       new Set(mandates.guardedPdas(a.address).filter((p) => !mandates.getMandateByPda(p))),
     )

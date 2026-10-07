@@ -256,11 +256,15 @@ export class Guard {
       if (firstSeen && fx.opened) break
     }
     let emitted = 0
+    // A backing's debits are its buys, and the executor writes the receipt for each one it sends:
+    // a pull receipt here would be a second receipt (and push) for the same transaction.
+    const own = this.o.store.getMandateByPda(d.address)
+    const backed = own ? this.o.store.backingOf(own.id) !== null : false
     // Oldest first, so receipts arrive in the order things happened.
     for (const { sig, fx } of fresh.reverse()) {
       let kind: 'pull' | 'refused' | null = null
       if (fx.failed && fx.customCode === ERR.AmountExceedsPeriodLimit) kind = 'refused'
-      else if (!fx.failed && fx.delta < 0n) kind = 'pull'
+      else if (!fx.failed && fx.delta < 0n && !backed) kind = 'pull'
       if (kind) {
         const cap = d.amountPerPeriod ? BigInt(d.amountPerPeriod) : undefined
         // Remaining as the program would compute it now (the stored counter is stale after a roll).
