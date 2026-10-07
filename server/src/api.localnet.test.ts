@@ -236,6 +236,31 @@ test('mandatum API end to end on the real program', { skip: skipLocalnet, timeou
     assert.equal(w.json.liveCount, 2)
     assert.equal(w.json.streak, 1)
     assert.equal(w.json.lastReceipt.kind, 'refused')
+    // One receipt per transaction in the widget too: a buy, then the pull row the guard used to add
+    // for the same signature (7 Oct, 4Ycn6Yfp…): the widget shows the buy.
+    const sig = 'SigWidget1111111111111111111111111111111111111111111111111111111111111111111111111'
+    const row = {
+      delegationPda: 'WidgetPda11111111111111111111111111111111111',
+      delegatee: 'D',
+      label: 'Back WEBT',
+      amountBaseUnits: '1000000',
+      decimals: 6,
+      symbol: 'TUSD',
+      signature: sig,
+      actor: 'nuntius' as const,
+    }
+    const t0 = Date.now() + 60_000
+    mandates.addEvent(owner.address, {
+      ...row,
+      kind: 'buy',
+      at: t0,
+      outBaseUnits: '1',
+      outDecimals: 6,
+      outSymbol: 'WEBT',
+    })
+    mandates.addEvent(owner.address, { ...row, kind: 'pull', at: t0 + 1_000 })
+    assert.equal((await call('/api/widget', { tzOffsetMin: 180 })).json.lastReceipt.kind, 'buy')
+    db.prepare('DELETE FROM events WHERE signature = ?').run(sig)
   })
 
   await t.test('revoke a foreign delegation, then ours: one signature each, delegate: none at the end', async () => {

@@ -790,7 +790,9 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
   route('/api/widget', async (body) => {
     const a = auth(body)
     const live = await liveMandates(a.address)
-    const last = mandates.events(a.address, 0, 1)[0] ?? null
+    // The newest receipt, one per transaction: a buy's old pull row (before 7 Oct) must not stand
+    // in for it. Twenty rows: a pull is dropped only when its buy is among them, so never all.
+    const last = oneReceiptPerTransaction(mandates.events(a.address, 0, 20))[0] ?? null
     const streak = computeStreak(mandates.clockInDays(a.address), localDay(now(), tzOf(body)))
     return {
       rows: live.slice(0, 3).map((m) => ({
