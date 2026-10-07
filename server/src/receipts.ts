@@ -102,6 +102,16 @@ function receiptBody(e: LedgerEvent, x: ReceiptExtra): { title: string; body: st
   const url = `/alert?${q.toString()}`
   switch (e.kind) {
     case 'pull':
+      // A debit on a backing that the executor did not send (guard.ts): say so, never "received".
+      if (e.note === 'not_sent_by_nuntius')
+        return {
+          title: `Not sent by nuntius: ${amt} pulled on ${who}`,
+          body: `A transaction nuntius did not send used this permission. ${left} Check it, and revoke if it was not you.`.replace(
+            /\s+/g,
+            ' ',
+          ),
+          url,
+        }
       return { title: `${who} received ${amt}`, body: `${left} Tap for the on-chain proof.`.trim(), url }
     case 'refused':
       return {

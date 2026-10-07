@@ -11,11 +11,13 @@ import {
   ataFor,
   deviceSignAndSend,
   funded,
+  landWire,
   mintTo,
   requireLocal,
   signAndLand,
   skipLocalnet,
 } from './test/localnet.js'
+import { latestBlockhash, signOnly, waitFor } from './tx.js'
 
 test('guard: receipts for delegations nuntius did not create', { skip: skipLocalnet, timeout: 120_000 }, async (t) => {
   const rpc = requireLocal()
@@ -150,3 +152,115 @@ test('guard: receipts for delegations nuntius did not create', { skip: skipLocal
     assert.equal((await guard2.tick())[0]!.events, 0, 'and nothing twice')
   })
 })
+
+test(
+  "guard: a backing's delegatee key used outside the executor gets a receipt saying so; the executor's own send gets none",
+  { skip: skipLocalnet, timeout: 120_000 },
+  async () => {
+    const rpc = requireLocal()
+    const owner = await funded(rpc)
+    const key = await funded(rpc) // stands in for nuntius's executor key
+    const { mint, ata: userAta } = await mintTo(rpc, owner, owner.address, 1_000_000n)
+    const receiverAta = await ataFor(rpc, key, mint, key.address)
+    const expiryTs = BigInt(Math.floor(Date.now() / 1000) + 3600)
+    const g = await buildGrantTx(rpc, {
+      owner: owner.address,
+      mint,
+      delegatee: key.address,
+      nonce: 3n,
+      amountPerPeriod: 3_000n,
+      periodLengthS: 3600n,
+      startTs: 0n,
+      expiryTs,
+    })
+    assertOk(await deviceSignAndSend(rpc, owner, g.transactionBase64))
+    // nuntius's record of it: a backing, whose pulls are its buys.
+    const store = new MandateStore(new Database(':memory:'))
+    const created = Date.now() - 60_000
+    const m = store.insertMandate(
+      {
+        address: owner.address,
+        label: 'Back WEBT',
+        payee: key.address,
+        receiverAta,
+        mint,
+        symbol: 'USDC',
+        decimals: 6,
+        amountPerPeriod: '3000',
+        pullAmount: '1000',
+        periodLengthS: 3600,
+        expiryTs: Number(expiryTs),
+        nonce: 3,
+        delegatee: key.address,
+        delegationPda: g.delegationPda,
+        authorityPda: 'Auth',
+        userAta,
+      },
+      created,
+    )
+    store.setStatus(m.id, 'active', created)
+    store.setBacking({
+      mandateId: m.id,
+      pool: 'Pool',
+      route: 'dbc',
+      dammPool: null,
+      baseMint: 'Base',
+      baseSymbol: 'WEBT',
+      baseDecimals: 6,
+      backerBaseAta: 'BackerBase',
+      slippageBps: 200,
+    })
+    const pushes: string[] = []
+    const log = createLogger(() => {})
+    const guard = new Guard({
+      store,
+      chain: rpcGuardChain(rpc),
+      receipts: new Receipts(store, { toAddress: async (_a, msg) => (pushes.push(msg.title), [200]) }, log, 'localnet'),
+      log,
+      addresses: () => [owner.address],
+      mintInfo: () => ({ symbol: 'USDC', decimals: 6 }),
+    })
+    await guard.tick() // the silent baseline
+    const pull = async () =>
+      pullInstruction({
+        delegatee: key,
+        delegationPda: g.delegationPda,
+        delegator: owner.address,
+        delegatorAta: userAta,
+        receiverAta,
+        mint,
+        amount: 1_000n,
+      })
+    // The executor's way: the signature is stored before the transaction is sent.
+    const signed = await signOnly(key, [await pull()], await latestBlockhash(rpc))
+    store.claimPull(
+      {
+        mandateId: m.id,
+        delegationPda: g.delegationPda,
+        periodStart: 0,
+        amount: '1000',
+        signature: signed.signature,
+        lastValidBlockHeight: String(signed.lastValidBlockHeight),
+      },
+      Date.now(),
+    )
+    await landWire(rpc, signed.wire)
+    assertOk(await waitFor(rpc, signed.signature, signed.lastValidBlockHeight, 30_000))
+    await guard.tick()
+    assert.deepEqual(
+      store.events(owner.address).filter((e) => e.kind === 'pull'),
+      [],
+      'the executor writes that receipt',
+    )
+    assert.equal(pushes.length, 0)
+    // The same key, not through the executor: the program lets it pull (to any receiver).
+    const foreign = assertOk(await signAndLand(rpc, key, [await pull()]))
+    await guard.tick()
+    const pulls = store.events(owner.address).filter((e) => e.kind === 'pull')
+    assert.equal(pulls.length, 1)
+    assert.equal(pulls[0]!.signature, foreign.signature)
+    assert.equal(pulls[0]!.note, 'not_sent_by_nuntius')
+    assert.deepEqual(pushes, ['Not sent by nuntius: 0.001 USDC pulled on Back WEBT'])
+    assert.equal((await guard.tick())[0]!.events, 0, 'nothing twice')
+  },
+)

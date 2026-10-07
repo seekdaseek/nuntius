@@ -16,7 +16,7 @@ const OWNER = 'Owner11111111111111111111111111111111111111'
 const DELEGATEE = 'DeLegatee1111111111111111111111111111111111'
 const PDA = 'PdaDeLegation1111111111111111111111111111111'
 
-function setup(opts: { backed?: boolean; debit?: { sig: string; delta: bigint } } = {}) {
+function setup(opts: { backed?: boolean; claimed?: boolean; debit?: { sig: string; delta: bigint } } = {}) {
   const store = new MandateStore(new Database(':memory:'))
   const pushes: { title: string; body: string }[] = []
   const push: PushPort = {
@@ -49,6 +49,19 @@ function setup(opts: { backed?: boolean; debit?: { sig: string; delta: bigint } 
     },
     1_000,
   )
+  // The executor stores each pull's signature before it broadcasts (claimPull).
+  if (opts.claimed && opts.debit)
+    store.claimPull(
+      {
+        mandateId: m.id,
+        delegationPda: PDA,
+        periodStart: 0,
+        amount: (-opts.debit.delta).toString(),
+        signature: opts.debit.sig,
+        lastValidBlockHeight: '1',
+      },
+      1_200,
+    )
   if (opts.backed)
     store.setBacking({
       mandateId: m.id,
@@ -159,20 +172,50 @@ test('termsMatch: the confirm route and the guard use one exact match', () => {
   assert.ok(!termsMatch(s.m, {}), 'no delegation at all')
 })
 
-test("guard: a backing's debit is the executor's buy, so the guard writes no second receipt for it", async () => {
-  // 7 Oct: buy 4Ycn6Yfp… got the executor's buy receipt and push, then the guard's pull receipt and push.
-  const debit = {
-    sig: 'SigBuy1111111111111111111111111111111111111111111111111111111111111111111111111111111',
-    delta: -50_000n,
-  }
-  const kinds = async (backed: boolean) => {
-    const s = setup({ backed, debit })
-    await s.guard.scan(OWNER)
-    s.setLive([s.view()])
-    await s.guard.scan(OWNER)
-    return s.store.events(OWNER).map((e) => e.kind)
-  }
-  assert.deepEqual(await kinds(true), ['granted'], 'a backing: the debit gets no pull receipt from the guard')
-  // A plain payment's debit is still the guard's to report.
-  assert.deepEqual((await kinds(false)).sort(), ['granted', 'pull'])
+const DEBIT = {
+  sig: 'SigDebit111111111111111111111111111111111111111111111111111111111111111111111111111',
+  delta: -50_000n,
+}
+const scanned = async (opts: Parameters<typeof setup>[0]) => {
+  const s = setup(opts)
+  await s.guard.scan(OWNER)
+  s.setLive([s.view()])
+  await s.guard.scan(OWNER)
+  return s
+}
+
+test('guard: a debit the executor sent on a backing (its claimed signature) gets no second receipt', async () => {
+  // 7 Oct, 4Ycn6Yfp…: the executor's buy receipt and push, then the guard's pull receipt and push.
+  const s = await scanned({ backed: true, claimed: true, debit: DEBIT })
+  assert.deepEqual(
+    s.store.events(OWNER).map((e) => e.kind),
+    ['granted'],
+  )
+  assert.equal(s.pushes.length, 1, 'only the "granted" push')
+})
+
+test('guard: a debit on a backing that nuntius did not send gets one pull receipt and one push, saying so', async () => {
+  // The delegatee key used by another process, or stolen and pulling to its own account: the
+  // program does not bind the receiver, so only the guard can tell the owner.
+  const s = await scanned({ backed: true, debit: DEBIT })
+  const pulls = s.store.events(OWNER).filter((e) => e.kind === 'pull')
+  assert.equal(pulls.length, 1)
+  assert.equal(pulls[0]!.signature, DEBIT.sig)
+  assert.equal(pulls[0]!.note, 'not_sent_by_nuntius')
+  assert.equal(s.pushes.length, 2, 'the "granted" push and this one')
+  assert.match(s.pushes.at(-1)!.title, /^Not sent by nuntius/)
+  // Scanned again: nothing twice.
+  await s.guard.scan(OWNER)
+  assert.equal(s.pushes.length, 2)
+})
+
+test("guard: a plain payment's debit is still the guard's to report", async () => {
+  const s = await scanned({ debit: DEBIT })
+  assert.deepEqual(
+    s.store
+      .events(OWNER)
+      .map((e) => e.kind)
+      .sort(),
+    ['granted', 'pull'],
+  )
 })

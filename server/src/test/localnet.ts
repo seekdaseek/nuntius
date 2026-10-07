@@ -37,7 +37,7 @@ import { latestBlockhash, signAndSend, signOnly, waitFor, type Landed, type Rpc 
  * preflight would stop at the door. The server's own sends never skip it (tx.ts
  * sendWire; sends.test.ts) except the over-cap demo.
  */
-async function landWire(rpc: Rpc, wire: string): Promise<void> {
+export async function landWire(rpc: Rpc, wire: string): Promise<void> {
   await rpc.sendTransaction(wire as never, { encoding: 'base64', skipPreflight: true }).send()
 }
 

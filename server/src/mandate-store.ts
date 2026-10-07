@@ -536,6 +536,11 @@ export class MandateStore {
     return r.changes === 1 ? Number(r.lastInsertRowid) : null
   }
 
+  /** Whether the executor sent this transaction: it stores each pull's signature before broadcasting it. */
+  executorSent(signature: string): boolean {
+    return this.db.prepare('SELECT 1 FROM pulls WHERE signature = ? LIMIT 1').get(signature) !== undefined
+  }
+
   /** The money-moving receipts already recorded for this transaction: pull, buy, both or neither. */
   moneyKindsOf(signature: string): EventKind[] {
     return (

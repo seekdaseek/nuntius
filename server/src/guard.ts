@@ -256,15 +256,24 @@ export class Guard {
       if (firstSeen && fx.opened) break
     }
     let emitted = 0
-    // A backing's debits are its buys, and the executor writes the receipt for each one it sends:
-    // a pull receipt here would be a second receipt (and push) for the same transaction.
+    // A backing's debits are normally its buys: the executor stores each one's signature before
+    // sending it and writes its receipt, so the guard skips exactly those. Any other debit on a
+    // backing (the delegatee key used elsewhere, or stolen: the program does not bind the
+    // receiver) gets a pull receipt and a push that say nuntius did not send it.
     const own = this.o.store.getMandateByPda(d.address)
     const backed = own ? this.o.store.backingOf(own.id) !== null : false
     // Oldest first, so receipts arrive in the order things happened.
     for (const { sig, fx } of fresh.reverse()) {
       let kind: 'pull' | 'refused' | null = null
+      let foreign = false
       if (fx.failed && fx.customCode === ERR.AmountExceedsPeriodLimit) kind = 'refused'
-      else if (!fx.failed && fx.delta < 0n && !backed) kind = 'pull'
+      else if (!fx.failed && fx.delta < 0n) {
+        if (!backed) kind = 'pull'
+        else if (!this.o.store.executorSent(sig)) {
+          kind = 'pull'
+          foreign = true
+        }
+      }
       if (kind) {
         const cap = d.amountPerPeriod ? BigInt(d.amountPerPeriod) : undefined
         // Remaining as the program would compute it now (the stored counter is stale after a roll).
@@ -290,6 +299,7 @@ export class Guard {
               ...b,
               amountBaseUnits: kind === 'pull' ? (-fx.delta).toString() : null,
               signature: sig,
+              ...(foreign ? { note: 'not_sent_by_nuntius' } : {}),
             },
             {
               capBaseUnits: cap,
