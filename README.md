@@ -269,6 +269,7 @@ These tests cover:
 **Proven on mainnet, from the server log**
 
 - **The daily digest.** The server sent cj7's digest at **2026-10-06T21:00:25Z** (`digest_sent`, logged once the push service accepted it): 2 pulls, 0 refused. The 2 are two transactions, the backing buys `383VkA2U…` (06:45 UTC) and `4A7QwcTD…` (07:23 UTC), each counted once; since `3466ce3` (7 Oct) the receipts list and the digest count one receipt per transaction, so a buy the guard also saw as a debit is never counted or pushed twice. What the phone does with the push (BACK from Clock in) was not rechecked on this build.
+- **One buy, one receipt.** The daily backing buy for mandate `20hk33yEZqNfbJDf` ran at 2026-10-08 07:25:07 UTC on the guard-fix build (booted 2026-10-07 13:54:04 UTC): [`5WWYtZXv…`](https://solscan.io/tx/5WWYtZXvYqYcH7R8ZS92kFHdrw92BY3C22RnKhhJHtoeWTA1coJFznS5deup3GW6q9KCu8XWUdvH4MZxbWmzbHF1), with one buy receipt, one push and no pull receipt for that signature. The 2026-10-07 21:00 UTC digest counted pulls 1 for the one buy since the previous digest.
 
 **Not yet proven**
 
