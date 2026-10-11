@@ -1,5 +1,7 @@
 # nuntius — mandatum
 
+**Clock In judges:** the submitted state is tag [`clock-in-final`](https://github.com/seekdaseek/nuntius/tree/clock-in-final) and APK [v1.0.2](https://github.com/seekdaseek/nuntius/releases/tag/v1.0.2). **Meteora and the Crypto World's Fair:** [METEORA.md](METEORA.md) and [v1.1.0](https://github.com/seekdaseek/nuntius/releases/tag/v1.1.0).
+
 **Grant a payment once in Seed Vault. The chain holds the line. Your phone gets a receipt for every pull, including the ones the chain refused.**
 
 `nuntius` is the app. **mandatum** is what it does: a capped, revocable, recurring on-chain payment authority. The user fills in one sentence (_"Rent to Ana can receive up to 25 USDC every week, until 26 Dec 2026"_) and approves it with **one** Seed Vault signature. After that, payments run on schedule while the phone stays in a pocket. Anything above the cap is rejected by the Solana Subscriptions program itself, with custom error `0x190`. Every pull, and every refusal, arrives as a push that opens the on-chain proof. Revoking is also one signature.
