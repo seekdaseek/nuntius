@@ -18,7 +18,11 @@
 set -euo pipefail
 
 METEORA=0
-[ "${1:-}" = "--meteora" ] && METEORA=1
+if [ "${1:-}" = "--meteora" ]; then
+  METEORA=1
+  shift
+fi
+# Anything after --meteora goes to the validator as is (scripts/partner-configs-localnet.sh).
 
 AGAVE_VERSION="${AGAVE_VERSION:-v3.1.10}"
 SUBS_COMMIT="${SUBS_COMMIT:-364a419}" # "ci: export single combined Squads transaction for mainnet release (#236)"
@@ -81,4 +85,4 @@ fi
 
 echo "starting solana-test-validator on http://127.0.0.1:8899 (Ctrl-C to stop)"
 exec solana-test-validator --reset --quiet --ledger "$LEDGER" \
-  --bpf-program "$PROGRAM_ID" "$SO" ${CLONES[@]+"${CLONES[@]}"}
+  --bpf-program "$PROGRAM_ID" "$SO" ${CLONES[@]+"${CLONES[@]}"} "$@"
