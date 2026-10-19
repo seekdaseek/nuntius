@@ -547,15 +547,31 @@ export const MIGRATION_BUDGET = { unitLimit: 600_000, microLamportsPerUnit: 10_0
 export type CurveStage =
   { stage: 'open' } | { stage: 'complete'; dammPool: string } | { stage: 'migrated'; dammPool: string }
 
+/**
+ * A DBC account read once and decoded as `name`, or null if there is none. The SDK's getPool
+ * and getPoolConfig catch any error from their first read and read the address again as the
+ * transfer-hook variant, so one failed RPC call (a 429, a dropped connection) came back as
+ * "Invalid account discriminator": the crank on nimus, 7 to 15 Oct. Here a failed read stays
+ * that failure, and only bytes of another kind are called another kind.
+ */
+async function readDbcAccount(conn: Connection, address: string, name: 'virtualPool' | 'poolConfig') {
+  const acc = await conn.getAccountInfo(pk(address), 'confirmed')
+  if (!acc) return null
+  const program = encoders(conn).dbc
+  const disc = program.idl.accounts.find((a) => a.name === name)!.discriminator
+  if (acc.owner.toBase58() !== DBC_PROGRAM || !acc.data.subarray(0, 8).equals(Buffer.from(disc)))
+    throw new Error(`${address} is not a DBC ${name} account`)
+  return program.coder.accounts.decode(name, acc.data) as unknown
+}
+
 /** Whether a curve has filled, and whether it has migrated (to its canonical DAMM v2 pool). */
 export async function curveStage(conn: Connection, pool: string): Promise<CurveStage> {
-  const client = new DBC.DynamicBondingCurveClient(conn, 'confirmed')
-  const vp = await client.state.getPool(pool)
+  const vp = await readDbcAccount(conn, pool, 'virtualPool')
   if (!vp) throw new Error(`no DBC pool at ${pool}`)
   const ps = (
-    vp as unknown as { poolState: { config: PublicKey; baseMint: PublicKey; quoteReserve: BN; isMigrated: number } }
+    vp as { poolState: { config: PublicKey; baseMint: PublicKey; quoteReserve: BN; isMigrated: number } }
   ).poolState
-  const config = await client.state.getPoolConfig(ps.config)
+  const config = (await readDbcAccount(conn, ps.config.toBase58(), 'poolConfig')) as DBC.PoolConfig | null
   if (!config) throw new Error(`no DBC config for ${pool}`)
   if (Number(config.migrationOption) !== 1) throw new Error('this curve does not migrate to DAMM v2')
   const dammPool = canonicalDammPool(

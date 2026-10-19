@@ -38,6 +38,7 @@ import {
   swapFailure,
   readLaunch,
   UnsupportedLaunch,
+  curveStage,
   type CurveFacts,
 } from './meteora.js'
 import { fakeHelius } from './test/fake-helius.js'
@@ -430,4 +431,103 @@ test('swap failures: classified by the program that failed and its code', () => 
   assert.equal(swapFailure('damm_v2', 6013), 'error:6013', 'DAMM v2 has no curve to complete')
   assert.equal(swapFailure('dbc', 6043), 'error:6043')
   assert.equal(swapFailure('dbc', null), 'error:unknown')
+})
+
+// --- The crank's read (19 Oct): the nimus pool logged "Invalid account discriminator" ------
+
+/** A connection whose n-th account read fails as web3.js words a rate limit. */
+function failingRead(conn: Connection, n: number) {
+  let reads = 0
+  const read = () => {
+    reads += 1
+    if (reads === n) throw new Error('429 Too Many Requests: Too Many Requests')
+  }
+  const c = conn as unknown as {
+    getAccountInfo: (k: PublicKey, x?: unknown) => Promise<unknown>
+    getAccountInfoAndContext: (k: PublicKey, x?: unknown) => Promise<unknown>
+  }
+  return {
+    conn: {
+      ...conn,
+      getAccountInfo: async (k: PublicKey, x?: unknown) => (read(), c.getAccountInfo(k, x)),
+      getAccountInfoAndContext: async (k: PublicKey, x?: unknown) => (read(), c.getAccountInfoAndContext(k, x)),
+    } as unknown as Connection,
+    reads: () => reads,
+  }
+}
+
+/** A backed curve as the crank reads it: its pool, on a config that migrates to DAMM v2. */
+function backedCurve(quoteReserve: bigint, isMigrated = 0) {
+  const dbc = DBC.createDbcProgram(offline).program
+  const coder = dbc.coder.accounts as unknown as AnyCoder
+  const { pool: vp0, config: cfg0 } = curve(quoteReserve)
+  const configKey = K()
+  const poolKey = K()
+  const base = K()
+  const ps0 = (vp0 as unknown as { poolState: Record<string, unknown> }).poolState
+  const vp = { ...vp0, poolState: { ...ps0, config: new PublicKey(configKey), baseMint: new PublicKey(base), isMigrated } }
+  const cfg = { ...cfg0, migrationOption: 1, migrationFeeOption: 2 }
+  const DBC_ID = DBC.DYNAMIC_BONDING_CURVE_PROGRAM_ID.toBase58()
+  const map = new Map([
+    [configKey, { owner: DBC_ID, data: encoded(coder, dbc.idl as AnyIdl, 'poolConfig', cfg) }],
+    [poolKey, { owner: DBC_ID, data: encoded(coder, dbc.idl as AnyIdl, 'virtualPool', vp) }],
+  ])
+  return { conn: accounts(map), map, poolKey, configKey, base }
+}
+
+test('why: the SDK reads a pool again as the transfer-hook kind when its first read fails, so a 429 reads "Invalid account discriminator"', async () => {
+  const { conn, poolKey, configKey } = backedCurve(0n)
+  const sdk = (c: Connection) => new DBC.DynamicBondingCurveClient(c, 'confirmed').state
+  // The bytes are a plain pool and config: read without a failure, the SDK decodes both.
+  assert.ok(await sdk(conn).getPool(poolKey))
+  assert.ok(await sdk(conn).getPoolConfig(configKey))
+  // The first read fails, the SDK's catch swallows it, and the second read decodes the same
+  // bytes as the transfer-hook variant: the logged error, with no wrong account anywhere.
+  await assert.rejects(sdk(failingRead(conn, 1).conn).getPool(poolKey), /Invalid account discriminator/)
+  await assert.rejects(sdk(failingRead(conn, 1).conn).getPoolConfig(configKey), /Invalid account discriminator/)
+})
+
+test('the crank reads each account once: a failed read stays the 429 it was, and the stage is right', async () => {
+  const threshold = curve(0n).threshold
+  const open = backedCurve(threshold - 1n)
+  for (const n of [1, 2]) {
+    const f = failingRead(open.conn, n)
+    await assert.rejects(curveStage(f.conn, open.poolKey), (e: unknown) => {
+      assert.match((e as Error).message, /429 Too Many Requests/, `read ${n} failed: the error says so`)
+      assert.doesNotMatch((e as Error).message, /discriminator/)
+      return true
+    })
+    assert.equal(f.reads(), n, 'no second read of the same account')
+  }
+  const ok = failingRead(open.conn, 0)
+  assert.deepEqual(await curveStage(ok.conn, open.poolKey), { stage: 'open' })
+  assert.equal(ok.reads(), 2, 'one read for the pool, one for its config')
+  const full = backedCurve(threshold)
+  const dammPool = canonicalDammPool(2, full.base, USDC)
+  assert.deepEqual(await curveStage(full.conn, full.poolKey), { stage: 'complete', dammPool })
+  const moved = backedCurve(threshold, 1)
+  assert.deepEqual(await curveStage(moved.conn, moved.poolKey), {
+    stage: 'migrated',
+    dammPool: canonicalDammPool(2, moved.base, USDC),
+  })
+})
+
+test('the crank still calls a wrong account wrong: other bytes, another owner, or none', async () => {
+  const c = backedCurve(0n)
+  const DBC_ID = DBC.DYNAMIC_BONDING_CURVE_PROGRAM_ID.toBase58()
+  const hooked = Buffer.concat([Buffer.from([237, 219, 184, 23, 42, 189, 169, 35]), c.map.get(c.poolKey)!.data.subarray(8)])
+  const swap = (key: string, v: { owner: string; data: Buffer }) => accounts(new Map([...c.map, [key, v]]))
+  await assert.rejects(
+    curveStage(swap(c.poolKey, { owner: DBC_ID, data: hooked }), c.poolKey),
+    /is not a DBC virtualPool account/,
+  )
+  await assert.rejects(
+    curveStage(swap(c.poolKey, { ...c.map.get(c.poolKey)!, owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' }), c.poolKey),
+    /is not a DBC virtualPool account/,
+  )
+  await assert.rejects(
+    curveStage(swap(c.configKey, { owner: DBC_ID, data: c.map.get(c.poolKey)!.data }), c.poolKey),
+    /is not a DBC poolConfig account/,
+  )
+  await assert.rejects(curveStage(c.conn, K()), /no DBC pool at/)
 })

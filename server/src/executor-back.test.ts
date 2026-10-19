@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
-import { buyJitterS, Executor } from './executor.js'
+import { buyJitterS, Executor, transientRpcError, type ChainPort } from './executor.js'
 import { MandateStore } from './mandate-store.js'
 import { Receipts, type PushPort } from './receipts.js'
 import { buildDigest, oneReceiptPerTransaction, type LedgerEvent } from './digest.js'
@@ -398,4 +398,59 @@ test('the digest counts transactions: a buy and its old pull row are one, and a 
   assert.deepEqual(d.totals.moved, { SKR: '5', USDC: '0.05' })
   assert.deepEqual(d.lines, ['Back NIMUS: 5 SKR bought NIMUS.', 'Ana received 0.05 USDC.'])
   assert.equal(d.title, '2 pulls in the last 24 hours: 5 SKR and 0.05 USDC moved')
+})
+
+// --- The migration crank on a failed read (19 Oct) ----------------------------------------
+
+// As they were logged in production, 7 to 15 Oct (executor_crank_error, executor_backoff,
+// executor_clock_unread, guard_scan_failed): every one is a read that failed on the way.
+const LOGGED_RPC_FAILURES = [
+  '429 Too Many Requests: Too Many Requests',
+  'HTTP error (429): Too Many Requests',
+  'getProgramAccountsV2: HTTP 429',
+  'getProgramAccountsV2: account index service overloaded, please try again.',
+  'fetch failed',
+]
+
+test('a failed RPC read is transient; an answer from the chain or a wrong account is not', () => {
+  for (const m of LOGGED_RPC_FAILURES) assert.equal(transientRpcError(new Error(m)), true, m)
+  for (const m of ['HTTP error (503): Service Unavailable', 'read ECONNRESET', 'connect ETIMEDOUT 1.2.3.4:443'])
+    assert.equal(transientRpcError(new Error(m)), true, m)
+  for (const m of [
+    'Invalid account discriminator',
+    'DbcPool is not a DBC virtualPool account',
+    'no DBC pool at DbcPool',
+    'this curve does not migrate to DAMM v2',
+    'custom program error: 0x1770',
+    'simulation: {"InstructionError":[2,{"Custom":400}]}',
+  ])
+    assert.equal(transientRpcError(new Error(m)), false, m)
+})
+
+test('the crank skips a failed RPC read quietly, and still names any other fault', async () => {
+  const { chain, lines, m, mk } = setup()
+  let fault = new Error('unset')
+  const crankable = chain as ChainPort
+  crankable.migration = async () => {
+    throw fault
+  }
+  const ex = mk()
+  for (const msg of LOGGED_RPC_FAILURES) {
+    fault = new Error(msg)
+    const out = await ex.tick()
+    assert.equal(out['migrate:DbcPool'], 'skipped', msg)
+    assert.notEqual(out[m.id], 'error', 'the buy itself is untouched')
+  }
+  assert.equal(lines.filter((l) => l.includes('executor_crank_error')).length, 0, 'nothing logged for a failed read')
+  // The next tick reads again, and an open curve is simply open.
+  crankable.migration = async () => ({ kind: 'open' })
+  assert.equal((await ex.tick())['migrate:DbcPool'], 'not_started')
+  // A real fault keeps its line.
+  crankable.migration = async () => {
+    throw new Error('DbcPool is not a DBC virtualPool account')
+  }
+  assert.equal((await ex.tick())['migrate:DbcPool'], 'error')
+  const logged = lines.filter((l) => l.includes('executor_crank_error'))
+  assert.equal(logged.length, 1)
+  assert.match(logged[0]!, /is not a DBC virtualPool account/)
 })
