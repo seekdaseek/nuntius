@@ -6,6 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdirSync } from 'node:fs'
+import http from 'node:http'
 import path from 'node:path'
 import { chromium } from 'playwright-core'
 import Database from 'better-sqlite3'
@@ -45,7 +46,41 @@ const skip = !RPC || process.env.LOCALNET_METEORA !== '1' ? 'run scripts/backing
 const CHROME = process.env.CHROMIUM_PATH
 const SHOTS = process.env.SHOTS_DIR ?? ''
 
-async function setup() {
+/**
+ * A JSON-RPC proxy in front of the validator that answers 429, as Helius does in a burst, to the
+ * requests `busy` picks, and passes every other one through.
+ */
+async function busyProxy(target, busy) {
+  const served = { busy: 0, passed: 0 }
+  const server = http.createServer((req, res) => {
+    const chunks = []
+    req.on('data', (c) => chunks.push(c))
+    req.on('end', async () => {
+      const body = Buffer.concat(chunks).toString('utf8')
+      let msg = null
+      try {
+        msg = JSON.parse(body)
+      } catch {
+        /* not JSON-RPC: passed through */
+      }
+      if (msg && busy(msg)) {
+        served.busy += 1
+        res.writeHead(429, { 'content-type': 'text/plain' })
+        return void res.end('Too Many Requests')
+      }
+      served.passed += 1
+      const r = await fetch(target, { method: 'POST', headers: { 'content-type': 'application/json' }, body })
+      res.writeHead(r.status, { 'content-type': r.headers.get('content-type') ?? 'application/json' })
+      res.end(await r.text())
+    })
+  })
+  server.listen(0, '127.0.0.1')
+  await new Promise((r) => server.once('listening', r))
+  return { url: `http://127.0.0.1:${server.address().port}`, served, close: () => server.close() }
+}
+
+/** opts.busyPoolReads: the server's first N reads of the pool get a 429 (its routes' connection, as in index.ts). */
+async function setup(opts = {}) {
   const rpc = createSolanaRpc(RPC)
   const conn = meteoraConnection(RPC)
   const air = async (k) =>
@@ -134,6 +169,15 @@ async function setup() {
   await sendAndConfirmTransaction(conn, openPoolTx, [creatorKp, openBase], { commitment: 'confirmed' })
   const openPool = dbcPoolAddress(quoteMint.toBase58(), openBase.publicKey.toBase58(), openCfg.publicKey.toBase58())
 
+  // The routes read through their own connection, which does not wait out 429s (index.ts).
+  let proxy = null
+  let routeConn = meteoraConnection(RPC, undefined, { retryRateLimits: false })
+  if (opts.busyPoolReads) {
+    let left = opts.busyPoolReads
+    proxy = await busyProxy(RPC, (m) => m.method === 'getAccountInfo' && m.params?.[0] === pool && left-- > 0)
+    routeConn = meteoraConnection(proxy.url, undefined, { retryRateLimits: false })
+  }
+
   // The real server, on this validator, with launches on.
   const executor = await createKeyPairSignerFromBytes(executorKp.secretKey)
   const db = openDb(':memory:')
@@ -178,7 +222,7 @@ async function setup() {
       delegatee: executor.address,
       receipts,
       executor: ex,
-      conn,
+      conn: routeConn,
       origin: 'https://nuntius.test',
     },
     { staticDir: path.join(import.meta.dirname, '..', 'static') },
@@ -187,7 +231,7 @@ async function setup() {
   await new Promise((r) => server.once('listening', r))
   const base = `http://127.0.0.1:${server.address().port}`
   const backer = await createKeyPairSignerFromBytes(backerKp.secretKey)
-  return { rpc, pool, base, server, backer, executor, openPool, baseMint: baseKp.publicKey.toBase58() }
+  return { rpc, pool, base, server, backer, executor, openPool, baseMint: baseKp.publicKey.toBase58(), proxy }
 }
 
 /** A Wallet Standard wallet in the page; every signature is made in Node with the backer's key. */
@@ -645,6 +689,57 @@ test(
     } finally {
       await walletBrowser?.close()
       await browser.close()
+      env.server.close()
+    }
+  },
+)
+
+test(
+  'a busy Solana RPC: the page says so, asks again by itself, then shows the launch; never "not a launch"',
+  { skip, timeout: 300_000 },
+  async () => {
+    // Six busy reads of the pool: two requests' worth (three tries each), so the page sees 503 twice.
+    const env = await setup({ busyPoolReads: 6 })
+    const browser = await chromium.launch(CHROME ? { executablePath: CHROME } : {})
+    try {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+      const statuses = []
+      page.on('response', (r) => {
+        if (r.url().endsWith(`/api/launch/${env.pool}`)) statuses.push(r.status())
+      })
+      // Every text the state line ever shows, to prove "not a launch" never appeared.
+      await page.addInitScript(() => {
+        window.__states = []
+        document.addEventListener('DOMContentLoaded', () => {
+          const el = document.getElementById('state')
+          new MutationObserver(() => window.__states.push(el.textContent)).observe(el, {
+            childList: true,
+            characterData: true,
+            subtree: true,
+          })
+        })
+      })
+      await page.goto(`${env.base}/l/${env.pool}`)
+      await page.waitForFunction(
+        () => document.getElementById('state')?.textContent === 'The Solana RPC is busy. Trying again…',
+      )
+      await shot(page, '10-backing-rpc-busy')
+      await page.waitForFunction(
+        () => document.getElementById('route')?.textContent?.startsWith('On its bonding curve'),
+        null,
+        { timeout: 60_000 },
+      )
+      assert.equal(await page.textContent('#symbol'), 'WEBT')
+      assert.notEqual(await page.textContent('#state'), 'The Solana RPC is busy. Trying again…')
+      const states = await page.evaluate(() => window.__states)
+      assert.ok(states.includes('The Solana RPC is busy. Trying again…'), 'the busy state was shown')
+      assert.ok(!states.some((t) => /not a launch/.test(t)), `never "not a launch": ${JSON.stringify(states)}`)
+      assert.deepEqual(statuses, [503, 503, 200], 'two busy answers, then the launch')
+      assert.equal(env.proxy.served.busy, 6)
+      await shot(page, '11-backing-after-busy')
+    } finally {
+      await browser.close()
+      env.proxy?.close()
       env.server.close()
     }
   },

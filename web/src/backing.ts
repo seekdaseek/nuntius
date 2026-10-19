@@ -88,6 +88,8 @@ class ApiError extends Error {
   constructor(
     readonly code: string,
     message: string,
+    /** Retry-After, in seconds, when the server sent one (503 chain_busy). */
+    readonly retryAfterS: number | null = null,
   ) {
     super(message)
   }
@@ -99,8 +101,14 @@ async function api<T>(path: string, body?: object): Promise<T> {
     body: body ? JSON.stringify(body) : undefined,
   })
   const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string }
-  if (!res.ok || !json.ok)
-    throw new ApiError(json.error ?? `http_${res.status}`, json.message ?? json.error ?? `HTTP ${res.status}`)
+  if (!res.ok || !json.ok) {
+    const after = Number(res.headers.get('retry-after'))
+    throw new ApiError(
+      json.error ?? `http_${res.status}`,
+      json.message ?? json.error ?? `HTTP ${res.status}`,
+      Number.isFinite(after) && after > 0 ? after : null,
+    )
+  }
   return json as T
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -176,15 +184,36 @@ function countdown(ms: number): string {
   return d > 0 ? `in ${d} d ${h} h` : h > 0 ? `in ${h} h ${m} m` : `in ${m} m`
 }
 
+/** How long the page keeps asking while the Solana RPC is busy (503 chain_busy). */
+const BUSY_FOR_MS = 60_000
+const BUSY_WORDS = 'The Solana RPC is busy. Trying again…'
+
 async function loadLaunch() {
-  try {
-    launch = (await api<{ launch: Launch }>(`/api/launch/${pool}`)).launch
-  } catch (e) {
-    $('state').textContent =
-      e instanceof ApiError && e.code === 'launch_unsupported' ? e.message : 'This is not a launch nuntius can read.'
-    $('back').hidden = true
-    $('mbar').hidden = true
-    return
+  // A busy RPC says nothing about the launch: ask again, for up to a minute, and never show it
+  // as "not a launch". The token's promises are read again with every answer.
+  const until = Date.now() + BUSY_FOR_MS
+  for (;;) {
+    try {
+      launch = (await api<{ launch: Launch }>(`/api/launch/${pool}`)).launch
+      if ($('state').textContent === BUSY_WORDS) $('state').textContent = ''
+      break
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'chain_busy') {
+        const left = until - Date.now()
+        if (left > 0) {
+          $('state').textContent = BUSY_WORDS
+          await sleep(Math.min((e.retryAfterS ?? 5) * 1000, left))
+          continue
+        }
+        $('state').textContent = 'The Solana RPC is still busy. Reload this page in a minute to see the launch.'
+        return
+      }
+      $('state').textContent =
+        e instanceof ApiError && e.code === 'launch_unsupported' ? e.message : 'This is not a launch nuntius can read.'
+      $('back').hidden = true
+      $('mbar').hidden = true
+      return
+    }
   }
   const q = quote()
   $('symbol').textContent = launch.symbol ?? short(launch.baseMint)
