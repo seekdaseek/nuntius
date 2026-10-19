@@ -10,6 +10,7 @@
 import { PublicKey } from '@solana/web3.js'
 import * as DBC from '@meteora-ag/dynamic-bonding-curve-sdk'
 import type { MeteoraConnection } from './meteora.js'
+import { busyRetry } from './rpc-busy.js'
 
 const TOKEN_PROGRAMS = new Set([
   'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
@@ -93,7 +94,10 @@ export async function readTokenTrust(conn: MeteoraConnection, mint: string): Pro
   } catch {
     return empty
   }
-  const accounts = await conn.getMultipleAccountsInfo([new PublicKey(mint), metadata]).catch(() => null)
+  // Read on every request, never cached; a busy RPC is tried again, then the facts stay unread.
+  const accounts = await busyRetry(() => conn.getMultipleAccountsInfo([new PublicKey(mint), metadata])).catch(
+    () => null,
+  )
   if (!accounts) return empty
   const [m, md] = accounts
   const auth = m && TOKEN_PROGRAMS.has(m.owner.toBase58()) ? mintAuthorities(m.data) : null

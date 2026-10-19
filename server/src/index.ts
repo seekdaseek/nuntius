@@ -79,8 +79,11 @@ if (mandateConfig) {
   const ownWallets = parseOwnWallets(process.env.OWN_WALLETS)
   const feedBus = new FeedBus(mandates.database, ownWallets)
   const receipts = new Receipts(mandates, push, log, mandateConfig.cluster, (a, e) => feedBus.fromReceipt(a, e))
-  // The Meteora SDKs speak web3.js: one connection to the same RPC, for back permissions and launches.
+  // The Meteora SDKs speak web3.js: connections to the same RPC, for buys and the migration crank,
+  // and for the routes a person waits on (the backing page, back, launch). Those do not wait out
+  // a 429 inside web3.js: their reads retry briefly, then answer 503 chain_busy (rpc-busy.ts).
   const conn = meteoraConnection(mandateConfig.rpcUrl)
+  const routeConn = meteoraConnection(mandateConfig.rpcUrl, undefined, { retryRateLimits: false })
   const executor = new Executor({ store: mandates, chain: rpcChain(rpc, delegatee, PULL_BUDGET, conn), receipts, log })
   const guard = new Guard({
     store: mandates,
@@ -111,7 +114,7 @@ if (mandateConfig) {
     delegatee: delegatee.address,
     receipts,
     executor,
-    conn,
+    conn: routeConn,
     origin: `https://${config.domain}`,
     feed: { bus: feedBus, own: ownWallets },
     scans,

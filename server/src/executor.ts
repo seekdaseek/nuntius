@@ -44,6 +44,7 @@ import {
 import type { Receipts } from './receipts.js'
 import type { Logger } from './log.js'
 import { safeError } from './log.js'
+import { transientRpcError } from './rpc-busy.js'
 import {
   computeBudgetInstructions,
   latestBlockhash,
@@ -937,15 +938,6 @@ export function buyJitterS(mandateId: string, periodStart: number, periodLengthS
   for (const c of `${mandateId}:${periodStart}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0
   const span = Math.min(Math.floor(periodLengthS / 10), 600)
   return span > 0 ? h % span : 0
-}
-
-/**
- * An RPC call that failed on the way, not an answer: a rate limit or an overloaded node (as
- * kit and web3.js word them), or a connection that dropped. Read again, it may well succeed.
- */
-export function transientRpcError(e: unknown): boolean {
-  const m = e instanceof Error ? e.message : String(e)
-  return /\b429\b|too many requests|\b50[234]\b|overloaded|fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i.test(m)
 }
 
 /** Runs tick() on an interval. Returns stop(). */

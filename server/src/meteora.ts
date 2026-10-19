@@ -27,6 +27,7 @@ import * as CPAMM from '@meteora-ag/cp-amm-sdk'
 import { AccountRole, type Address, type Instruction } from '@solana/kit'
 import { findAssociatedTokenPda, getMintSize, getTokenSize, TOKEN_PROGRAM_ADDRESS } from '@solana-program/token'
 import { isHelius, programAccountsV2, type Fetch } from './program-accounts.js'
+import { busyRetry, ChainBusy } from './rpc-busy.js'
 
 export const DBC_PROGRAM = 'dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN'
 export const DAMM_V2_PROGRAM = 'cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG'
@@ -297,9 +298,6 @@ export function canonicalDammPool(migrationFeeOption: number, baseMint: string, 
 /** A pool "Back a launch" cannot buy, with the sentence that says why. */
 export class UnsupportedLaunch extends Error {}
 
-/** The DBC account types that are not a plain virtual pool (IDL discriminators). */
-const TRANSFER_HOOK_POOL = Buffer.from([237, 219, 184, 23, 42, 189, 169, 35])
-
 /** What the refusal check reads from a curve's config and pool. */
 export interface CurveFacts {
   tokenType: number
@@ -337,20 +335,50 @@ export function backRefusal(c: CurveFacts, nowS: number, slot: number): string |
   return null
 }
 
+const DBC_KINDS = ['virtualPool', 'transferHookPool', 'poolConfig', 'configWithTransferHook'] as const
+type DbcKind = (typeof DBC_KINDS)[number]
+
+/**
+ * A DBC account read once, with the kind its discriminator names (null: not a DBC account, or
+ * none of these), or null if there is no account. The SDK's getPool and getPoolConfig catch any
+ * error from their first read and read the address again as the transfer-hook variant, so one
+ * failed RPC call came back as "Invalid account discriminator" (the crank, 7 to 15 Oct) or, here,
+ * as "no DBC pool" (the backing page's 404). Here a busy RPC is tried again and then thrown as
+ * ChainBusy, and only bytes of another kind are called another kind.
+ */
+async function readDbc(conn: Connection, address: string): Promise<{ kind: DbcKind | null; data: Buffer } | null> {
+  const acc = await busyRetry(() => conn.getAccountInfo(pk(address), 'confirmed'))
+  if (!acc) return null
+  if (acc.owner.toBase58() !== DBC_PROGRAM) return { kind: null, data: acc.data }
+  const accounts = encoders(conn).dbc.idl.accounts
+  const head = acc.data.subarray(0, 8)
+  const kind = DBC_KINDS.find((k) => head.equals(Buffer.from(accounts.find((a) => a.name === k)!.discriminator)))
+  return { kind: kind ?? null, data: acc.data }
+}
+
+const decodeDbc = <T>(conn: Connection, kind: DbcKind, data: Buffer): T =>
+  encoders(conn).dbc.coder.accounts.decode(kind, data) as T
+
+/** A curve's config, of either kind: the transfer-hook kind wraps the same fields. */
+async function readDbcConfig(conn: Connection, address: string, pool: string): Promise<DBC.PoolConfig> {
+  const a = await readDbc(conn, address)
+  if (!a) throw new Error(`no DBC config for ${pool}`)
+  if (a.kind === 'poolConfig') return decodeDbc<DBC.PoolConfig>(conn, a.kind, a.data)
+  if (a.kind === 'configWithTransferHook') return decodeDbc<{ config: DBC.PoolConfig }>(conn, a.kind, a.data).config
+  throw new Error(`${address} is not a DBC poolConfig account`)
+}
+
 /** Reads a launch: curve progress, and which pool a buy goes to now. */
 export async function readLaunch(
   conn: Connection,
   pool: string,
   knownDammPool: string | null = null,
 ): Promise<LaunchState & { raw: { dbc?: { pool: DBC.VirtualPool; config: DBC.PoolConfig }; damm?: CPAMM.PoolState } }> {
-  const client = new DBC.DynamicBondingCurveClient(conn, 'confirmed')
-  const vp = await client.state.getPool(pool).catch(() => null)
-  if (!vp) {
-    const acc = await conn.getAccountInfo(pk(pool))
-    if (acc && acc.owner.toBase58() === DBC_PROGRAM && acc.data.subarray(0, 8).equals(TRANSFER_HOOK_POOL))
-      throw new UnsupportedLaunch('This launch’s token has a transfer hook, which nuntius cannot buy.')
-    throw new Error(`no DBC pool at ${pool}`)
-  }
+  const a = await readDbc(conn, pool)
+  if (a?.kind === 'transferHookPool')
+    throw new UnsupportedLaunch('This launch’s token has a transfer hook, which nuntius cannot buy.')
+  if (a?.kind !== 'virtualPool') throw new Error(`no DBC pool at ${pool}`)
+  const vp = decodeDbc<DBC.VirtualPool>(conn, 'virtualPool', a.data)
   const ps = (
     vp as unknown as {
       poolState: {
@@ -364,12 +392,11 @@ export async function readLaunch(
       }
     }
   ).poolState
-  const config = await client.state.getPoolConfig(ps.config)
-  if (!config) throw new Error(`no DBC config for ${pool}`)
+  const config = await readDbcConfig(conn, ps.config.toBase58(), pool)
   const quoteMint = config.quoteMint.toBase58()
   const baseMint = ps.baseMint.toBase58()
   const fee = config.poolFees.baseFee
-  const slot = await conn.getSlot('confirmed')
+  const slot = await busyRetry(() => conn.getSlot('confirmed'))
   const refusal = backRefusal(
     {
       tokenType: Number(config.tokenType),
@@ -422,9 +449,13 @@ export async function readLaunch(
   const dammPool = canonicalDammPool(Number(config.migrationFeeOption), baseMint, quoteMint)
   if (knownDammPool && knownDammPool !== dammPool)
     throw new Error(`stored DAMM v2 pool ${knownDammPool} is not the curve's migrated pool ${dammPool}`)
-  const a = await new CPAMM.CpAmm(conn).fetchPoolState(pk(dammPool)).catch(() => null)
-  if (!a) return { ...base, route: 'migrating', dammPool: null, swap: null, raw: {} }
-  const pair = [a.tokenAMint.toBase58(), a.tokenBMint.toBase58()].sort().join()
+  // Not readable yet: still migrating. A busy RPC is not that: it is thrown, never read as a state.
+  const amm = await busyRetry(() => new CPAMM.CpAmm(conn).fetchPoolState(pk(dammPool))).catch((e: unknown) => {
+    if (e instanceof ChainBusy) throw e
+    return null
+  })
+  if (!amm) return { ...base, route: 'migrating', dammPool: null, swap: null, raw: {} }
+  const pair = [amm.tokenAMint.toBase58(), amm.tokenBMint.toBase58()].sort().join()
   if (pair !== [baseMint, quoteMint].sort().join())
     throw new Error(`the migrated pool ${dammPool} does not pair ${baseMint} with ${quoteMint}`)
   return {
@@ -434,14 +465,14 @@ export async function readLaunch(
     swap: {
       route: 'damm_v2',
       pool: dammPool,
-      tokenAMint: a.tokenAMint.toBase58(),
-      tokenBMint: a.tokenBMint.toBase58(),
-      tokenAVault: a.tokenAVault.toBase58(),
-      tokenBVault: a.tokenBVault.toBase58(),
+      tokenAMint: amm.tokenAMint.toBase58(),
+      tokenBMint: amm.tokenBMint.toBase58(),
+      tokenAVault: amm.tokenAVault.toBase58(),
+      tokenBVault: amm.tokenBVault.toBase58(),
       baseMint,
       quoteMint,
     },
-    raw: { damm: a },
+    raw: { damm: amm },
   }
 }
 
@@ -547,32 +578,17 @@ export const MIGRATION_BUDGET = { unitLimit: 600_000, microLamportsPerUnit: 10_0
 export type CurveStage =
   { stage: 'open' } | { stage: 'complete'; dammPool: string } | { stage: 'migrated'; dammPool: string }
 
-/**
- * A DBC account read once and decoded as `name`, or null if there is none. The SDK's getPool
- * and getPoolConfig catch any error from their first read and read the address again as the
- * transfer-hook variant, so one failed RPC call (a 429, a dropped connection) came back as
- * "Invalid account discriminator": the crank on nimus, 7 to 15 Oct. Here a failed read stays
- * that failure, and only bytes of another kind are called another kind.
- */
-async function readDbcAccount(conn: Connection, address: string, name: 'virtualPool' | 'poolConfig') {
-  const acc = await conn.getAccountInfo(pk(address), 'confirmed')
-  if (!acc) return null
-  const program = encoders(conn).dbc
-  const disc = program.idl.accounts.find((a) => a.name === name)!.discriminator
-  if (acc.owner.toBase58() !== DBC_PROGRAM || !acc.data.subarray(0, 8).equals(Buffer.from(disc)))
-    throw new Error(`${address} is not a DBC ${name} account`)
-  return program.coder.accounts.decode(name, acc.data) as unknown
-}
-
 /** Whether a curve has filled, and whether it has migrated (to its canonical DAMM v2 pool). */
 export async function curveStage(conn: Connection, pool: string): Promise<CurveStage> {
-  const vp = await readDbcAccount(conn, pool, 'virtualPool')
-  if (!vp) throw new Error(`no DBC pool at ${pool}`)
-  const ps = (
-    vp as { poolState: { config: PublicKey; baseMint: PublicKey; quoteReserve: BN; isMigrated: number } }
+  const a = await readDbc(conn, pool)
+  if (!a) throw new Error(`no DBC pool at ${pool}`)
+  if (a.kind !== 'virtualPool') throw new Error(`${pool} is not a DBC virtualPool account`)
+  const ps = decodeDbc<{ poolState: { config: PublicKey; baseMint: PublicKey; quoteReserve: BN; isMigrated: number } }>(
+    conn,
+    'virtualPool',
+    a.data,
   ).poolState
-  const config = (await readDbcAccount(conn, ps.config.toBase58(), 'poolConfig')) as DBC.PoolConfig | null
-  if (!config) throw new Error(`no DBC config for ${pool}`)
+  const config = await readDbcConfig(conn, ps.config.toBase58(), pool)
   if (Number(config.migrationOption) !== 1) throw new Error('this curve does not migrate to DAMM v2')
   const dammPool = canonicalDammPool(
     Number(config.migrationFeeOption),
@@ -709,8 +725,16 @@ export async function readConfig(
 export type MeteoraConnection = Connection
 
 /** One connection to the RPC for the Meteora SDKs, paged on Helius (pageConnection). */
-export function meteoraConnection(rpcUrl: string, doFetch?: Fetch): MeteoraConnection {
-  return pageConnection(new Connection(rpcUrl, 'confirmed'), doFetch)
+export function meteoraConnection(
+  rpcUrl: string,
+  doFetch?: Fetch,
+  opts: { retryRateLimits?: boolean } = {},
+): MeteoraConnection {
+  // web3.js waits out a 429 by itself, up to about 15 s a call (0.5 to 8 s, five times). Off
+  // for the routes a person waits on: busyRetry tries a read three times in about a second,
+  // and the route answers 503 chain_busy so the page can try again.
+  const disableRetryOnRateLimit = opts.retryRateLimits === false
+  return pageConnection(new Connection(rpcUrl, { commitment: 'confirmed', disableRetryOnRateLimit }), doFetch)
 }
 
 /**
@@ -740,7 +764,7 @@ export async function tokenInfo(
   conn: MeteoraConnection,
   mint: string,
 ): Promise<{ decimals: number; symbol: string } | null> {
-  const m = await conn.getAccountInfo(new PublicKey(mint))
+  const m = await busyRetry(() => conn.getAccountInfo(new PublicKey(mint)))
   if (!m || m.data.length < 45) return null
   const decimals = m.data[44] ?? 0
   let symbol = `${mint.slice(0, 4)}…`

@@ -53,6 +53,7 @@ import type { Mandate, MandateStore } from './mandate-store.js'
 import type { Rpc } from './tx.js'
 import { limitByIp, type RateLimiter } from './rate-limit.js'
 import { safeError } from './log.js'
+import { BUSY_RETRY_AFTER_S, transientRpcError } from './rpc-busy.js'
 import { CLIENT_HEADER, clientAtLeast } from './client-version.js'
 import { commitmentSentence, FeedBus, feedFromDb, parseOwnWallets, registerFeedRoutes } from './launch-feed.js'
 import { readMetadataUri, TokenImages } from './token-image.js'
@@ -107,6 +108,14 @@ export class HttpError extends Error {
   ) {
     super(message ?? code)
   }
+}
+
+/** The RPC was busy (rate limit, overload, dropped connection): not an answer about the pool. */
+function chainBusy(res: express.Response): void {
+  res.setHeader('Retry-After', String(BUSY_RETRY_AFTER_S))
+  res
+    .status(503)
+    .json({ ok: false, error: 'chain_busy', message: 'The Solana RPC is busy. Try again in a few seconds.' })
 }
 
 export interface LaunchDeps {
@@ -192,6 +201,7 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
       handler(body)
         .then((out) => res.json({ ok: true, ...out }))
         .catch((e: unknown) => {
+          if (!(e instanceof HttpError) && transientRpcError(e)) return void chainBusy(res)
           const he = e instanceof HttpError ? e : (e as { status?: number; code?: string; message?: string })
           if (typeof he.status === 'number' && typeof he.code === 'string')
             res.status(he.status).json({ ok: false, error: he.code, message: he.message })
@@ -212,6 +222,7 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
       L = await readLaunch(d.conn, pool)
     } catch (e) {
       if (e instanceof UnsupportedLaunch) throw new HttpError(400, 'launch_unsupported', e.message)
+      if (transientRpcError(e)) throw e // 503 chain_busy: the RPC said nothing about the pool
       throw new HttpError(400, 'bad_pool', safeError(e))
     }
     if (L.refusal) throw new HttpError(400, 'launch_unsupported', L.refusal)
@@ -417,7 +428,8 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
       const L = await readLaunch(d.conn, l.pool)
       d.mandates.setLaunchLive(mint)
       return { launch: launchView(L, l.symbol) }
-    } catch {
+    } catch (e) {
+      if (transientRpcError(e)) throw e // 503 chain_busy, not "not landed"
       throw new HttpError(409, 'not_on_chain_yet', 'the launch has not landed yet')
     }
   })
@@ -502,9 +514,11 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
         })
       })
       .catch((e: unknown) =>
-        e instanceof UnsupportedLaunch
-          ? res.status(422).json({ ok: false, error: 'launch_unsupported', message: e.message })
-          : res.status(404).json({ ok: false, error: 'no_launch', message: safeError(e) }),
+        transientRpcError(e)
+          ? chainBusy(res)
+          : e instanceof UnsupportedLaunch
+            ? res.status(422).json({ ok: false, error: 'launch_unsupported', message: e.message })
+            : res.status(404).json({ ok: false, error: 'no_launch', message: safeError(e) }),
       )
   })
 

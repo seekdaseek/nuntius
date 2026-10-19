@@ -435,26 +435,29 @@ test('swap failures: classified by the program that failed and its code', () => 
 
 // --- The crank's read (19 Oct): the nimus pool logged "Invalid account discriminator" ------
 
-/** A connection whose n-th account read fails as web3.js words a rate limit. */
-function failingRead(conn: Connection, n: number) {
+/** A connection whose reads fail, as web3.js words a rate limit, where `fails(n)` says so (n from 1). */
+function failing(conn: Connection, fails: (n: number) => boolean) {
   let reads = 0
   const read = () => {
     reads += 1
-    if (reads === n) throw new Error('429 Too Many Requests: Too Many Requests')
+    if (fails(reads)) throw new Error('429 Too Many Requests: Too Many Requests')
   }
-  const c = conn as unknown as {
-    getAccountInfo: (k: PublicKey, x?: unknown) => Promise<unknown>
-    getAccountInfoAndContext: (k: PublicKey, x?: unknown) => Promise<unknown>
-  }
+  const c = conn as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>
+  const wrap =
+    (name: string) =>
+    async (...a: unknown[]) => (read(), c[name]!(...a))
   return {
     conn: {
       ...conn,
-      getAccountInfo: async (k: PublicKey, x?: unknown) => (read(), c.getAccountInfo(k, x)),
-      getAccountInfoAndContext: async (k: PublicKey, x?: unknown) => (read(), c.getAccountInfoAndContext(k, x)),
+      getAccountInfo: wrap('getAccountInfo'),
+      getAccountInfoAndContext: wrap('getAccountInfoAndContext'),
+      getSlot: wrap('getSlot'),
     } as unknown as Connection,
     reads: () => reads,
   }
 }
+/** The n-th read fails, and only that one. */
+const failingRead = (conn: Connection, n: number) => failing(conn, (i) => i === n)
 
 /** A backed curve as the crank reads it: its pool, on a config that migrates to DAMM v2. */
 function backedCurve(quoteReserve: bigint, isMigrated = 0) {
@@ -465,7 +468,10 @@ function backedCurve(quoteReserve: bigint, isMigrated = 0) {
   const poolKey = K()
   const base = K()
   const ps0 = (vp0 as unknown as { poolState: Record<string, unknown> }).poolState
-  const vp = { ...vp0, poolState: { ...ps0, config: new PublicKey(configKey), baseMint: new PublicKey(base), isMigrated } }
+  const vp = {
+    ...vp0,
+    poolState: { ...ps0, config: new PublicKey(configKey), baseMint: new PublicKey(base), isMigrated },
+  }
   const cfg = { ...cfg0, migrationOption: 1, migrationFeeOption: 2 }
   const DBC_ID = DBC.DYNAMIC_BONDING_CURVE_PROGRAM_ID.toBase58()
   const map = new Map([
@@ -487,21 +493,25 @@ test('why: the SDK reads a pool again as the transfer-hook kind when its first r
   await assert.rejects(sdk(failingRead(conn, 1).conn).getPoolConfig(configKey), /Invalid account discriminator/)
 })
 
-test('the crank reads each account once: a failed read stays the 429 it was, and the stage is right', async () => {
+test('the crank reads each account once, a busy read is tried again, and the stage is right', async () => {
   const threshold = curve(0n).threshold
   const open = backedCurve(threshold - 1n)
-  for (const n of [1, 2]) {
-    const f = failingRead(open.conn, n)
-    await assert.rejects(curveStage(f.conn, open.poolKey), (e: unknown) => {
-      assert.match((e as Error).message, /429 Too Many Requests/, `read ${n} failed: the error says so`)
-      assert.doesNotMatch((e as Error).message, /discriminator/)
-      return true
-    })
-    assert.equal(f.reads(), n, 'no second read of the same account')
-  }
   const ok = failingRead(open.conn, 0)
   assert.deepEqual(await curveStage(ok.conn, open.poolKey), { stage: 'open' })
   assert.equal(ok.reads(), 2, 'one read for the pool, one for its config')
+  for (const n of [1, 2]) {
+    const f = failingRead(open.conn, n)
+    assert.deepEqual(await curveStage(f.conn, open.poolKey), { stage: 'open' }, `read ${n} failed once`)
+    assert.equal(f.reads(), 3, 'the failed read, tried once more')
+  }
+  // Busy throughout: three tries of the pool, then a busy RPC, never "Invalid account discriminator".
+  const busy = failing(open.conn, () => true)
+  await assert.rejects(curveStage(busy.conn, open.poolKey), (e: unknown) => {
+    assert.match((e as Error).message, /the Solana RPC is busy \(429 Too Many Requests/)
+    assert.doesNotMatch((e as Error).message, /discriminator/)
+    return true
+  })
+  assert.equal(busy.reads(), 3)
   const full = backedCurve(threshold)
   const dammPool = canonicalDammPool(2, full.base, USDC)
   assert.deepEqual(await curveStage(full.conn, full.poolKey), { stage: 'complete', dammPool })
@@ -515,14 +525,20 @@ test('the crank reads each account once: a failed read stays the 429 it was, and
 test('the crank still calls a wrong account wrong: other bytes, another owner, or none', async () => {
   const c = backedCurve(0n)
   const DBC_ID = DBC.DYNAMIC_BONDING_CURVE_PROGRAM_ID.toBase58()
-  const hooked = Buffer.concat([Buffer.from([237, 219, 184, 23, 42, 189, 169, 35]), c.map.get(c.poolKey)!.data.subarray(8)])
+  const hooked = Buffer.concat([
+    Buffer.from([237, 219, 184, 23, 42, 189, 169, 35]),
+    c.map.get(c.poolKey)!.data.subarray(8),
+  ])
   const swap = (key: string, v: { owner: string; data: Buffer }) => accounts(new Map([...c.map, [key, v]]))
   await assert.rejects(
     curveStage(swap(c.poolKey, { owner: DBC_ID, data: hooked }), c.poolKey),
     /is not a DBC virtualPool account/,
   )
   await assert.rejects(
-    curveStage(swap(c.poolKey, { ...c.map.get(c.poolKey)!, owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' }), c.poolKey),
+    curveStage(
+      swap(c.poolKey, { ...c.map.get(c.poolKey)!, owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' }),
+      c.poolKey,
+    ),
     /is not a DBC virtualPool account/,
   )
   await assert.rejects(
@@ -530,4 +546,53 @@ test('the crank still calls a wrong account wrong: other bytes, another owner, o
     /is not a DBC poolConfig account/,
   )
   await assert.rejects(curveStage(c.conn, K()), /no DBC pool at/)
+})
+
+// --- readLaunch on a busy RPC (19 Oct): the backing page answered 404 during 429 bursts ----
+
+test('readLaunch: the first two reads 429, the third answers, and it is the launch', async () => {
+  const c = backedCurve(0n)
+  const f = failing(c.conn, (n) => n <= 2)
+  const L = await readLaunch(f.conn, c.poolKey)
+  assert.equal(L.pool, c.poolKey)
+  assert.equal(L.route, 'dbc')
+  assert.equal(L.baseMint, c.base)
+})
+
+test('readLaunch: an RPC that stays busy is a busy RPC, never "no DBC pool"', async () => {
+  const c = backedCurve(0n)
+  // Busy from the first read (the pool), the second (its config) and the third (the slot) on.
+  for (const from of [1, 2, 3]) {
+    await assert.rejects(readLaunch(failing(c.conn, (n) => n >= from).conn, c.poolKey), (e: unknown) => {
+      assert.match((e as Error).message, /the Solana RPC is busy/, `busy from read ${from}`)
+      assert.doesNotMatch((e as Error).message, /no DBC pool|no DBC config/)
+      return true
+    })
+  }
+})
+
+test('readLaunch: a migrated curve whose DAMM v2 pool cannot be read for a busy RPC is not "migrating"', async () => {
+  const base = K()
+  const canonical = canonicalDammPool(2, base, USDC)
+  const { conn, poolKey } = await migratedLaunch([canonical], base)
+  assert.equal((await readLaunch(conn, poolKey)).route, 'damm_v2')
+  // Pool, config and slot answer; the DAMM v2 pool's reads are all busy.
+  await assert.rejects(readLaunch(failing(conn, (n) => n >= 4).conn, poolKey), /the Solana RPC is busy/)
+})
+
+test('readLaunch: "no DBC pool" is only for an account that is not one', async () => {
+  const c = backedCurve(0n)
+  const DBC_ID = DBC.DYNAMIC_BONDING_CURVE_PROGRAM_ID.toBase58()
+  await assert.rejects(readLaunch(c.conn, K()), /no DBC pool at/, 'no account')
+  const swap = (v: { owner: string; data: Buffer }) => accounts(new Map([...c.map, [c.poolKey, v]]))
+  await assert.rejects(
+    readLaunch(swap({ owner: DBC_ID, data: c.map.get(c.configKey)!.data }), c.poolKey),
+    /no DBC pool at/,
+    'a DBC account of another kind',
+  )
+  await assert.rejects(
+    readLaunch(swap({ ...c.map.get(c.poolKey)!, owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' }), c.poolKey),
+    /no DBC pool at/,
+    'another program’s account',
+  )
 })

@@ -70,3 +70,24 @@ export function launchConnection(config: string, configData: Buffer): Connection
     getAccountInfoAndContext: async (k: PublicKey) => ({ context: { slot: 1 }, value: info(k) }),
   } as unknown as Connection
 }
+
+/** A curve's pool account on `config`, for `baseMint`, holding `quoteReserve` (base units). */
+export function curvePoolAccount(config: string, baseMint: string, quoteReserve = 0n): Buffer {
+  const program = DBC.createDbcProgram(offline, 'confirmed').program
+  const coder = program.coder.accounts as unknown as Coder
+  const acc = program.idl.accounts!.find((a) => a.name.toLowerCase() === 'virtualpool')!
+  const zero = coder.decode(
+    'virtualPool',
+    Buffer.concat([Buffer.from(acc.discriminator), Buffer.alloc(coder.size('virtualPool') - 8)]),
+  ) as { poolState: Record<string, unknown> }
+  return encodeDbcAccount('virtualPool', {
+    ...zero,
+    poolState: {
+      ...zero.poolState,
+      config: new PublicKey(config),
+      baseMint: new PublicKey(baseMint),
+      quoteReserve: new BN(quoteReserve.toString()),
+      sqrtPrice: launchPreset(50_000).sqrtStartPrice,
+    },
+  })
+}

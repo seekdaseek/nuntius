@@ -3,7 +3,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
-import { buyJitterS, Executor, transientRpcError, type ChainPort } from './executor.js'
+import { buyJitterS, Executor, type ChainPort } from './executor.js'
+import { ChainBusy, transientRpcError } from './rpc-busy.js'
 import { MandateStore } from './mandate-store.js'
 import { Receipts, type PushPort } from './receipts.js'
 import { buildDigest, oneReceiptPerTransaction, type LedgerEvent } from './digest.js'
@@ -453,4 +454,27 @@ test('the crank skips a failed RPC read quietly, and still names any other fault
   const logged = lines.filter((l) => l.includes('executor_crank_error'))
   assert.equal(logged.length, 1)
   assert.match(logged[0]!, /is not a DBC virtualPool account/)
+})
+
+test('a busy RPC while a buy is prepared: the buy backs off as any failed read does, then lands in its period', async () => {
+  const { chain, store, lines, clock, m, mk, jitter } = setup()
+  clock.advance(jitter)
+  const real = chain.prepareBuy.bind(chain)
+  let busy = true
+  chain.prepareBuy = async (mm, b, amount) => {
+    if (busy) throw new ChainBusy(new Error('429 Too Many Requests: Too Many Requests'))
+    return real(mm, b, amount)
+  }
+  const ex = mk()
+  assert.deepEqual(await ex.tick(), { [m.id]: 'error' })
+  assert.equal(store.pullsFor(PDA).length, 0, 'nothing claimed, nothing sent')
+  assert.equal(chain.sends.length, 0)
+  const backoff = lines.filter((l) => l.includes('executor_backoff'))
+  assert.equal(backoff.length, 1)
+  assert.match(backoff[0]!, /the Solana RPC is busy \(429 Too Many Requests/)
+  assert.deepEqual(await ex.tick(), { [m.id]: 'skipped_backoff' }, 'it waits out its backoff')
+  busy = false
+  clock.advance(Math.ceil((ex.backoffOf(m.id)!.nextAt - clock.now()) / 1000))
+  assert.deepEqual(await ex.tick(), { [m.id]: 'landed' })
+  assert.equal(store.pullsFor(PDA).length, 1, 'one buy in the period')
 })
