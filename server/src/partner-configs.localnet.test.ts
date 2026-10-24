@@ -4,10 +4,13 @@
 // Then the USDC side end to end through the API: a backing granted in USDC, one buy by the
 // executor into the backer's own wallet, a revoke, and a pull the chain refuses after it.
 // USDC's mint is mainnet's with one change, a local mint authority, so the backer can hold some.
+// The server reaches the chain only through its fallback: its primary answers every call with
+// 429 (Helius from 23 Oct), so every route, read, simulation and send here proves the fallback.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { AddressInfo } from 'node:net'
 import { readFileSync } from 'node:fs'
+import http from 'node:http'
 import { PublicKey } from '@solana/web3.js'
 import * as DBC from '@meteora-ag/dynamic-bonding-curve-sdk'
 import {
@@ -16,13 +19,19 @@ import {
   getMintToInstruction,
   TOKEN_PROGRAM_ADDRESS,
 } from '@solana-program/token'
-import { createKeyPairSignerFromBytes, generateKeyPairSigner, type Address } from '@solana/kit'
+import {
+  createKeyPairSignerFromBytes,
+  createSolanaRpcFromTransport,
+  generateKeyPairSigner,
+  type Address,
+} from '@solana/kit'
 import { createApp } from './app.js'
 import { openDb, Store } from './db.js'
 import { MandateStore } from './mandate-store.js'
 import { Receipts, type PushPort } from './receipts.js'
 import { Executor, rpcChain, type ChainPort } from './executor.js'
 import { createLogger } from './log.js'
+import { RpcEndpoints } from './rpc-endpoints.js'
 import { pullInstruction, readAta } from './mandate-chain.js'
 import { launchCostLamports } from './launch-api.js'
 import { meteoraConnection, readLaunch } from './meteora.js'
@@ -113,7 +122,23 @@ test(
     const lines: string[] = []
     const log = createLogger((l) => lines.push(l))
     const receipts = new Receipts(mandates, push, log, 'localnet')
-    const real = rpcChain(rpc, executor, PULL_BUDGET, conn)
+    // The server's clients go through rpc-endpoints.ts with a primary that answers every call
+    // with 429 "max usage reached" (Helius from 23 Oct) and this validator as the fallback: every
+    // read, simulation and send below (routes, executor, buy) is served by the fallback.
+    let primaryHits = 0
+    const primary = http.createServer((req, res) => {
+      primaryHits++
+      req.resume()
+      res.writeHead(429, { 'content-type': 'text/plain' }).end('max usage reached')
+    })
+    primary.listen(0, '127.0.0.1')
+    await new Promise((r) => primary.once('listening', r))
+    t.after(() => primary.close())
+    const primaryUrl = `http://127.0.0.1:${(primary.address() as AddressInfo).port}`
+    const ep = new RpcEndpoints(primaryUrl, [LOCALNET_RPC], { log })
+    const srvRpc = createSolanaRpcFromTransport(ep.transport()) as unknown as typeof rpc
+    const srvConn = meteoraConnection(primaryUrl, undefined, { retryRateLimits: false, endpoints: ep })
+    const real = rpcChain(srvRpc, executor, PULL_BUDGET, srvConn)
     // A day-long period sends its buy up to 10 minutes in (buyJitterS). The executor is told the
     // clock is 10 minutes on, which only skips that wait: the period is still the program's first.
     const chain: ChainPort = { ...real, clock: async () => (await real.clock!()) + 600n }
@@ -138,11 +163,11 @@ test(
     const app = createApp(config as unknown as Config, store, null, {
       mandates,
       cfg,
-      rpc,
+      rpc: srvRpc,
       delegatee: executor.address,
       receipts,
       executor: null,
-      conn,
+      conn: srvConn,
       origin: 'http://localhost',
     })
     const server = app.listen(0, '127.0.0.1')
@@ -232,7 +257,9 @@ test(
 
     const launchMint = b.baseMint as Address
     const usdcBefore = await tokenBalance(rpc, backerUsdc)
+    ep.takeUsage()
     const out = await ex.tick()
+    const buyCalls = ep.takeUsage()
     assert.equal(out[m.id], 'landed', JSON.stringify({ out, lines: lines.slice(-5) }))
     const row = mandates.pullsFor(m.delegationPda).at(-1)!
     const got = await tokenBalance(rpc, b.backerBaseAta as Address)
@@ -257,7 +284,17 @@ test(
       (1_000_000n - (1_000_000n * fee) / 1_000_000_000n).toString(),
       'the curve raised the 1 USDC, less its fee',
     )
+    // The buy, end to end, on the fallback: its reads, its simulation and its send.
+    assert.ok(buyCalls.calls.sendTransaction! >= 1, 'the buy was sent through the fallback')
+    assert.deepEqual(Object.keys(buyCalls.hosts), [new URL(LOCALNET_RPC).host], 'every call of the buy on the fallback')
+    assert.ok(
+      lines.some((l) => l.includes('"event":"rpc_failover"')),
+      'the move to the fallback is logged',
+    )
     step('2b USDC buy', {
+      rpcCallsForTheBuy: buyCalls.calls,
+      rpcCallsForTheBuyTotal: buyCalls.total,
+      primaryHitsSoFar: primaryHits,
       signature: row.signature,
       launchTokenToBacker: got,
       curveQuoteRaised: L.quoteRaised,
