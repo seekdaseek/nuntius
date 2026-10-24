@@ -478,3 +478,86 @@ test('a busy RPC while a buy is prepared: the buy backs off as any failed read d
   assert.deepEqual(await ex.tick(), { [m.id]: 'landed' })
   assert.equal(store.pullsFor(PDA).length, 1, 'one buy in the period')
 })
+
+// --- A 5-minute tick (24 Oct: EXECUTOR_INTERVAL_MS 300000, to fit the free Helius plan) --------
+
+test('a 5-minute tick: each daily period buys and pulls once, within 5 minutes of its moment, for three days', async () => {
+  const chain = new FakeChain()
+  const store = new MandateStore(new Database(':memory:'))
+  const log = createLogger(() => {})
+  const receipts = new Receipts(store, null, log, 'mainnet')
+  let nowMs = Number(chain.nowS) * 1000
+  const DAY = 86_400
+  const TICK_S = 300
+  const start = chain.nowS + 17n // a period that starts between two ticks
+  const add = (pda: string, label: string, back: boolean) => {
+    chain.add(pda, {
+      delegatee: DELEGATEE,
+      delegator: OWNER,
+      mint: 'SKR',
+      amountPerPeriod: 5_000_000n,
+      periodStart: start,
+      periodLength: BigInt(DAY),
+      expiry: 0n,
+    })
+    const m = store.insertMandate(
+      {
+        address: OWNER,
+        label,
+        payee: DELEGATEE,
+        receiverAta: 'DelegateeSkrAta',
+        mint: 'SKR',
+        symbol: 'SKR',
+        decimals: 6,
+        amountPerPeriod: '5000000',
+        pullAmount: '5000000',
+        periodLengthS: DAY,
+        expiryTs: 0,
+        nonce: 0,
+        delegatee: DELEGATEE,
+        delegationPda: pda,
+        authorityPda: 'Auth',
+        userAta: 'OwnerSkrAta',
+      },
+      nowMs,
+    )
+    store.setStatus(m.id, 'active', nowMs)
+    if (back)
+      store.setBacking({
+        mandateId: m.id,
+        pool: 'DbcPool',
+        route: 'dbc',
+        dammPool: null,
+        baseMint: 'NimusMint',
+        baseSymbol: 'NIMUS',
+        baseDecimals: 6,
+        backerBaseAta: 'BackerNimusAta',
+        slippageBps: 200,
+      })
+    return m
+  }
+  const buy = add('PdaDailyBuy11111111111111111111111111111111', 'Back NIMUS', true)
+  const pull = add('PdaDailyPull1111111111111111111111111111111', 'natX', false)
+  const ex = new Executor({ store, chain, receipts, log, now: () => nowMs, settleMs: 0, sleep: async () => {} })
+  const landedAt = new Map<string, number[]>()
+  for (let s = 0; s <= 3 * DAY; s += TICK_S) {
+    const out = await ex.tick()
+    for (const m of [buy, pull])
+      if (out[m.id] === 'landed') landedAt.set(m.id, [...(landedAt.get(m.id) ?? []), Number(chain.nowS)])
+    nowMs += TICK_S * 1000
+    chain.nowS += BigInt(TICK_S)
+  }
+  for (const m of [buy, pull]) {
+    const at = landedAt.get(m.id) ?? []
+    assert.equal(at.length, 3, `${m.label}: one landing in each of the three periods`)
+    for (const [k, t] of at.entries()) {
+      const periodStart = Number(start) + k * DAY
+      // A buy is sent at its jittered moment (buyJitterS, at most 10 minutes in); a pull at once.
+      const moment = periodStart + (m.id === buy.id ? buyJitterS(m.id, periodStart, DAY) : 0)
+      assert.ok(t >= moment, `${m.label}, period ${k}: not before its moment`)
+      assert.ok(t - moment < TICK_S, `${m.label}, period ${k}: within one tick (${t - moment} s late)`)
+      assert.ok(t < periodStart + DAY, `${m.label}, period ${k}: inside its period`)
+    }
+  }
+  assert.equal(chain.sent.length, 6, 'six sends in three days, no retries')
+})

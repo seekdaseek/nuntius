@@ -5,6 +5,7 @@ import type { Store } from './db.js'
 import { buildPayload, NONCE_RE, parseSignInResult, verifySiws } from './siws.js'
 import { checkWalletForSgt } from './seeker.js'
 import { forwardRpc, parseRpcRequest } from './rpc-proxy.js'
+import { sendUpstreamFailure } from './rpc-busy.js'
 import type { FcmSender } from './fcm.js'
 import { registerMandateRoutes, type MandateApiDeps } from './mandates-api.js'
 import { registerIdentityRoutes } from './identity.js'
@@ -22,7 +23,12 @@ export function createApp(
   store: Store,
   fcm: FcmSender | null,
   mandates?: Omit<MandateApiDeps, 'store' | 'limits'>,
-  options: { limits?: Limits; staticDir?: string } = {},
+  options: {
+    limits?: Limits
+    staticDir?: string
+    /** The counted, failing-over JSON-RPC fetch (rpc-endpoints.ts) for /api/rpc and the Seeker check. */
+    rpcEndpoints?: { fetch: (url: string, init: RequestInit) => Promise<Response>; primaryUp(): boolean }
+  } = {},
 ): express.Express {
   const app = express()
   const limits = options.limits ?? defaultLimits()
@@ -105,14 +111,15 @@ export function createApp(
       return
     }
 
-    checkWalletForSgt(config.heliusRpc, auth.address)
+    const e = options.rpcEndpoints
+    checkWalletForSgt(config.heliusRpc, auth.address, e ? { fetch: e.fetch, useV2: () => e.primaryUp() } : {})
       .then((sgtMint) => {
         if (sgtMint) store.claimSgtMint(session, sgtMint)
         res.json({ ok: true, sgtMint })
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         // Fail closed and say nothing about the RPC target.
-        res.status(502).json({ ok: false, error: 'rpc_error' })
+        sendUpstreamFailure(res, err, 'rpc_error')
       })
   })
 
@@ -193,7 +200,7 @@ export function createApp(
       }),
     )
       .then((results) => res.json({ ok: true, results }))
-      .catch(() => res.status(502).json({ ok: false, error: 'fcm_error' }))
+      .catch(() => res.status(424).json({ ok: false, error: 'fcm_error' }))
   })
 
   app.post('/api/rpc', limitByIp(limits.rpc), (req, res) => {
@@ -206,9 +213,9 @@ export function createApp(
       res.status(503).json({ ok: false, error: 'not_configured' })
       return
     }
-    forwardRpc(config.heliusRpc, request)
+    forwardRpc(config.heliusRpc, request, options.rpcEndpoints?.fetch)
       .then((result) => res.json(result))
-      .catch(() => res.status(502).json({ ok: false, error: 'rpc_error' }))
+      .catch((err: unknown) => sendUpstreamFailure(res, err, 'rpc_error'))
   })
 
   // mandatum: one-signature grant/revoke, guard, receipts, digest, widget.

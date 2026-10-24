@@ -9,7 +9,12 @@
  * - MANDATE_MAX_PER_PERIOD  beta ceiling for mints without their own, in UI units
  *                         (default 100). A second, server-side bound on top of the chain's.
  * - MANDATE_DELEGATEE     path to the executor keypair file (never committed).
- * - EXECUTOR_INTERVAL_MS  default 30000. GUARD_INTERVAL_MS default 60000.
+ * - EXECUTOR_INTERVAL_MS  default 300000 (5 min). GUARD_INTERVAL_MS default 600000 (10 min).
+ *                         A daily buy waits up to 10 minutes of jitter anyway; a grant's first
+ *                         pull is kicked at once. (24 Oct: 10 s and 60 s burned the free Helius
+ *                         plan's 1,000,000 credits by the 23rd.)
+ * - RPC_FALLBACKS         comma list of https URLs tried when the primary answers 429, 402, 403
+ *                         or 5xx. Unset: the free public mainnet RPC. Read in index.ts.
  * - DEMO_ENDPOINTS        '1' enables the over-cap demo button. Off by default.
  */
 export interface MintInfo {
@@ -88,8 +93,8 @@ export function loadMandateConfig(env: NodeJS.ProcessEnv, heliusRpc: string | nu
     mints,
     maxPerPeriodUi,
     delegateePath: env.MANDATE_DELEGATEE || null,
-    executorIntervalMs: int(env.EXECUTOR_INTERVAL_MS, 30_000, 'EXECUTOR_INTERVAL_MS'),
-    guardIntervalMs: int(env.GUARD_INTERVAL_MS, 60_000, 'GUARD_INTERVAL_MS'),
+    executorIntervalMs: int(env.EXECUTOR_INTERVAL_MS, 300_000, 'EXECUTOR_INTERVAL_MS'),
+    guardIntervalMs: int(env.GUARD_INTERVAL_MS, 600_000, 'GUARD_INTERVAL_MS'),
     demoEndpoints: env.DEMO_ENDPOINTS === '1',
     launches: env.MANDATE_LAUNCHES === '1',
     launchConfigs: parseLaunchConfigs(env.LAUNCH_CONFIGS ?? '', mints),

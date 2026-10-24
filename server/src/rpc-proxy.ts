@@ -25,8 +25,12 @@ export function parseRpcRequest(body: unknown): RpcRequest | null {
   return { jsonrpc: '2.0', id: v.id, method: v.method, params: v.params as unknown[] | undefined }
 }
 
-export async function forwardRpc(rpcUrl: string, request: RpcRequest): Promise<unknown> {
-  const response = await fetch(rpcUrl, {
+export async function forwardRpc(
+  rpcUrl: string,
+  request: RpcRequest,
+  doFetch: (url: string, init: RequestInit) => Promise<Response> = fetch,
+): Promise<unknown> {
+  const response = await doFetch(rpcUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(request),

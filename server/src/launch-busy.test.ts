@@ -15,6 +15,9 @@ import { createLogger } from './log.js'
 import { CLIENT_HEADER } from './client-version.js'
 import type { Config } from './config.js'
 import { curvePoolAccount, presetConfigAccount } from './test/dbc-fakes.js'
+import { RpcEndpoints } from './rpc-endpoints.js'
+import { readdirSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 
 const K = () => Keypair.generate().publicKey.toBase58()
 const SESSION = 'B'.repeat(43)
@@ -55,7 +58,15 @@ function chain(accounts: Map<string, { owner: string; data: Buffer }>, busy: (n:
   } as unknown as Connection
 }
 
-async function serve(conn: Connection, launches: { baseMint: string; pool: string; config: string }[] = []) {
+async function serve(
+  conn: Connection,
+  launches: { baseMint: string; pool: string; config: string }[] = [],
+  opts: {
+    rpc?: unknown
+    heliusRpc?: string
+    rpcEndpoints?: { fetch: (url: string, init: RequestInit) => Promise<Response>; primaryUp(): boolean }
+  } = {},
+) {
   const db = openDb(':memory:')
   const store = new Store(db)
   store.createSession(SESSION, 'Backer11111111111111111111111111111111111111', Date.now())
@@ -75,7 +86,13 @@ async function serve(conn: Connection, launches: { baseMint: string; pool: strin
       Date.now(),
     )
   const app = createApp(
-    { port: 0, domain: 'x.test', heliusRpc: null, fcmServiceAccount: null, fcmProjectId: null } as unknown as Config,
+    {
+      port: 0,
+      domain: 'x.test',
+      heliusRpc: opts.heliusRpc ?? null,
+      fcmServiceAccount: null,
+      fcmProjectId: null,
+    } as unknown as Config,
     store,
     null,
     {
@@ -92,7 +109,7 @@ async function serve(conn: Connection, launches: { baseMint: string; pool: strin
         launches: true,
         launchConfigs: {},
       },
-      rpc: {} as never,
+      rpc: (opts.rpc ?? {}) as never,
       delegatee: K() as never,
       receipts: new Receipts(
         mandates,
@@ -104,6 +121,7 @@ async function serve(conn: Connection, launches: { baseMint: string; pool: strin
       conn,
       origin: 'https://x.test',
     },
+    opts.rpcEndpoints ? { rpcEndpoints: opts.rpcEndpoints } : {},
   )
   const server = app.listen(0, '127.0.0.1')
   await new Promise((r) => server.once('listening', r))
@@ -206,4 +224,104 @@ test('POST /api/launch/confirm: a busy RPC is 503; a launch not on chain stays 4
   } finally {
     calm.close()
   }
+})
+
+// --- Every answer is JSON that Cloudflare passes through (24 Oct) -----------------------------
+// Behind the tunnel an origin 502 reaches the client as text "error code: 502": the app showed
+// "JSON Parse error: Unexpected character: e" on its home. A busy RPC is 503 chain_busy (its JSON
+// arrives intact, measured on nuntius.ochinimus.app); any other upstream failure is 424.
+
+test('POST /api/mandates/list with the chain busy and no earlier scan: 503 chain_busy JSON, never 502', async () => {
+  const busy = {
+    getProgramAccounts: () => ({
+      send: async () => {
+        throw new Error('HTTP error (429): Too Many Requests')
+      },
+    }),
+  }
+  const s = await serve(
+    chain(new Map(), () => false),
+    [],
+    { rpc: busy },
+  )
+  try {
+    const r = await post(s.base, '/api/mandates/list', {})
+    assert.equal(r.headers.get('content-type'), 'application/json; charset=utf-8')
+    const j = await seen(r)
+    assert.deepEqual([j.status, j.error, j.retryAfter], [503, 'chain_busy', '5'])
+  } finally {
+    s.close()
+  }
+  const broken = {
+    getProgramAccounts: () => ({
+      send: async () => {
+        throw new Error('unexpected shape')
+      },
+    }),
+  }
+  const t = await serve(
+    chain(new Map(), () => false),
+    [],
+    { rpc: broken },
+  )
+  try {
+    const j = await seen(await post(t.base, '/api/mandates/list', {}))
+    assert.deepEqual([j.status, j.error], [424, 'chain_error'], 'any other failure upstream: 424, still JSON')
+  } finally {
+    t.close()
+  }
+})
+
+test("POST /api/rpc (the app's proxy): the fallback answers; with every endpoint busy, 503 chain_busy JSON", async () => {
+  const answer = (status: number) =>
+    status === 200
+      ? new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { context: { slot: 1 }, value: 9 } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      : new Response('max usage reached', { status })
+  let fallbackStatus = 200
+  const ep = new RpcEndpoints('https://mainnet.helius-rpc.com/?api-key=x', ['https://fallback.test'], {
+    fetch: (async (url: unknown) =>
+      answer(new URL(String(url)).host === 'fallback.test' ? fallbackStatus : 429)) as typeof fetch,
+  })
+  const s = await serve(
+    chain(new Map(), () => false),
+    [],
+    { heliusRpc: 'https://mainnet.helius-rpc.com/?api-key=x', rpcEndpoints: ep },
+  )
+  const call = () =>
+    fetch(`${s.base}/api/rpc`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'getBalance',
+        params: ['11111111111111111111111111111111'],
+      }),
+    })
+  try {
+    const ok = await call()
+    assert.equal(ok.status, 200)
+    assert.equal(((await ok.json()) as { result: { value: number } }).result.value, 9)
+    fallbackStatus = 503
+    const r = await call()
+    assert.equal(r.headers.get('content-type'), 'application/json; charset=utf-8')
+    assert.deepEqual([r.status, ((await r.json()) as { error: string }).error], [503, 'chain_busy'])
+  } finally {
+    s.close()
+  }
+})
+
+test('the server never answers 502 or 504 on purpose (Cloudflare replaces their JSON with text)', () => {
+  const dir = path.join(import.meta.dirname, '..', 'src')
+  const hits: string[] = []
+  for (const f of readdirSync(dir).filter((n) => n.endsWith('.ts') && !n.endsWith('.test.ts'))) {
+    const text = readFileSync(path.join(dir, f), 'utf8')
+    for (const m of text.matchAll(/status\((50[24])\)|HttpError\((50[24])/g)) hits.push(`${f}: ${m[0]}`)
+  }
+  // The rule's own control: it finds a 502 when there is one.
+  assert.ok('res.status(502).json({})'.match(/status\((50[24])\)/))
+  assert.deepEqual(hits, [])
 })

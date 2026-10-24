@@ -16,12 +16,21 @@ export interface DigestDeps {
   push: PushPort
   log: Logger
   live: (address: string) => Promise<LiveMandate[]>
+  /**
+   * When a wallet's failed digest may be tried again. Each try reads the wallet's permissions
+   * on chain; without a wait, a failing digest read them every minute (23-24 Oct: 172 tries).
+   */
+  retryAt?: Map<string, number>
 }
+
+/** The wait after a failed digest before the next try. */
+export const DIGEST_RETRY_MS = 10 * 60_000
 
 export async function runDigests(d: DigestDeps, nowMs: number): Promise<string[]> {
   const sent: string[] = []
   for (const pref of d.mandates.allDigestPrefs()) {
     if (!digestDue(nowMs, pref)) continue
+    if (nowMs < (d.retryAt?.get(pref.address) ?? 0)) continue
     // Tier is re-checked at send time: a wallet that lost Seeker verification stops getting it.
     if (!d.store.sgtForAddress(pref.address)) continue
     try {
@@ -42,9 +51,11 @@ export async function runDigests(d: DigestDeps, nowMs: number): Promise<string[]
         channel: 'digest',
       })
       d.mandates.markDigestSent(pref.address, localDay(nowMs, pref.tzOffsetMin), nowMs)
+      d.retryAt?.delete(pref.address)
       d.log.info('digest_sent', { address: pref.address, pulls: digest.totals.pulls, refused: digest.totals.refused })
       sent.push(pref.address)
     } catch (e) {
+      d.retryAt?.set(pref.address, nowMs + DIGEST_RETRY_MS)
       d.log.warn('digest_failed', { address: pref.address, error: safeError(e) })
     }
   }

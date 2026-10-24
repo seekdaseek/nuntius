@@ -53,7 +53,7 @@ import type { Mandate, MandateStore } from './mandate-store.js'
 import type { Rpc } from './tx.js'
 import { limitByIp, type RateLimiter } from './rate-limit.js'
 import { safeError } from './log.js'
-import { BUSY_RETRY_AFTER_S, transientRpcError } from './rpc-busy.js'
+import { sendChainBusy, sendUpstreamFailure, transientRpcError } from './rpc-busy.js'
 import { CLIENT_HEADER, clientAtLeast } from './client-version.js'
 import { commitmentSentence, FeedBus, feedFromDb, parseOwnWallets, registerFeedRoutes } from './launch-feed.js'
 import { readMetadataUri, TokenImages } from './token-image.js'
@@ -108,14 +108,6 @@ export class HttpError extends Error {
   ) {
     super(message ?? code)
   }
-}
-
-/** The RPC was busy (rate limit, overload, dropped connection): not an answer about the pool. */
-function chainBusy(res: express.Response): void {
-  res.setHeader('Retry-After', String(BUSY_RETRY_AFTER_S))
-  res
-    .status(503)
-    .json({ ok: false, error: 'chain_busy', message: 'The Solana RPC is busy. Try again in a few seconds.' })
 }
 
 export interface LaunchDeps {
@@ -201,11 +193,11 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
       handler(body)
         .then((out) => res.json({ ok: true, ...out }))
         .catch((e: unknown) => {
-          if (!(e instanceof HttpError) && transientRpcError(e)) return void chainBusy(res)
+          if (!(e instanceof HttpError) && transientRpcError(e)) return void sendChainBusy(res)
           const he = e instanceof HttpError ? e : (e as { status?: number; code?: string; message?: string })
           if (typeof he.status === 'number' && typeof he.code === 'string')
             res.status(he.status).json({ ok: false, error: he.code, message: he.message })
-          else res.status(502).json({ ok: false, error: 'chain_error', message: safeError(e) })
+          else sendUpstreamFailure(res, e, 'chain_error', safeError(e))
         })
     })
   }
@@ -515,7 +507,7 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
       })
       .catch((e: unknown) =>
         transientRpcError(e)
-          ? chainBusy(res)
+          ? sendChainBusy(res)
           : e instanceof UnsupportedLaunch
             ? res.status(422).json({ ok: false, error: 'launch_unsupported', message: e.message })
             : res.status(404).json({ ok: false, error: 'no_launch', message: safeError(e) }),
@@ -646,7 +638,7 @@ export function registerLaunchRoutes(app: express.Express, d: LaunchDeps): void 
     ataOf(owner, mint.mint)
       .then((ata) => readAta(d.rpc, ata as Address))
       .then((a) => res.json({ ok: true, amount: a.exists ? (a.amount ?? '0') : '0', decimals: mint.decimals }))
-      .catch(() => res.status(502).json({ ok: false, error: 'chain_error' }))
+      .catch((e: unknown) => sendUpstreamFailure(res, e, 'chain_error'))
   })
 
   app.get('/l/:pool', async (req, res) => {

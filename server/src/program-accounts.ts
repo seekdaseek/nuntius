@@ -93,19 +93,45 @@ export async function programAccountsV2(
   return out
 }
 
+/** "getProgramAccountsV2: HTTP 429" and the like: Helius out of credits, refusing or down. */
+export function v2FailedOver(e: unknown): boolean {
+  const m = /getProgramAccountsV2: HTTP (\d{3})/.exec(e instanceof Error ? e.message : String(e))
+  if (!m) return false
+  const status = Number(m[1])
+  return status === 429 || status === 402 || status === 403 || status >= 500
+}
+
 /**
  * The kit Rpc with getProgramAccounts answered by getProgramAccountsV2 on Helius. Callers
- * (the @solana/subscriptions fetchers) keep their own filters and decoding.
+ * (the @solana/subscriptions fetchers) keep their own filters and decoding. While `useV2`
+ * says the Helius primary is not answering (rpc-endpoints.ts), and when V2 itself fails over,
+ * the plain getProgramAccounts goes out instead, through the same Rpc and so to the fallback:
+ * the public RPC has no V2 (23 Oct: the free plan's credits ran out).
  */
-export function withPagedProgramAccounts(rpc: Rpc, rpcUrl: string, doFetch?: Fetch): Rpc {
+export function withPagedProgramAccounts(
+  rpc: Rpc,
+  rpcUrl: string,
+  doFetch?: Fetch,
+  useV2: () => boolean = () => true,
+): Rpc {
   if (!isHelius(rpcUrl)) return rpc
   const getProgramAccounts = (program: string, config?: { encoding?: string; filters?: unknown }) => ({
     send: async () => {
-      if (config?.encoding && config.encoding !== 'base64') throw new Error('paged getProgramAccounts: base64 only')
-      return (await programAccountsV2(rpcUrl, program, config?.filters, doFetch)).map((a) => ({
-        pubkey: a.pubkey,
-        account: { ...a.account, lamports: BigInt(a.account.lamports), space: BigInt(a.account.space ?? 0) },
-      }))
+      if (useV2()) {
+        try {
+          if (config?.encoding && config.encoding !== 'base64') throw new Error('paged getProgramAccounts: base64 only')
+          return (await programAccountsV2(rpcUrl, program, config?.filters, doFetch)).map((a) => ({
+            pubkey: a.pubkey,
+            account: { ...a.account, lamports: BigInt(a.account.lamports), space: BigInt(a.account.space ?? 0) },
+          }))
+        } catch (e) {
+          if (!v2FailedOver(e)) throw e
+        }
+      }
+      return (rpc.getProgramAccounts as unknown as (p: string, c?: unknown) => { send(): Promise<unknown> })(
+        program,
+        config,
+      ).send()
     },
   })
   return new Proxy(rpc, {

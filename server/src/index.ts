@@ -6,7 +6,7 @@ import { createApp } from './app.js'
 import { FcmSender } from './fcm.js'
 import { writeFile } from 'node:fs/promises'
 import { generateKeyPairSync } from 'node:crypto'
-import { createKeyPairSignerFromBytes, createSolanaRpc, type TransactionSigner } from '@solana/kit'
+import { createKeyPairSignerFromBytes, createSolanaRpcFromTransport, type TransactionSigner } from '@solana/kit'
 import { loadMandateConfig } from './mandate-config.js'
 import { MandateStore } from './mandate-store.js'
 import { fcmParts, Receipts, type PushPort } from './receipts.js'
@@ -22,6 +22,7 @@ import { createLogger } from './log.js'
 import { anthropicModelCall } from './parse-permission.js'
 import { bootLines } from './boot-log.js'
 import { keypairFromFile } from './keyfile.js'
+import { parseFallbacks, RpcEndpoints } from './rpc-endpoints.js'
 
 const config = loadConfig()
 const db = openDb(path.join(import.meta.dirname, '..', 'nuntius.db'))
@@ -35,6 +36,18 @@ const fcm =
  */
 const log = createLogger()
 const mandateConfig = loadMandateConfig(process.env, config.heliusRpc)
+// Every JSON-RPC call goes through one place: counted per method (an rpc_usage line every 10
+// minutes) and moved to RPC_FALLBACKS (the free public mainnet RPC unless set) when the primary
+// answers 429, 402, 403 or 5xx. A localnet primary has no fallback: mainnet is another chain.
+const primaryRpc = mandateConfig?.rpcUrl ?? config.heliusRpc
+const endpoints = primaryRpc
+  ? new RpcEndpoints(
+      primaryRpc,
+      mandateConfig?.cluster === 'localnet' ? [] : parseFallbacks(process.env.RPC_FALLBACKS),
+      { log },
+    )
+  : null
+endpoints?.startUsageLog(log)
 async function loadMandateDelegatee(path: string | null, cluster: 'mainnet' | 'localnet'): Promise<TransactionSigner> {
   if (!path) throw new Error('MANDATE_DELEGATEE (path to the executor keypair) is required')
   try {
@@ -56,8 +69,15 @@ async function loadMandateDelegatee(path: string | null, cluster: 'mainnet' | 'l
 
 let mandateDeps: Parameters<typeof createApp>[3]
 if (mandateConfig) {
-  // Helius deprioritizes unpaginated getProgramAccounts: both clients page with getProgramAccountsV2 there.
-  const rpc = withPagedProgramAccounts(createSolanaRpc(mandateConfig.rpcUrl), mandateConfig.rpcUrl)
+  // Helius deprioritizes unpaginated getProgramAccounts: both clients page with getProgramAccountsV2
+  // there, while Helius answers; on the fallback the plain call goes out (program-accounts.ts).
+  const ep = endpoints!
+  const rpc = withPagedProgramAccounts(
+    createSolanaRpcFromTransport(ep.transport()),
+    mandateConfig.rpcUrl,
+    ep.fetch as never,
+    () => ep.primaryUp(),
+  )
   const scans = new DelegationScans(rpc)
   const delegatee = await loadMandateDelegatee(mandateConfig.delegateePath, mandateConfig.cluster)
   const mandates = new MandateStore(db)
@@ -82,8 +102,8 @@ if (mandateConfig) {
   // The Meteora SDKs speak web3.js: connections to the same RPC, for buys and the migration crank,
   // and for the routes a person waits on (the backing page, back, launch). Those do not wait out
   // a 429 inside web3.js: their reads retry briefly, then answer 503 chain_busy (rpc-busy.ts).
-  const conn = meteoraConnection(mandateConfig.rpcUrl)
-  const routeConn = meteoraConnection(mandateConfig.rpcUrl, undefined, { retryRateLimits: false })
+  const conn = meteoraConnection(mandateConfig.rpcUrl, undefined, { endpoints: ep })
+  const routeConn = meteoraConnection(mandateConfig.rpcUrl, undefined, { retryRateLimits: false, endpoints: ep })
   const executor = new Executor({ store: mandates, chain: rpcChain(rpc, delegatee, PULL_BUDGET, conn), receipts, log })
   const guard = new Guard({
     store: mandates,
@@ -98,10 +118,19 @@ if (mandateConfig) {
   startExecutor(executor, mandateConfig.executorIntervalMs)
   startGuard(guard, mandateConfig.guardIntervalMs)
   if (push) {
+    // The live permissions are read once per digest sent (or tried), never on the minute's check.
+    const retryAt = new Map<string, number>()
     setInterval(
       () =>
         void runDigests(
-          { store, mandates, push, log, live: (a) => liveMandatesFor(rpc, mandates, mandateConfig, a, Date.now()) },
+          {
+            store,
+            mandates,
+            push,
+            log,
+            live: (a) => liveMandatesFor(rpc, mandates, mandateConfig, a, Date.now()),
+            retryAt,
+          },
           Date.now(),
         ),
       60_000,
@@ -131,7 +160,7 @@ if (mandateConfig) {
   })
 }
 
-const app = createApp(config, store, fcm, mandateDeps)
+const app = createApp(config, store, fcm, mandateDeps, endpoints ? { rpcEndpoints: endpoints } : {})
 // Expired sessions and the push tokens they registered are deleted at start and hourly.
 store.purgeExpiredSessions()
 setInterval(() => store.purgeExpiredSessions(), 3_600_000).unref()

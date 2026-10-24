@@ -20,13 +20,19 @@
  * buy is cut to what the curve still takes, because an exact-in that would cross the
  * migration threshold fails.
  */
-import { ComputeBudgetProgram, Connection, PublicKey, TransactionInstruction } from '@solana/web3.js'
+import {
+  ComputeBudgetProgram,
+  Connection,
+  PublicKey,
+  TransactionInstruction,
+  type ConnectionConfig,
+} from '@solana/web3.js'
 import BN from 'bn.js'
 import * as DBC from '@meteora-ag/dynamic-bonding-curve-sdk'
 import * as CPAMM from '@meteora-ag/cp-amm-sdk'
 import { AccountRole, type Address, type Instruction } from '@solana/kit'
 import { findAssociatedTokenPda, getMintSize, getTokenSize, TOKEN_PROGRAM_ADDRESS } from '@solana-program/token'
-import { isHelius, programAccountsV2, type Fetch } from './program-accounts.js'
+import { isHelius, programAccountsV2, v2FailedOver, type Fetch } from './program-accounts.js'
 import { busyRetry, ChainBusy } from './rpc-busy.js'
 
 export const DBC_PROGRAM = 'dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN'
@@ -724,17 +730,34 @@ export async function readConfig(
 /** The SDKs' connection, opaque outside this module. */
 export type MeteoraConnection = Connection
 
-/** One connection to the RPC for the Meteora SDKs, paged on Helius (pageConnection). */
+/**
+ * One connection to the RPC for the Meteora SDKs, paged on Helius (pageConnection). With
+ * `endpoints`, every call goes through their fetch: counted, and moved to the fallback when the
+ * primary answers 429, 402, 403 or 5xx (rpc-endpoints.ts).
+ */
 export function meteoraConnection(
   rpcUrl: string,
   doFetch?: Fetch,
-  opts: { retryRateLimits?: boolean } = {},
+  opts: {
+    retryRateLimits?: boolean
+    endpoints?: { fetch: (input: unknown, init?: RequestInit) => Promise<Response>; primaryUp(): boolean }
+  } = {},
 ): MeteoraConnection {
   // web3.js waits out a 429 by itself, up to about 15 s a call (0.5 to 8 s, five times). Off
   // for the routes a person waits on: busyRetry tries a read three times in about a second,
   // and the route answers 503 chain_busy so the page can try again.
   const disableRetryOnRateLimit = opts.retryRateLimits === false
-  return pageConnection(new Connection(rpcUrl, { commitment: 'confirmed', disableRetryOnRateLimit }), doFetch)
+  const e = opts.endpoints
+  const conn = new Connection(rpcUrl, {
+    commitment: 'confirmed',
+    disableRetryOnRateLimit,
+    ...(e ? { fetch: e.fetch as unknown as ConnectionConfig['fetch'] } : {}),
+  })
+  return pageConnection(
+    conn,
+    doFetch ?? (e ? (e.fetch as unknown as Fetch) : undefined),
+    e ? () => e.primaryUp() : undefined,
+  )
 }
 
 /**
@@ -794,19 +817,29 @@ export async function tokenInfo(
  * program-accounts.ts), for any Anchor account.all() the SDKs make. readLaunch itself no
  * longer searches: the migrated pool is derived (canonicalDammPool).
  */
-export function pageConnection(conn: Connection, doFetch?: Fetch): Connection {
+export function pageConnection(conn: Connection, doFetch?: Fetch, useV2: () => boolean = () => true): Connection {
   if (!isHelius(conn.rpcEndpoint)) return conn
-  const paged = async (program: PublicKey, config?: { filters?: unknown }) =>
-    (await programAccountsV2(conn.rpcEndpoint, program.toBase58(), config?.filters, doFetch)).map((a) => ({
-      pubkey: new PublicKey(a.pubkey),
-      account: {
-        data: Buffer.from(a.account.data[0], 'base64'),
-        executable: a.account.executable,
-        lamports: a.account.lamports,
-        owner: new PublicKey(a.account.owner),
-        rentEpoch: a.account.rentEpoch,
-      },
-    }))
+  const plain = conn.getProgramAccounts.bind(conn) as unknown as (p: PublicKey, c?: unknown) => Promise<unknown>
+  const paged = async (program: PublicKey, config?: { filters?: unknown }) => {
+    // The fallback (the public RPC) has no V2: the plain call goes out through the same fetch.
+    if (useV2()) {
+      try {
+        return (await programAccountsV2(conn.rpcEndpoint, program.toBase58(), config?.filters, doFetch)).map((a) => ({
+          pubkey: new PublicKey(a.pubkey),
+          account: {
+            data: Buffer.from(a.account.data[0], 'base64'),
+            executable: a.account.executable,
+            lamports: a.account.lamports,
+            owner: new PublicKey(a.account.owner),
+            rentEpoch: a.account.rentEpoch,
+          },
+        }))
+      } catch (e) {
+        if (!v2FailedOver(e)) throw e
+      }
+    }
+    return plain(program, config)
+  }
   ;(conn as unknown as { getProgramAccounts: typeof paged }).getProgramAccounts = paged
   return conn
 }

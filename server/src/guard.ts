@@ -42,10 +42,17 @@ export interface GuardChain {
   effect(signature: string, owner: string, mint: string, pda: string): Promise<TxEffect>
 }
 
-/** With `scans`, every good scan also refreshes the permission list's last good copy. */
+/** How old the guard lets a wallet's delegation list get before scanning it again. */
+export const GUARD_LIST_MAX_AGE_MS = 30 * 60_000
+
+/**
+ * With `scans`, the list is shared with the routes: a good scan younger than
+ * GUARD_LIST_MAX_AGE_MS is reused (each scan is a getProgramAccounts; 24 Oct), and every scan
+ * refreshes the permission list's last good copy.
+ */
 export function rpcGuardChain(rpc: Rpc, scans?: DelegationScans): GuardChain {
   return {
-    list: (owner) => (scans ? scans.fresh(owner) : listDelegations(rpc, owner as Address)),
+    list: (owner) => (scans ? scans.recent(owner, GUARD_LIST_MAX_AGE_MS) : listDelegations(rpc, owner as Address)),
     async signatures(pda, until) {
       const r = await rpc
         .getSignaturesForAddress(pda as Address, {
@@ -137,6 +144,13 @@ export class Guard {
     } finally {
       this.running = false
     }
+    // One line a pass (every 10 minutes): which wallets were read, so a quiet guard is a seen one.
+    this.o.log.info('guard_tick', {
+      wallets: out.length,
+      ok: out.filter((r) => r.error === undefined).length,
+      failed: out.filter((r) => r.error !== undefined).length,
+      receipts: out.reduce((n, r) => n + r.events, 0),
+    })
     return out
   }
 

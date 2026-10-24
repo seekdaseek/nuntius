@@ -332,8 +332,15 @@ export class DelegationScans {
     return list
   }
 
-  /** A fresh scan, else the last good one marked stale; throws only when there never was one. */
-  async orLast(owner: string): Promise<{ list: DelegationView[]; asOfMs: number; stale: boolean }> {
+  /**
+   * A fresh scan, else the last good one marked stale; throws only when there never was one.
+   * With `maxAgeMs`, a good scan younger than that is answered without a call: the app's home
+   * asks every 10 s while it is open, and each scan is a getProgramAccounts.
+   */
+  async orLast(owner: string, maxAgeMs = 0): Promise<{ list: DelegationView[]; asOfMs: number; stale: boolean }> {
+    const cached = this.last.get(owner)
+    if (cached && maxAgeMs > 0 && this.now() - cached.atMs < maxAgeMs)
+      return { list: cached.list, asOfMs: cached.atMs, stale: false }
     try {
       const list = await this.fresh(owner)
       return { list, asOfMs: this.last.get(owner)!.atMs, stale: false }
@@ -342,6 +349,18 @@ export class DelegationScans {
       if (!l) throw e
       return { list: l.list, asOfMs: l.atMs, stale: true }
     }
+  }
+
+  /**
+   * A good scan no older than `maxAgeMs`, else a fresh one (or its error): the guard's list.
+   * The app's permission list refreshes it while the app is open; a delegation granted or
+   * revoked anywhere else is seen within `maxAgeMs` (the executor sees its own revokes on its
+   * next read, and revoke-confirm sends that receipt at once).
+   */
+  async recent(owner: string, maxAgeMs: number): Promise<DelegationView[]> {
+    const cached = this.last.get(owner)
+    if (cached && this.now() - cached.atMs < maxAgeMs) return cached.list
+    return this.fresh(owner)
   }
 }
 

@@ -17,6 +17,7 @@ import { formatUnits } from './mandate-text.js'
 import { clientIp, limitByIp, type RateLimiter } from './rate-limit.js'
 import type { LedgerEvent } from './digest.js'
 import { buyJitterS } from './executor.js'
+import { sendUpstreamFailure } from './rpc-busy.js'
 
 export const DEFAULT_OWN_WALLETS = [
   '4a8o45skRPcyjAdyR8yES215Swvh8uTpZD6KLarhxCJ7', // cj7, the treasury
@@ -342,7 +343,7 @@ export function registerFeedRoutes(
         res.setHeader('Cache-Control', 'public, max-age=15')
         res.json({ ok: true, asOf: new Date().toISOString(), ownWallets: [...d.own], launches })
       })
-      .catch(() => res.status(502).json({ ok: false, error: 'chain_error' }))
+      .catch((e: unknown) => sendUpstreamFailure(res, e, 'chain_error'))
   })
 
   const open = new Map<string, number>()

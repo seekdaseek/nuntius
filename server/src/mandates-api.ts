@@ -60,10 +60,13 @@ import { receiptFeed } from './receipt-feed.js'
 import { randomInt } from 'node:crypto'
 import { clientIp, tooMany, type Limits } from './rate-limit.js'
 import type { Rpc } from './tx.js'
+import { sendUpstreamFailure } from './rpc-busy.js'
 
 const SESSION_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/
 const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
 const PENDING_TTL_MS = 10 * 60_000
+/** How old a delegation scan the permission list may show without scanning again. */
+const LIST_MAX_AGE_MS = 60_000
 
 export interface MandateApiDeps {
   store: Store
@@ -131,7 +134,7 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
           if (e instanceof HttpError) {
             res.status(e.status).json({ ok: false, error: e.code, message: e.message, ...e.extra })
           } else {
-            res.status(502).json({ ok: false, error: 'chain_error', message: safeError(e) })
+            sendUpstreamFailure(res, e, 'chain_error', safeError(e))
           }
         })
     })
@@ -558,8 +561,9 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
 
   route('/api/mandates/list', async (body, req) => {
     const a = auth(body)
-    // A failed chain read shows the last good list and its time, never an empty one.
-    const scan = await scans.orLast(a.address)
+    // A failed chain read shows the last good list and its time, never an empty one. The home
+    // asks every 10 s while open: a scan from the last minute is answered as it is.
+    const scan = await scans.orLast(a.address, LIST_MAX_AGE_MS)
     const onChain = scan.list
     const byPda = new Map(onChain.map((d) => [d.address as string, d]))
     const own = mandates.listMandates(a.address).filter((m) => m.status === 'active' || m.status === 'pending')
@@ -658,7 +662,9 @@ export function registerMandateRoutes(app: express.Express, deps: MandateApiDeps
     const pda =
       typeof body.delegationPda === 'string' && ADDRESS_RE.test(body.delegationPda) ? body.delegationPda : null
     if (!pda) throw new HttpError(400, 'bad_request')
-    const still = (await listDelegations(rpc, a.address as Address)).some((x) => x.address === pda)
+    // Through the shared scans: the fresh list replaces the cached one, so the permission list
+    // (cached for a minute) never shows a revoked permission after this answer.
+    const still = (await scans.fresh(a.address)).some((x) => x.address === pda)
     if (still) throw new HttpError(409, 'still_live', 'the revoke has not landed yet')
     const m = mandates.getMandateByPda(pda)
     if (m && m.address === a.address && m.status === 'active') mandates.setStatus(m.id, 'revoked', now())

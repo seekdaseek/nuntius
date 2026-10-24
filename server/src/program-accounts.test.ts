@@ -1,6 +1,6 @@
 // getProgramAccounts on Helius (getProgramAccountsV2, paged) and everywhere else (the plain
 // call), and the permission list's last good scan. The RPC is a fake fetch: nothing leaves the box.
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import { createSolanaRpc, getAddressDecoder, type Address } from '@solana/kit'
@@ -93,11 +93,18 @@ test('a failed scan shows the last good list with its time, never "no permission
   const doFetch: Fetch = async (url, init) =>
     fail ? { ok: false, status: 503, json: async () => ({}) } : good.doFetch(url, init)
   let t = 1_000_000
+  // A V2 503 now falls through to the plain call (the fallback's path, rpc-endpoints.ts): that
+  // one fails too here, on a fake global fetch, so nothing leaves the box.
+  const realFetch = globalThis.fetch
+  let plainCalls = 0
+  globalThis.fetch = (async () => (plainCalls++, new Response('down', { status: 503 }))) as typeof fetch
+  after(() => (globalThis.fetch = realFetch))
   const scans = new DelegationScans(withPagedProgramAccounts(createSolanaRpc(HELIUS), HELIUS, doFetch), () => t)
 
   // Never scanned and failing: an error, not an empty list.
   fail = true
   await assert.rejects(scans.orLast(owner))
+  assert.equal(plainCalls, 1, 'the plain getProgramAccounts was tried after V2 failed over')
 
   fail = false
   const first = await scans.orLast(owner)
@@ -110,4 +117,27 @@ test('a failed scan shows the last good list with its time, never "no permission
   assert.equal(later.asOfMs, 1_000_000, 'the time of the last good scan')
   assert.equal(later.list[0]!.address, accounts[0]!.pubkey)
   await assert.rejects(scans.fresh(owner), 'anything that acts on the list still gets the error')
+})
+
+test('the list is cached: the home (every 10 s) and the guard (30 min) reuse a recent good scan', async () => {
+  const owner = K()
+  const accounts = [{ pubkey: K(), data: delegation(owner, K(), K()), owner: PROGRAM_ID }]
+  const { calls, doFetch } = fakeHelius(accounts, 10)
+  let t = 1_000_000
+  const scans = new DelegationScans(withPagedProgramAccounts(createSolanaRpc(HELIUS), HELIUS, doFetch), () => t)
+  assert.equal((await scans.orLast(owner, 60_000)).list.length, 1)
+  t += 59_999
+  assert.equal((await scans.orLast(owner, 60_000)).asOfMs, 1_000_000, 'a scan younger than a minute is reused')
+  assert.equal(calls.length, 1)
+  t += 1
+  assert.equal((await scans.orLast(owner, 60_000)).asOfMs, 1_060_000, 'then a fresh one')
+  assert.equal(calls.length, 2)
+  assert.equal((await scans.recent(owner, 30 * 60_000)).length, 1)
+  assert.equal(calls.length, 2, 'the guard reuses it too')
+  t += 30 * 60_000
+  await scans.recent(owner, 30 * 60_000)
+  assert.equal(calls.length, 3, 'and scans again after 30 minutes')
+  // Without a max age, as before: always a fresh scan.
+  await scans.orLast(owner)
+  assert.equal(calls.length, 4)
 })
